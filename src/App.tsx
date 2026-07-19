@@ -2095,39 +2095,36 @@ export default function App() {
                     </div>
                     <UnifiedAnalyzer role="CLASS_ADVISOR" title="Class Performance Analyzer" />
                   </div>
-                ) : isCoordinator ? (
-                  <div className="space-y-10">
-                    {/* Stat cards for Coordinator */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <StatCard title="Class Students" value={users.filter(u => u.role === 'STUDENT' && u.class_id?.toString() === user?.class_id?.toString()).length} icon={<Users />} color="bg-blue-500" />
-                      <StatCard title="Submitted" value={new Set(submissions.filter(s => s.status === 'SUBMITTED' && s.class_id?.toString() === user?.class_id?.toString()).map(s => `${s.user_id}-${s.task_id}`)).size} icon={<Clock />} color="bg-orange-500" />
-                      <StatCard title="Verified" value={new Set(submissions.filter(s => s.status === 'VERIFIED' && s.class_id?.toString() === user?.class_id?.toString()).map(s => `${s.user_id}-${s.task_id}`)).size} icon={<CheckCircle2 />} color="bg-emerald-500" />
-                    </div>
-                    <div
-                      className="bg-zinc-900 rounded-3xl p-8 text-white flex flex-col md:flex-row items-center justify-between gap-6 cursor-pointer hover:bg-black transition-all group"
-                      onClick={() => setView('verifications')}
-                    >
-                      <div className="flex items-center gap-6 text-center md:text-left">
-                        <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                          <ShieldCheck size={32} className="text-white" />
-                        </div>
-                        <div>
-                          <h3 className="text-2xl font-bold">Coordinator Workspace</h3>
-                          <p className="text-zinc-400">Manage and verify peer submissions for your class.</p>
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-center md:items-end">
-                        <span className="text-4xl font-black">{submissions.filter(s => s.status === 'SUBMITTED' && s.class_id === user?.class_id).length}</span>
-                        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Pending Tasks</span>
-                      </div>
-                    </div>
-                    <UnifiedAnalyzer role="COORDINATOR" title="Class Achievement Analyzer" />
-                  </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-20 text-center text-zinc-400 gap-4">
-                    <ClipboardList size={48} className="opacity-30" />
-                    <p className="text-lg font-semibold text-zinc-500">Your Tasks & Submissions</p>
-                    <p className="text-sm">Go to <span className="font-bold text-zinc-700">My Submissions</span> from the sidebar to view and submit your tasks.</p>
+                  <div className="flex flex-col gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <StatCard title="Total Assigned Tasks" value={studentStats?.total_tasks || 0} icon={<ClipboardList />} color="bg-blue-500" />
+                      <StatCard title="Submitted" value={studentStats?.submitted_tasks || 0} icon={<Clock />} color="bg-orange-500" />
+                      <StatCard title="Verified" value={studentStats?.verified_tasks || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
+                    </div>
+                    {isCoordinator && (
+                      <div className="space-y-6">
+                        <div
+                          className="bg-zinc-900 rounded-3xl p-8 text-white flex flex-col md:flex-row items-center justify-between gap-6 cursor-pointer hover:bg-black transition-all group"
+                          onClick={() => setView('verifications')}
+                        >
+                          <div className="flex items-center gap-6 text-center md:text-left">
+                            <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                              <ShieldCheck size={32} className="text-white" />
+                            </div>
+                            <div>
+                              <h3 className="text-2xl font-bold">Coordinator Workspace</h3>
+                              <p className="text-zinc-400">Manage and verify peer submissions for your class.</p>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-center md:items-end">
+                            <span className="text-4xl font-black">{submissions.filter(s => s.status === 'SUBMITTED' && s.class_id === user?.class_id).length}</span>
+                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Pending Tasks</span>
+                          </div>
+                        </div>
+                        <UnifiedAnalyzer role="COORDINATOR" title="Class Achievement Analyzer" />
+                      </div>
+                    )}
                   </div>
                 )}
 
