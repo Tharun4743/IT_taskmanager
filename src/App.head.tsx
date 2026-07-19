@@ -782,89 +782,53 @@ export default function App() {
           </div>
 
           <AnimatePresence mode="wait">
-            {!loginRole ? (
-              <motion.div
-                key="role-selection"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                className="grid grid-cols-1 md:grid-cols-2 gap-4"
-              >
-                {roles.map((role) => (
-                  <button
-                    key={role.id}
-                    onClick={() => setLoginRole(role.id)}
-                    className="group bg-white border border-zinc-200 p-6 rounded-2xl shadow-sm hover:shadow-md hover:border-black transition-all text-left flex items-start gap-4 active:scale-[0.98]"
-                  >
-                    <div className="p-3 bg-zinc-100 rounded-xl group-hover:bg-black group-hover:text-white transition-colors">
-                      {role.icon}
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-zinc-900 group-hover:text-black">{role.title}</h3>
-                      <p className="text-sm text-zinc-500 mt-1">{role.desc}</p>
-                    </div>
-                  </button>
-                ))}
-              </motion.div>
-            ) : (
-              <motion.div
-                key="login-form"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="max-w-md mx-auto w-full"
-              >
-                <Card className="p-8">
-                  <button
-                    onClick={() => { setLoginRole(null); setError(''); }}
-                    className="text-sm text-zinc-400 hover:text-black mb-6 flex items-center gap-1 transition-colors"
-                  >
-                    ← Back to Roles
-                  </button>
-                  <div className="mb-8">
-                    <h2 className="text-2xl font-bold text-zinc-900">
-                      {roles.find(r => r.id === loginRole)?.title} Login
-                    </h2>
-                    <p className="text-zinc-500 text-sm mt-1">Please enter your credentials</p>
-                  </div>
+            <motion.div
+              key="login-form"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="max-w-md mx-auto w-full"
+            >
+              <Card className="p-8">
+                <div className="mb-8 text-center">
+                  <h2 className="text-2xl font-bold text-zinc-900">Portal Login</h2>
+                  <p className="text-zinc-500 text-sm mt-1">Please enter your credentials</p>
+                </div>
 
-                  <form onSubmit={handleLogin} className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium text-zinc-700 mb-1 block">
-                        {loginRole === 'STUDENT' ? 'Register Number' : 'Username'}
-                      </label>
-                      <Input
-                        placeholder={loginRole === 'STUDENT' ? 'e.g. CSE001' : 'Username'}
-                        value={loginData.username}
-                        onChange={e => setLoginData(prev => ({ ...prev, username: e.target.value }))}
-                        required
-                        autoFocus
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-zinc-700 mb-1 block">Password</label>
-                      <Input
-                        type="password"
-                        placeholder="••••••••"
-                        value={loginData.password}
-                        onChange={e => setLoginData(prev => ({ ...prev, password: e.target.value }))}
-                        required
-                      />
-                    </div>
-                    {error && (
-                      <motion.p
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        className="text-red-500 text-sm font-medium"
-                      >
-                        {error}
-                      </motion.p>
-                    )}
-                    <Button className="w-full py-3 text-lg mt-2">Sign In</Button>
-                  </form>
-                </Card>
-              </motion.div>
-            )}
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-zinc-700 mb-1 block">Email Address / Username</label>
+                    <Input
+                      placeholder="e.g. user@gmail.com"
+                      value={loginData.username}
+                      onChange={e => setLoginData(prev => ({ ...prev, username: e.target.value }))}
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-zinc-700 mb-1 block">Password</label>
+                    <Input
+                      type="password"
+                      placeholder="••••••••"
+                      value={loginData.password}
+                      onChange={e => setLoginData(prev => ({ ...prev, password: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  {error && (
+                    <motion.p
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="text-red-500 text-sm font-medium"
+                    >
+                      {error}
+                    </motion.p>
+                  )}
+                  <Button className="w-full py-3 text-lg mt-2">Sign In</Button>
+                </form>
+              </Card>
+            </motion.div>
           </AnimatePresence>
         </motion.div>
       </div>

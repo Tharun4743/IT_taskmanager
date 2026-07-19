@@ -65,7 +65,7 @@ erDiagram
 
     departments {
         uuid id PK
-        varchar name UNIQUE
+        varchar name "UNIQUE"
         timestamp created_at
     }
     classes {
@@ -77,14 +77,14 @@ erDiagram
     }
     users {
         uuid id PK
-        varchar username UNIQUE
+        varchar username "UNIQUE"
         varchar password
         varchar role
         uuid department_id FK
         uuid class_id FK
         varchar full_name
         varchar email
-        varchar register_number UNIQUE
+        varchar register_number "UNIQUE"
         boolean is_coordinator
         boolean is_year_coordinator
         int year_scope
