@@ -58,7 +58,6 @@ interface User {
   is_coordinator?: boolean;
   is_year_coordinator?: boolean;
   year_scope?: number | null;
-  must_change_password?: boolean;
   is_active?: boolean;
 }
 
@@ -405,8 +404,6 @@ export default function App() {
     class_ids: []
   });
   const [uploading, setUploading] = useState<number | null>(null);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
   const [showTaskPreview, setShowTaskPreview] = useState(false);
   const [verificationFilter, setVerificationFilter] = useState<'PENDING' | 'VERIFIED' | 'REJECTED' | 'ALL'>('PENDING');
   const [verificationClassFilter, setVerificationClassFilter] = useState('');
@@ -495,7 +492,6 @@ export default function App() {
             const freshUser = await meRes.json();
             setUser(freshUser);
             localStorage.setItem('user', JSON.stringify(freshUser));
-            if (freshUser.must_change_password) setShowPasswordModal(true);
             if (freshUser.role === 'SUPREME_ADMIN') fetchSupremeStats();
             if (freshUser.role === 'HOD') fetchHODStats();
             if (freshUser.role === 'CLASS_ADVISOR' || (freshUser.role === 'STUDENT' && freshUser.is_coordinator)) {
@@ -508,7 +504,6 @@ export default function App() {
           } else {
             // Fallback to saved user if refresh fails
             setUser(parsedUser);
-            if (parsedUser.must_change_password) setShowPasswordModal(true);
             if (parsedUser.role === 'SUPREME_ADMIN') fetchSupremeStats();
           }
         } catch (err) {
@@ -619,25 +614,6 @@ export default function App() {
       });
       fetchNotifications();
     } catch (e) { }
-  };
-
-  const changePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const res = await fetch(`${API_URL}/api/auth/change-password`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ newPassword })
-    });
-    if (res.ok) {
-      setShowPasswordModal(false);
-      setNewPassword('');
-      // Update local user state
-      if (user) {
-        const updated = { ...user, must_change_password: false };
-        setUser(updated);
-        localStorage.setItem('user', JSON.stringify(updated));
-      }
-    }
   };
 
   const toggleCoordinator = async (id: number, currentStatus: boolean) => {
@@ -780,9 +756,6 @@ export default function App() {
         localStorage.setItem('user', JSON.stringify(data.user));
         setToken(data.token);
         setUser(data.user);
-        if (data.user.must_change_password) {
-          setShowPasswordModal(true);
-        }
         setView('dashboard');
       } else {
         setError(data.error || 'Failed to login');
@@ -1776,38 +1749,6 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
-      <AnimatePresence>
-        {showPasswordModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl"
-            >
-              <div className="flex flex-col items-center text-center mb-6">
-                <div className="w-16 h-16 bg-black text-white rounded-2xl flex items-center justify-center mb-4">
-                  <ShieldCheck size={32} />
-                </div>
-                <h2 className="text-2xl font-bold text-zinc-900">Change Password</h2>
-                <p className="text-zinc-500 mt-2">For security reasons, you must change your default password on first login.</p>
-              </div>
-              <form onSubmit={changePassword} className="space-y-4">
-                <Input
-                  type="password"
-                  placeholder="New Password"
-                  value={newPassword}
-                  onChange={e => setNewPassword(e.target.value)}
-                  required
-                  autoFocus
-                />
-                <Button className="w-full py-3 text-lg">Update Password</Button>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
       {/* Reviews Modal */}
       <AnimatePresence>
         {showReviewsModal && (

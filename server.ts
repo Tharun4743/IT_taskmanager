@@ -138,7 +138,6 @@ async function startServer() {
         full_name: user.full_name,
         department_id: user.department_id,
         class_id: user.class_id,
-        must_change_password: user.must_change_password,
         is_coordinator: Boolean(user.is_coordinator),
         is_year_coordinator: Boolean(user.is_year_coordinator),
         year_scope: user.year_scope,
@@ -157,18 +156,10 @@ async function startServer() {
       full_name: user.full_name,
       department_id: user.department_id,
       class_id: user.class_id,
-      must_change_password: user.must_change_password,
       is_coordinator: Boolean(user.is_coordinator),
       is_year_coordinator: Boolean(user.is_year_coordinator),
       year_scope: user.year_scope,
     });
-  });
-
-  app.patch('/api/auth/change-password', authenticate, async (req: any, res) => {
-    const { newPassword } = req.body;
-    const hashed = bcrypt.hashSync(newPassword, 10);
-    await pool.query('UPDATE users SET password = $1, must_change_password = FALSE, updated_at = NOW() WHERE id = $2', [hashed, req.user.id]);
-    res.json({ success: true });
   });
 
   // ── Departments ───────────────────────────────────────────────────────────
@@ -355,7 +346,6 @@ async function startServer() {
       email: u.email,
       register_number: u.register_number,
       is_coordinator: u.is_coordinator,
-      must_change_password: u.must_change_password,
       is_active: u.is_active,
       department_id: u.department_id,
       department_name: u.department_name,
@@ -389,19 +379,18 @@ async function startServer() {
 
     const finalPassword = password || register_number || username;
     const hashed = bcrypt.hashSync(finalPassword, 10);
-    const mustChange = (req.user.role === 'CLASS_ADVISOR' || userRole === 'STUDENT') ? true : false;
 
     try {
       const newUserRes = await pool.query(`
         INSERT INTO users (
           username, password, role, department_id, class_id, full_name, email,
           register_number, is_coordinator, is_year_coordinator, year_scope, must_change_password
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, $9, $10, $11)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, $9, $10, FALSE)
         RETURNING *
       `, [
         username.trim(), hashed, userRole, deptId, clsId, full_name?.trim(),
         email?.trim() || null, register_number?.trim() || null,
-        is_year_coordinator || false, year_scope || null, mustChange
+        is_year_coordinator || false, year_scope || null
       ]);
       const u = newUserRes.rows[0];
       res.json({ id: u.id, username, role: userRole, department_id: deptId, class_id: clsId, full_name, email, register_number });
@@ -484,7 +473,7 @@ async function startServer() {
 
     const newPass = targetUser.register_number || targetUser.username;
     const hashed = bcrypt.hashSync(newPass, 10);
-    await pool.query('UPDATE users SET password = $1, must_change_password = TRUE, updated_at = NOW() WHERE id = $2', [hashed, req.params.id]);
+    await pool.query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [hashed, req.params.id]);
     res.json({ success: true, message: `Password reset to ${newPass}` });
   });
 
