@@ -1209,7 +1209,7 @@ export default function App() {
         >
           <div className="flex flex-col items-center mb-12">
             <div className="w-24 h-24 rounded-full overflow-hidden mb-6 shadow-2xl border-4 border-white ring-2 ring-zinc-200">
-              <img src="/logo.jpg" alt="VSBEC Logo" className="w-full h-full object-cover" />
+              <img src="/logo.png" alt="VSBEC Logo" className="w-full h-full object-cover" />
             </div>
             <h1 className="text-4xl font-black text-zinc-900 tracking-tight">Academic Portal v2</h1>
             <p className="text-zinc-500 mt-2 text-lg">VSBEC Task Management System</p>
@@ -1811,7 +1811,7 @@ export default function App() {
         <div className="p-4 border-b border-zinc-100">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 shadow-md border-2 border-zinc-200">
-              <img src="/logo.jpg" alt="VSBEC Logo" className="w-full h-full object-cover" />
+              <img src="/logo.png" alt="VSBEC Logo" className="w-full h-full object-cover" />
             </div>
             <span className={cn(
               "font-bold px-2 py-0.5 rounded text-xs tracking-wider",
