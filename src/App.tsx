@@ -338,6 +338,7 @@ export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [view, setView] = useState<string>('dashboard');
   const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
 
   // Toast State
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -366,12 +367,17 @@ export default function App() {
   const [studentStats, setStudentStats] = useState<StudentStats | null>(null);
   const [coordinatorStats, setCoordinatorStats] = useState<CoordinatorStats | null>(null);
   const [yearStats, setYearStats] = useState<YearStats | null>(null);
+  const [supremeStats, setSupremeStats] = useState<any>(null);
   const [myClass, setMyClass] = useState<Class | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showExportModal, setShowExportModal] = useState(false);
   const [reportFilters, setReportFilters] = useState({ classId: '', year: '', category: '', taskId: '', status: '' });
   const [expandedClass, setExpandedClass] = useState<number | null>(null);
   const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
+
+  // Reviews Timeline State
+  const [selectedSubReviews, setSelectedSubReviews] = useState<any[]>([]);
+  const [showReviewsModal, setShowReviewsModal] = useState<boolean>(false);
 
   // Forms
   const [newDept, setNewDept] = useState('');
@@ -443,6 +449,7 @@ export default function App() {
 
   const fetchInitialData = async () => {
     try {
+      setHasError(false);
       const headers = { Authorization: `Bearer ${token}` };
       // Fire all requests in parallel
       const [deptsRes, classesRes, usersRes, tasksRes, submissionsRes, notificationsRes] = await Promise.all([
@@ -454,22 +461,26 @@ export default function App() {
         fetch(`${API_URL}/api/notifications`, { headers })
       ]);
 
+      if (!deptsRes.ok || !classesRes.ok || !usersRes.ok || !tasksRes.ok || !submissionsRes.ok || !notificationsRes.ok) {
+        throw new Error('API request failed');
+      }
+
       // Parse JSON in parallel too
       const [depts, classes, users, tasks, submissions, notifications] = await Promise.all([
-        deptsRes.ok ? deptsRes.json() : Promise.resolve(null),
-        classesRes.ok ? classesRes.json() : Promise.resolve(null),
-        usersRes.ok ? usersRes.json() : Promise.resolve(null),
-        tasksRes.ok ? tasksRes.json() : Promise.resolve(null),
-        submissionsRes.ok ? submissionsRes.json() : Promise.resolve(null),
-        notificationsRes.ok ? notificationsRes.json() : Promise.resolve(null),
+        deptsRes.json(),
+        classesRes.json(),
+        usersRes.json(),
+        tasksRes.json(),
+        submissionsRes.json(),
+        notificationsRes.json(),
       ]);
 
-      if (depts) setDepartments(depts);
-      if (classes) setClasses(classes);
-      if (users) setUsers(users);
-      if (tasks) setTasks(tasks);
-      if (submissions) setSubmissions(submissions);
-      if (notifications) setNotifications(notifications);
+      setDepartments(depts);
+      setClasses(classes);
+      setUsers(users);
+      setTasks(tasks);
+      setSubmissions(submissions);
+      setNotifications(notifications);
 
       const savedUser = localStorage.getItem('user');
       if (savedUser) {
@@ -485,6 +496,7 @@ export default function App() {
             setUser(freshUser);
             localStorage.setItem('user', JSON.stringify(freshUser));
             if (freshUser.must_change_password) setShowPasswordModal(true);
+            if (freshUser.role === 'SUPREME_ADMIN') fetchSupremeStats();
             if (freshUser.role === 'HOD') fetchHODStats();
             if (freshUser.role === 'CLASS_ADVISOR' || (freshUser.role === 'STUDENT' && freshUser.is_coordinator)) {
               if (freshUser.role === 'CLASS_ADVISOR') fetchAdvisorStats();
@@ -497,6 +509,7 @@ export default function App() {
             // Fallback to saved user if refresh fails
             setUser(parsedUser);
             if (parsedUser.must_change_password) setShowPasswordModal(true);
+            if (parsedUser.role === 'SUPREME_ADMIN') fetchSupremeStats();
           }
         } catch (err) {
           setUser(parsedUser);
@@ -506,6 +519,7 @@ export default function App() {
     } catch (e) {
       console.error('Failed to fetch data', e);
       addToast('Failed to load application data. Check your connection.', 'error');
+      setHasError(true);
       setIsLoading(false);
     }
   };
@@ -529,6 +543,13 @@ export default function App() {
     try {
       const res = await fetch(`${API_URL}/api/users`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setUsers(await res.json());
+    } catch (e) { }
+  };
+
+  const fetchSupremeStats = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/stats/supreme`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setSupremeStats(await res.json());
     } catch (e) { }
   };
 
@@ -572,6 +593,22 @@ export default function App() {
       const res = await fetch(`${API_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setNotifications(await res.json());
     } catch (e) { }
+  };
+
+  const fetchReviews = async (subId: number) => {
+    try {
+      const res = await fetch(`${API_URL}/api/submissions/${subId}/reviews`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setSelectedSubReviews(await res.json());
+        setShowReviewsModal(true);
+      } else {
+        addToast("Failed to fetch review history", "error");
+      }
+    } catch (e) {
+      addToast("Network error fetching reviews", "error");
+    }
   };
 
   const markNotificationsRead = async () => {
@@ -1581,6 +1618,32 @@ export default function App() {
   const isStudent = user?.role === 'STUDENT';
   const isCoordinator = user?.role === 'STUDENT' && user?.is_coordinator;
 
+  if (hasError) {
+    return (
+      <div className="min-h-screen bg-[#F5F5F4] flex items-center justify-center p-4">
+        <Card className="p-8 text-center max-w-md w-full">
+          <div className="w-16 h-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <AlertTriangle size={32} />
+          </div>
+          <h2 className="text-2xl font-bold text-zinc-900 mb-2">Connection Error</h2>
+          <p className="text-zinc-500 text-sm mb-6">
+            We are unable to connect to the portal. Please verify your internet connection or backend server status.
+          </p>
+          <Button
+            className="w-full flex items-center justify-center gap-2"
+            onClick={() => {
+              setIsLoading(true);
+              setHasError(false);
+              fetchInitialData();
+            }}
+          >
+            Retry Connection
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="flex h-screen bg-[#F5F5F4] font-sans text-zinc-900 overflow-hidden">
@@ -1740,6 +1803,63 @@ export default function App() {
                 />
                 <Button className="w-full py-3 text-lg">Update Password</Button>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Reviews Modal */}
+      <AnimatePresence>
+        {showReviewsModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl relative"
+            >
+              <button
+                onClick={() => setShowReviewsModal(false)}
+                className="absolute top-6 right-6 p-2 hover:bg-zinc-100 rounded-full transition-colors"
+              >
+                <XCircle size={24} className="text-zinc-400" />
+              </button>
+              <h3 className="text-xl font-bold text-zinc-900 mb-6">Review & Feedback History</h3>
+              <div className="space-y-6 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+                {selectedSubReviews.length === 0 ? (
+                  <p className="text-sm text-zinc-500 text-center py-4">No review history available.</p>
+                ) : (
+                  selectedSubReviews.map((review: any) => (
+                    <div key={review.id} className="relative pl-6 border-l-2 border-zinc-200 last:border-transparent pb-4">
+                      <div className={cn(
+                        "absolute -left-[9px] top-1 w-4 h-4 rounded-full border-2 border-white",
+                        review.new_status === 'VERIFIED' ? "bg-emerald-500" :
+                          review.new_status === 'REJECTED' ? "bg-red-500" : "bg-orange-500"
+                      )} />
+                      <div className="bg-zinc-50 p-4 rounded-2xl border border-zinc-100">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <span className="text-xs font-bold text-zinc-700">{review.reviewer_name}</span>
+                            <span className="text-[10px] text-zinc-400 bg-zinc-200 px-1.5 py-0.5 rounded ml-2 font-mono uppercase">
+                              {review.reviewer_role === 'CLASS_ADVISOR' ? 'Advisor' : review.reviewer_role}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-zinc-400">{new Date(review.created_at).toLocaleString()}</span>
+                        </div>
+                        <p className="text-xs text-zinc-500">
+                          Status: <span className="font-bold">{review.previous_status || 'PENDING'}</span> &rarr; <span className="font-bold">{review.new_status}</span>
+                        </p>
+                        {review.feedback && (
+                          <div className="mt-2 text-xs font-medium text-zinc-600 bg-white p-2 rounded-lg border border-zinc-150 whitespace-pre-wrap">
+                            "{review.feedback}"
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <Button onClick={() => setShowReviewsModal(false)} className="w-full mt-6">Close History</Button>
             </motion.div>
           </div>
         )}

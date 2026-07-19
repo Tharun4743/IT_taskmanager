@@ -104,6 +104,7 @@ export async function initDB() {
         custom_field_value TEXT,
         status VARCHAR(50) DEFAULT 'PENDING', -- 'PENDING','SUBMITTED','VERIFIED','REJECTED'
         screenshot_url VARCHAR(1000),
+        cloudinary_public_id VARCHAR(255),
         verification_note TEXT,
         rejection_reason TEXT,
         resubmission_count INT DEFAULT 0,
@@ -112,6 +113,18 @@ export async function initDB() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (task_id, user_id)
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS submission_reviews (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        submission_id UUID REFERENCES task_submissions(id) ON DELETE CASCADE NOT NULL,
+        reviewer_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        previous_status VARCHAR(50),
+        new_status VARCHAR(50) NOT NULL,
+        feedback TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
@@ -125,6 +138,11 @@ export async function initDB() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+
+    // Schema Migrations
+    await client.query(`
+      ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS cloudinary_public_id VARCHAR(255);
     `);
 
     // Create indexes

@@ -59,13 +59,6 @@ async function startServer() {
     }
   });
 
-  const loginLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 hour
-    max: 15, // Limit each IP to 15 login requests per hour
-    handler: (req, res) => {
-      res.status(429).json({ error: 'Too many login attempts, please try again after an hour' });
-    }
-  });
 
   app.use('/api/', apiLimiter);
   app.use(express.json());
@@ -94,7 +87,7 @@ async function startServer() {
   };
 
   // ── Auth ──────────────────────────────────────────────────────────────────
-  app.post('/api/auth/login', loginLimiter, async (req, res) => {
+  app.post('/api/auth/login', async (req, res) => {
     const { username, password, role } = req.body;
     const userRes = await pool.query(
       'SELECT * FROM users WHERE LOWER(username) = LOWER($1) OR LOWER(register_number) = LOWER($1) LIMIT 1',
@@ -196,8 +189,44 @@ async function startServer() {
   });
 
   app.delete('/api/departments/:id', authenticate, authorize(['SUPREME_ADMIN']), async (req, res) => {
-    await pool.query('DELETE FROM departments WHERE id = $1', [req.params.id]);
-    res.json({ success: true });
+    const deptId = req.params.id;
+    try {
+      const classesRes = await pool.query('SELECT id FROM classes WHERE department_id = $1', [deptId]);
+      const classIds = classesRes.rows.map(c => c.id);
+
+      const usersRes = await pool.query('SELECT id FROM users WHERE department_id = $1 OR class_id = ANY($2)', [deptId, classIds]);
+      const userIds = usersRes.rows.map(u => u.id);
+
+      if (userIds.length > 0) {
+        const subsRes = await pool.query('SELECT cloudinary_public_id FROM task_submissions WHERE user_id = ANY($1)', [userIds]);
+        for (const r of subsRes.rows) {
+          if (r.cloudinary_public_id) {
+            try {
+              await cloudinary.uploader.destroy(r.cloudinary_public_id);
+            } catch (err) {
+              console.error('Failed to delete department submission image from Cloudinary:', err);
+            }
+          }
+        }
+        await pool.query('DELETE FROM task_submissions WHERE user_id = ANY($1)', [userIds]);
+        await pool.query('DELETE FROM users WHERE id = ANY($1)', [userIds]);
+      }
+      
+      await pool.query('DELETE FROM classes WHERE department_id = $1', [deptId]);
+
+      const tasksRes = await pool.query('SELECT id FROM tasks WHERE department_id = $1', [deptId]);
+      const taskIds = tasksRes.rows.map(t => t.id);
+      if (taskIds.length > 0) {
+        await pool.query('DELETE FROM task_classes WHERE task_id = ANY($1)', [taskIds]);
+        await pool.query('DELETE FROM tasks WHERE id = ANY($1)', [taskIds]);
+      }
+
+      await pool.query('DELETE FROM departments WHERE id = $1', [deptId]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Failed to delete department:', err);
+      res.status(500).json({ error: 'Failed to delete department' });
+    }
   });
 
   // ── Classes ───────────────────────────────────────────────────────────────
@@ -252,6 +281,20 @@ async function startServer() {
     const studentsRes = await pool.query('SELECT id FROM users WHERE class_id = $1 AND role = \'STUDENT\'', [classId]);
     const studentIds = studentsRes.rows.map(s => s.id);
     if (studentIds.length > 0) {
+      try {
+        const subsRes = await pool.query('SELECT cloudinary_public_id FROM task_submissions WHERE user_id = ANY($1)', [studentIds]);
+        for (const r of subsRes.rows) {
+          if (r.cloudinary_public_id) {
+            try {
+              await cloudinary.uploader.destroy(r.cloudinary_public_id);
+            } catch (err) {
+              console.error('Failed to delete student submission image from Cloudinary:', err);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to retrieve class student submissions for Cloudinary cleanup:', err);
+      }
       await pool.query('DELETE FROM task_submissions WHERE user_id = ANY($1)', [studentIds]);
       await pool.query('DELETE FROM users WHERE id = ANY($1)', [studentIds]);
     }
@@ -458,6 +501,22 @@ async function startServer() {
     } else if (req.user.role === 'CLASS_ADVISOR') {
       if (target.role !== 'STUDENT' || target.class_id?.toString() !== req.user.class_id?.toString())
         return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    // Clean up Cloudinary assets first
+    try {
+      const subsRes = await pool.query('SELECT cloudinary_public_id FROM task_submissions WHERE user_id = $1', [req.params.id]);
+      for (const r of subsRes.rows) {
+        if (r.cloudinary_public_id) {
+          try {
+            await cloudinary.uploader.destroy(r.cloudinary_public_id);
+          } catch (err) {
+            console.error('Failed to delete user submission image from Cloudinary:', err);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to retrieve user submissions for Cloudinary cleanup:', err);
     }
 
     await pool.query('DELETE FROM task_submissions WHERE user_id = $1', [req.params.id]);
@@ -722,12 +781,52 @@ async function startServer() {
     if (!isOwner && !isAdmin && !isDeptHOD && !isClassAdvisor && !isCoordinator)
       return res.status(403).json({ error: 'Forbidden' });
 
+    // Clean up Cloudinary assets first
+    try {
+      const subsRes = await pool.query('SELECT cloudinary_public_id FROM task_submissions WHERE task_id = $1', [task.id]);
+      for (const r of subsRes.rows) {
+        if (r.cloudinary_public_id) {
+          try {
+            await cloudinary.uploader.destroy(r.cloudinary_public_id);
+          } catch (err) {
+            console.error('Failed to delete task submission image from Cloudinary:', err);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to retrieve task submissions for Cloudinary cleanup:', err);
+    }
+
     await pool.query('DELETE FROM task_submissions WHERE task_id = $1', [req.params.id]);
     await pool.query('DELETE FROM tasks WHERE id = $1', [req.params.id]);
     res.json({ success: true });
   });
 
   // ── Stats ─────────────────────────────────────────────────────────────────
+  // ── Stats: Supreme Admin ──────────────────────────────────────────────────
+  app.get('/api/stats/supreme', authenticate, authorize(['SUPREME_ADMIN']), async (req, res) => {
+    try {
+      const totalDepts = await pool.query('SELECT count(*) FROM departments');
+      const totalClasses = await pool.query('SELECT count(*) FROM classes');
+      const totalUsers = await pool.query('SELECT count(*) FROM users');
+      const activeTasks = await pool.query("SELECT count(*) FROM tasks WHERE status = 'OPEN'");
+      const totalSubmissions = await pool.query('SELECT count(*) FROM task_submissions');
+      const pendingVerifications = await pool.query("SELECT count(*) FROM task_submissions WHERE status = 'SUBMITTED'");
+
+      res.json({
+        total_departments: parseInt(totalDepts.rows[0].count),
+        total_classes: parseInt(totalClasses.rows[0].count),
+        total_users: parseInt(totalUsers.rows[0].count),
+        total_active_tasks: parseInt(activeTasks.rows[0].count),
+        total_submissions: parseInt(totalSubmissions.rows[0].count),
+        pending_verifications: parseInt(pendingVerifications.rows[0].count),
+      });
+    } catch (err) {
+      console.error('Supreme Stats Error:', err);
+      res.status(500).json({ error: 'Failed to fetch Supreme Admin stats' });
+    }
+  });
+
   app.get('/api/stats/hod', authenticate, authorize(['HOD']), async (req: any, res) => {
     const deptId = req.user.department_id;
 
@@ -830,12 +929,26 @@ async function startServer() {
     const totalAdvisorsRes = await pool.query('SELECT count(*) FROM users WHERE department_id = $1 AND role = \'CLASS_ADVISOR\'', [deptId]);
     const totalClassesRes = await pool.query('SELECT count(*) FROM classes WHERE department_id = $1', [deptId]);
 
+    const pendingSubmissionsRes = await pool.query(`
+      SELECT count(*) FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      WHERE u.department_id = $1 AND ts.status = 'SUBMITTED'
+    `, [deptId]);
+
+    const verifiedSubmissionsRes = await pool.query(`
+      SELECT count(*) FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      WHERE u.department_id = $1 AND ts.status = 'VERIFIED'
+    `, [deptId]);
+
     res.json({
       taskStats,
       classStats,
       total_students: parseInt(totalStudentsRes.rows[0].count),
       total_advisors: parseInt(totalAdvisorsRes.rows[0].count),
-      total_classes: parseInt(totalClassesRes.rows[0].count)
+      total_classes: parseInt(totalClassesRes.rows[0].count),
+      pending_submissions: parseInt(pendingSubmissionsRes.rows[0].count),
+      verified_submissions: parseInt(verifiedSubmissionsRes.rows[0].count)
     });
   });
 
@@ -886,7 +999,31 @@ async function startServer() {
       return { full_name: u.full_name, register_number: u.register_number, completed_tasks: parseInt(completedRes.rows[0].count), total_tasks: totalTaskCount };
     }));
 
-    res.json({ taskStats, studentStats });
+    const totalStudentsRes = await pool.query("SELECT count(*) FROM users WHERE class_id = $1 AND role = 'STUDENT'", [classId]);
+    const pendingReviewsRes = await pool.query(`
+      SELECT count(*) FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      WHERE u.class_id = $1 AND ts.status = 'SUBMITTED'
+    `, [classId]);
+    const verifiedSubmissionsRes = await pool.query(`
+      SELECT count(*) FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      WHERE u.class_id = $1 AND ts.status = 'VERIFIED'
+    `, [classId]);
+    const rejectedSubmissionsRes = await pool.query(`
+      SELECT count(*) FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      WHERE u.class_id = $1 AND ts.status = 'REJECTED'
+    `, [classId]);
+
+    res.json({
+      taskStats,
+      studentStats,
+      class_student_count: parseInt(totalStudentsRes.rows[0].count),
+      pending_reviews: parseInt(pendingReviewsRes.rows[0].count),
+      verified_submissions: parseInt(verifiedSubmissionsRes.rows[0].count),
+      rejected_submissions: parseInt(rejectedSubmissionsRes.rows[0].count),
+    });
   });
 
   // ── Submissions ───────────────────────────────────────────────────────────
@@ -961,38 +1098,74 @@ async function startServer() {
     }
     const { task_id, custom_field_value } = req.body;
     const screenshot_url = req.file?.path || null; // Cloudinary URL
+    const cloudinary_public_id = req.file?.filename || null; // Cloudinary Public ID
 
     if (!screenshot_url) return res.status(400).json({ error: 'Screenshot is required' });
 
-    const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [task_id]);
-    const task = taskRes.rows[0];
-    if (!task) return res.status(404).json({ error: 'Task not found' });
-    if (task.deadline && new Date() > new Date(task.deadline))
-      return res.status(400).json({ error: 'Hard deadline block — no late uploads possible' });
+    try {
+      const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [task_id]);
+      const task = taskRes.rows[0];
+      if (!task) {
+        if (cloudinary_public_id) {
+          try { await cloudinary.uploader.destroy(cloudinary_public_id); } catch (e) {}
+        }
+        return res.status(404).json({ error: 'Task not found' });
+      }
+      if (task.deadline && new Date() > new Date(task.deadline)) {
+        if (cloudinary_public_id) {
+          try { await cloudinary.uploader.destroy(cloudinary_public_id); } catch (e) {}
+        }
+        return res.status(400).json({ error: 'Hard deadline block — no late uploads possible' });
+      }
 
-    const existingRes = await pool.query('SELECT * FROM task_submissions WHERE task_id = $1 AND user_id = $2 LIMIT 1', [task_id, req.user.id]);
-    const existing = existingRes.rows[0];
+      const existingRes = await pool.query('SELECT * FROM task_submissions WHERE task_id = $1 AND user_id = $2 LIMIT 1', [task_id, req.user.id]);
+      const existing = existingRes.rows[0];
 
-    if (existing) {
-      if (existing.status === 'VERIFIED') return res.status(400).json({ error: 'Already verified' });
-      if (existing.status === 'REJECTED' && existing.resubmission_count >= 2)
-        return res.status(400).json({ error: 'Maximum 2 resubmissions allowed. Submission locked.' });
+      if (existing) {
+        if (existing.status === 'VERIFIED') {
+          if (cloudinary_public_id) {
+            try { await cloudinary.uploader.destroy(cloudinary_public_id); } catch (e) {}
+          }
+          return res.status(400).json({ error: 'Already verified' });
+        }
+        if (existing.status === 'REJECTED' && existing.resubmission_count >= 2) {
+          if (cloudinary_public_id) {
+            try { await cloudinary.uploader.destroy(cloudinary_public_id); } catch (e) {}
+          }
+          return res.status(400).json({ error: 'Maximum 2 resubmissions allowed. Submission locked.' });
+        }
 
-      const newCount = existing.status === 'REJECTED' ? existing.resubmission_count + 1 : existing.resubmission_count;
-      await pool.query(`
-        UPDATE task_submissions
-        SET status = 'SUBMITTED', screenshot_url = $1, custom_field_value = $2, submitted_at = NOW(), resubmission_count = $3, updated_at = NOW()
-        WHERE id = $4
-      `, [screenshot_url, custom_field_value, newCount, existing.id]);
-      return res.json({ success: true, id: existing.id });
+        // Clean up previous Cloudinary asset
+        if (existing.cloudinary_public_id) {
+          try {
+            await cloudinary.uploader.destroy(existing.cloudinary_public_id);
+          } catch (err) {
+            console.error('Failed to delete old image from Cloudinary:', err);
+          }
+        }
+
+        const newCount = existing.status === 'REJECTED' ? existing.resubmission_count + 1 : existing.resubmission_count;
+        await pool.query(`
+          UPDATE task_submissions
+          SET status = 'SUBMITTED', screenshot_url = $1, cloudinary_public_id = $2, custom_field_value = $3, submitted_at = NOW(), resubmission_count = $4, updated_at = NOW()
+          WHERE id = $5
+        `, [screenshot_url, cloudinary_public_id, custom_field_value, newCount, existing.id]);
+        return res.json({ success: true, id: existing.id });
+      }
+
+      const subRes = await pool.query(`
+        INSERT INTO task_submissions (task_id, user_id, status, screenshot_url, cloudinary_public_id, custom_field_value, submitted_at)
+        VALUES ($1, $2, 'SUBMITTED', $3, $4, $5, NOW())
+        RETURNING id
+      `, [task_id, req.user.id, screenshot_url, cloudinary_public_id, custom_field_value]);
+      res.json({ success: true, id: subRes.rows[0].id });
+    } catch (err) {
+      if (cloudinary_public_id) {
+        try { await cloudinary.uploader.destroy(cloudinary_public_id); } catch (e) {}
+      }
+      console.error('Submission DB Error:', err);
+      res.status(500).json({ error: 'Failed to save submission' });
     }
-
-    const subRes = await pool.query(`
-      INSERT INTO task_submissions (task_id, user_id, status, screenshot_url, custom_field_value, submitted_at)
-      VALUES ($1, $2, 'SUBMITTED', $3, $4, NOW())
-      RETURNING id
-    `, [task_id, req.user.id, screenshot_url, custom_field_value]);
-    res.json({ success: true, id: subRes.rows[0].id });
   });
 
   app.delete('/api/submissions/:id', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR', 'STUDENT']), async (req: any, res) => {
@@ -1014,12 +1187,29 @@ async function startServer() {
         return res.status(403).json({ error: 'Forbidden' });
     }
     if (req.user.role === 'CLASS_ADVISOR') {
-      if (sub.class_id?.toString() !== req.user.class_id?.toString())
-        return res.status(403).json({ error: 'Forbidden' });
+      if (req.user.is_year_coordinator) {
+        const studentClassRes = await pool.query('SELECT * FROM classes WHERE id = $1 LIMIT 1', [sub.class_id]);
+        const studentClass = studentClassRes.rows[0];
+        if (!studentClass || studentClass.department_id?.toString() !== req.user.department_id?.toString() || studentClass.year !== req.user.year_scope) {
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+      } else {
+        if (sub.class_id?.toString() !== req.user.class_id?.toString())
+          return res.status(403).json({ error: 'Forbidden' });
+      }
     }
     if (req.user.role === 'HOD') {
       if (sub.department_id?.toString() !== req.user.department_id?.toString())
         return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    // Clean up Cloudinary asset
+    if (sub.cloudinary_public_id) {
+      try {
+        await cloudinary.uploader.destroy(sub.cloudinary_public_id);
+      } catch (err) {
+        console.error('Failed to delete image from Cloudinary:', err);
+      }
     }
 
     await pool.query('DELETE FROM task_submissions WHERE id = $1', [subId]);
@@ -1072,20 +1262,44 @@ async function startServer() {
       return res.status(400).json({ error: 'Rejection reason is required' });
     }
 
-    await pool.query(`
-      UPDATE task_submissions
-      SET status = $1,
-          verification_note = $2,
-          rejection_reason = $3,
-          verified_at = NOW(),
-          updated_at = NOW()
-      WHERE id = $4
-    `, [
-      status,
-      status === 'VERIFIED' ? verification_note || null : null,
-      status === 'REJECTED' ? rejection_reason || null : null,
-      req.params.id
-    ]);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      await client.query(`
+        UPDATE task_submissions
+        SET status = $1,
+            verification_note = $2,
+            rejection_reason = $3,
+            verified_at = NOW(),
+            updated_at = NOW()
+        WHERE id = $4
+      `, [
+        status,
+        status === 'VERIFIED' ? verification_note || null : null,
+        status === 'REJECTED' ? rejection_reason || null : null,
+        req.params.id
+      ]);
+
+      await client.query(`
+        INSERT INTO submission_reviews (submission_id, reviewer_id, previous_status, new_status, feedback)
+        VALUES ($1, $2, $3, $4, $5)
+      `, [
+        req.params.id,
+        req.user.id,
+        sub.status,
+        status,
+        status === 'VERIFIED' ? (verification_note || null) : (rejection_reason || null)
+      ]);
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error('Verify Transaction Error:', err);
+      return res.status(500).json({ error: 'Database update failed during verification' });
+    } finally {
+      client.release();
+    }
 
     const taskRes = await pool.query('SELECT title FROM tasks WHERE id = $1 LIMIT 1', [sub.task_id]);
     const taskTitle = taskRes.rows[0] ? taskRes.rows[0].title : 'Task';
@@ -1095,6 +1309,120 @@ async function startServer() {
 
     await pool.query('INSERT INTO notifications (user_id, message, type) VALUES ($1, $2, $3)', [sub.user_id, message, status]);
     res.json({ success: true });
+  });
+
+  app.get('/api/submissions/:id/reviews', authenticate, async (req: any, res) => {
+    const subId = req.params.id;
+    const subRes = await pool.query(`
+      SELECT ts.*, u.class_id, u.department_id
+      FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      WHERE ts.id = $1 LIMIT 1
+    `, [subId]);
+    const sub = subRes.rows[0];
+    if (!sub) return res.status(404).json({ error: 'Submission not found' });
+
+    // Authorization checks
+    const isOwner = sub.user_id.toString() === req.user.id.toString();
+    const isAdmin = req.user.role === 'SUPREME_ADMIN';
+    const isHOD = req.user.role === 'HOD' && sub.department_id?.toString() === req.user.department_id?.toString();
+    const isCoordinator = req.user.role === 'STUDENT' && req.user.is_coordinator && sub.class_id?.toString() === req.user.class_id?.toString();
+    
+    let isClassAdvisor = false;
+    if (req.user.role === 'CLASS_ADVISOR') {
+      if (req.user.is_year_coordinator) {
+        const studentClassRes = await pool.query('SELECT * FROM classes WHERE id = $1 LIMIT 1', [sub.class_id]);
+        const studentClass = studentClassRes.rows[0];
+        if (studentClass && studentClass.department_id?.toString() === req.user.department_id?.toString() && studentClass.year === req.user.year_scope) {
+          isClassAdvisor = true;
+        }
+      } else {
+        if (sub.class_id?.toString() !== req.user.class_id?.toString()) {
+          isClassAdvisor = true;
+        }
+      }
+    }
+
+    if (!isOwner && !isAdmin && !isHOD && !isClassAdvisor && !isCoordinator) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const reviewsRes = await pool.query(`
+      SELECT sr.*, u.full_name as reviewer_name, u.role as reviewer_role
+      FROM submission_reviews sr
+      JOIN users u ON sr.reviewer_id = u.id
+      WHERE sr.submission_id = $1
+      ORDER BY sr.created_at ASC
+    `, [subId]);
+
+    res.json(reviewsRes.rows.map(r => ({
+      id: r.id,
+      submission_id: r.submission_id,
+      reviewer_id: r.reviewer_id,
+      reviewer_name: r.reviewer_name,
+      reviewer_role: r.reviewer_role,
+      previous_status: r.previous_status,
+      new_status: r.new_status,
+      feedback: r.feedback,
+      created_at: r.created_at
+    })));
+  });
+
+  app.patch('/api/submissions/:id/unlock', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), async (req: any, res) => {
+    const subId = req.params.id;
+    const subRes = await pool.query(`
+      SELECT ts.*, u.class_id, u.department_id
+      FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      WHERE ts.id = $1 LIMIT 1
+    `, [subId]);
+    const sub = subRes.rows[0];
+    if (!sub) return res.status(404).json({ error: 'Submission not found' });
+
+    // Authorization checks
+    let isAuthorized = false;
+    if (req.user.role === 'SUPREME_ADMIN') isAuthorized = true;
+    else if (req.user.role === 'HOD' && sub.department_id?.toString() === req.user.department_id?.toString()) isAuthorized = true;
+    else if (req.user.role === 'CLASS_ADVISOR') {
+      if (req.user.is_year_coordinator) {
+        const studentClassRes = await pool.query('SELECT * FROM classes WHERE id = $1 LIMIT 1', [sub.class_id]);
+        const studentClass = studentClassRes.rows[0];
+        if (studentClass && studentClass.department_id?.toString() === req.user.department_id?.toString() && studentClass.year === req.user.year_scope) {
+          isAuthorized = true;
+        }
+      } else {
+        if (sub.class_id?.toString() === req.user.class_id?.toString()) {
+          isAuthorized = true;
+        }
+      }
+    }
+
+    if (!isAuthorized) return res.status(403).json({ error: 'Forbidden' });
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      await client.query(`
+        UPDATE task_submissions
+        SET resubmission_count = 0, status = 'REJECTED', updated_at = NOW()
+        WHERE id = $1
+      `, [subId]);
+
+      await client.query(`
+        INSERT INTO submission_reviews (submission_id, reviewer_id, previous_status, new_status, feedback)
+        VALUES ($1, $2, $3, 'REJECTED', 'Submission unlocked for resubmission')
+      `, [subId, req.user.id, sub.status]);
+
+      await client.query('COMMIT');
+      res.json({ success: true });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error('Unlock Transaction Error:', err);
+      res.status(500).json({ error: 'Database update failed during unlock' });
+    } finally {
+      client.release();
+    }
   });
 
   // ── Notifications ─────────────────────────────────────────────────────────
@@ -1115,6 +1443,18 @@ async function startServer() {
   app.get('/api/stats/advisor', authenticate, authorize(['CLASS_ADVISOR']), async (req: any, res) => {
     const classId = req.user.class_id;
     const deptId = req.user.department_id;
+
+    if (!classId) {
+      return res.json({
+        taskStats: [],
+        studentStats: [],
+        total_students: 0,
+        submitted_tasks_count: 0,
+        verified_tasks_count: 0,
+        rejected_tasks_count: 0,
+        pending_tasks_count: 0
+      });
+    }
 
     const tasksRes = await pool.query(`
       SELECT t.*, array_remove(array_agg(tc.class_id), NULL) as class_ids
@@ -1152,7 +1492,37 @@ async function startServer() {
       return { full_name: u.full_name, register_number: u.register_number, completed_tasks: parseInt(compRes.rows[0].count), total_tasks: totalTasks };
     }));
 
-    res.json({ taskStats, studentStats });
+    const totalStudentsRes = await pool.query("SELECT count(*) FROM users WHERE class_id = $1 AND role = 'STUDENT'", [classId]);
+    const submittedCountRes = await pool.query(`
+      SELECT count(*) FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      WHERE u.class_id = $1 AND ts.status = 'SUBMITTED'
+    `, [classId]);
+    const verifiedCountRes = await pool.query(`
+      SELECT count(*) FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      WHERE u.class_id = $1 AND ts.status = 'VERIFIED'
+    `, [classId]);
+    const rejectedCountRes = await pool.query(`
+      SELECT count(*) FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      WHERE u.class_id = $1 AND ts.status = 'REJECTED'
+    `, [classId]);
+
+    const totalStudents = parseInt(totalStudentsRes.rows[0].count);
+    const submittedCount = parseInt(submittedCountRes.rows[0].count);
+    const verifiedCount = parseInt(verifiedCountRes.rows[0].count);
+    const rejectedCount = parseInt(rejectedCountRes.rows[0].count);
+
+    res.json({
+      taskStats,
+      studentStats,
+      total_students: totalStudents,
+      submitted_tasks_count: submittedCount,
+      verified_tasks_count: verifiedCount,
+      rejected_tasks_count: rejectedCount,
+      pending_tasks_count: (totalTasks * totalStudents) - submittedCount - verifiedCount
+    });
   });
 
   // ── Stats: Year Coordinator ───────────────────────────────────────────────
