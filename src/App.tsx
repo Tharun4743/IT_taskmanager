@@ -1208,8 +1208,8 @@ export default function App() {
           className="w-full max-w-4xl"
         >
           <div className="flex flex-col items-center mb-12">
-            <div className="w-16 h-16 bg-black rounded-2xl flex items-center justify-center mb-6 shadow-xl">
-              <ShieldCheck className="text-white w-8 h-8" />
+            <div className="w-24 h-24 rounded-full overflow-hidden mb-6 shadow-2xl border-4 border-white ring-2 ring-zinc-200">
+              <img src="/logo.jpg" alt="VSBEC Logo" className="w-full h-full object-cover" />
             </div>
             <h1 className="text-4xl font-black text-zinc-900 tracking-tight">Academic Portal v2</h1>
             <p className="text-zinc-500 mt-2 text-lg">VSBEC Task Management System</p>
@@ -1808,10 +1808,10 @@ export default function App() {
 
       {/* Sidebar */}
       <aside className="w-64 bg-white border-r border-zinc-200 flex flex-col">
-        <div className="p-6 border-b border-zinc-100">
+        <div className="p-4 border-b border-zinc-100">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
-              <ShieldCheck className="text-white w-4 h-4" />
+            <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 shadow-md border-2 border-zinc-200">
+              <img src="/logo.jpg" alt="VSBEC Logo" className="w-full h-full object-cover" />
             </div>
             <span className={cn(
               "font-bold px-2 py-0.5 rounded text-xs tracking-wider",
