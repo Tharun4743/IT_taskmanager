@@ -2102,7 +2102,7 @@ export default function App() {
 
                 <div className="space-y-4 pb-12">
                   {tasks.map(task => {
-                    const submission = submissions.find(s => s.task_id === task.id);
+                    const submission = submissions.find(s => s.task_id === task.id && s.user_id?.toString() === user?.id?.toString());
                     const isDeadlinePassed = task.deadline && new Date(task.deadline) < new Date();
                     const isWithin24h = task.deadline && !isDeadlinePassed && (new Date(task.deadline).getTime() - new Date().getTime()) < 24 * 60 * 60 * 1000;
 
@@ -2621,13 +2621,15 @@ export default function App() {
                 className="space-y-6"
               >
                 <div className="grid grid-cols-1 gap-4">
-                  {submissions.length === 0 ? (
+                  {submissions.filter(s => s.user_id?.toString() === user?.id?.toString()).length === 0 ? (
                     <Card className="flex flex-col items-center justify-center py-12 text-zinc-500">
                       <ImageIcon size={48} className="mb-4 opacity-20" />
                       <p>No submissions found</p>
                     </Card>
                   ) : (
-                    submissions.map(sub => (
+                    submissions
+                      .filter(s => s.user_id?.toString() === user?.id?.toString())
+                      .map(sub => (
                       <Card key={sub.id} className="flex flex-col md:flex-row gap-6">
                         <div className="w-full md:w-48 h-48 bg-zinc-100 rounded-xl overflow-hidden border border-zinc-200 flex-shrink-0">
                           <img
