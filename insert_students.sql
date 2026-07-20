@@ -1,5 +1,5 @@
--- Reset Student Accounts (Preserves Tasks, Task Submissions, Staff, HODs, Classes, and Departments)
-DELETE FROM users WHERE role = 'STUDENT';
+-- Full Database Reset & Fresh Production Roster Insertion
+TRUNCATE task_classes, submission_reviews, task_submissions, tasks, users, classes, departments CASCADE;
 
 INSERT INTO departments (id, name) VALUES ('a6a12dd8-1863-4a21-9d3d-f6d67486788a', 'Information Technology') ON CONFLICT (id) DO NOTHING;
 INSERT INTO classes (id, name, department_id, year, batch) VALUES ('a1a12dd8-1863-4a21-9d3d-f6d67486788a', 'III IT A', 'a6a12dd8-1863-4a21-9d3d-f6d67486788a', 3, '2024-2028') ON CONFLICT (id) DO NOTHING;
