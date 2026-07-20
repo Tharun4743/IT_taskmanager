@@ -614,7 +614,10 @@ export default function App() {
 
       const savedUserStr = localStorage.getItem('user');
       const savedUser = savedUserStr ? JSON.parse(savedUserStr) : null;
-      const canViewUsers = savedUser && ['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR'].includes(savedUser.role);
+      const canViewUsers = savedUser && (
+        ['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR'].includes(savedUser.role) ||
+        (savedUser.role === 'STUDENT' && savedUser.is_coordinator)
+      );
 
       // Fire all requests in parallel
       const [deptsRes, classesRes, usersRes, tasksRes, submissionsRes, notificationsRes] = await Promise.all([
@@ -671,10 +674,7 @@ export default function App() {
       setSubmissions(submissions);
       setNotifications(notifications);
 
-      const savedUser = localStorage.getItem('user');
       if (savedUser) {
-        const parsedUser = JSON.parse(savedUser);
-
         // Refresh user data from server to avoid stale session flags
         try {
           const meRes = await fetch(`${API_URL}/api/auth/me`, {
@@ -695,11 +695,11 @@ export default function App() {
             if (freshUser.is_year_coordinator) fetchYearStats();
           } else {
             // Fallback to saved user if refresh fails
-            setUser(parsedUser);
-            if (parsedUser.role === 'SUPREME_ADMIN') fetchSupremeStats();
+            setUser(savedUser);
+            if (savedUser.role === 'SUPREME_ADMIN') fetchSupremeStats();
           }
         } catch (err) {
-          setUser(parsedUser);
+          setUser(savedUser);
         }
       }
       setIsLoading(false);
@@ -727,6 +727,11 @@ export default function App() {
 
   const fetchUsers = async () => {
     try {
+      const savedUserStr = localStorage.getItem('user');
+      const savedUser = savedUserStr ? JSON.parse(savedUserStr) : null;
+      if (!savedUser || (!['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR'].includes(savedUser.role) && !(savedUser.role === 'STUDENT' && savedUser.is_coordinator))) {
+        return;
+      }
       const res = await fetch(`${API_URL}/api/users`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setUsers(await res.json());
     } catch (e) { }
