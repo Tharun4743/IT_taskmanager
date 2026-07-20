@@ -634,26 +634,23 @@ async function startServer() {
     if (dbUser.role === 'SUPREME_ADMIN') {
       tasksRes = await pool.query(`
         SELECT t.*, u.full_name as creator_name, d.name as department_name,
-               array_remove(array_agg(tc.class_id), NULL) as class_ids
+               (SELECT array_remove(array_agg(class_id), NULL) FROM task_classes WHERE task_id = t.id) as class_ids
         FROM tasks t
         LEFT JOIN users u ON t.created_by = u.id
         LEFT JOIN departments d ON t.department_id = d.id
-        LEFT JOIN task_classes tc ON t.id = tc.task_id
-        GROUP BY t.id, u.full_name, d.name
         ORDER BY t.created_at DESC
       `);
     } else if (dbUser.role === 'STUDENT' || dbUser.role === 'CLASS_ADVISOR') {
       let query = `
         SELECT t.*, u.full_name as creator_name, d.name as department_name,
-               array_remove(array_agg(tc.class_id), NULL) as class_ids
+               (SELECT array_remove(array_agg(class_id), NULL) FROM task_classes WHERE task_id = t.id) as class_ids
         FROM tasks t
         LEFT JOIN users u ON t.created_by = u.id
         LEFT JOIN departments d ON t.department_id = d.id
-        LEFT JOIN task_classes tc ON t.id = tc.task_id
         WHERE t.created_by = $1
            OR (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
            OR (t.department_id = $2 AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
-           OR tc.class_id = $3
+           OR EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id AND class_id = $3)
       `;
       let params: any[] = [dbUser.id, dbUser.department_id, dbUser.class_id];
 
@@ -661,12 +658,12 @@ async function startServer() {
         const yearClassesRes = await pool.query('SELECT id FROM classes WHERE department_id = $1 AND year = $2', [dbUser.department_id, dbUser.year_scope]);
         const yearClassIds = yearClassesRes.rows.map(c => c.id);
         if (yearClassIds.length > 0) {
-          query += ' OR tc.class_id = ANY($4)';
+          query += ' OR EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id AND class_id = ANY($4))';
           params.push(yearClassIds);
         }
       }
 
-      query += ' GROUP BY t.id, u.full_name, d.name ORDER BY t.created_at DESC';
+      query += ' ORDER BY t.created_at DESC';
       tasksRes = await pool.query(query, params);
     } else {
       // HOD
@@ -675,11 +672,10 @@ async function startServer() {
 
       let query = `
         SELECT t.*, u.full_name as creator_name, d.name as department_name,
-               array_remove(array_agg(tc.class_id), NULL) as class_ids
+               (SELECT array_remove(array_agg(class_id), NULL) FROM task_classes WHERE task_id = t.id) as class_ids
         FROM tasks t
         LEFT JOIN users u ON t.created_by = u.id
         LEFT JOIN departments d ON t.department_id = d.id
-        LEFT JOIN task_classes tc ON t.id = tc.task_id
         WHERE t.created_by = $1
            OR (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
            OR t.department_id = $2
@@ -687,11 +683,11 @@ async function startServer() {
       let params: any[] = [dbUser.id, dbUser.department_id];
 
       if (deptClassIds.length > 0) {
-        query += ' OR tc.class_id = ANY($3)';
+        query += ' OR EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id AND class_id = ANY($3))';
         params.push(deptClassIds);
       }
 
-      query += ' GROUP BY t.id, u.full_name, d.name ORDER BY t.created_at DESC';
+      query += ' ORDER BY t.created_at DESC';
       tasksRes = await pool.query(query, params);
     }
 
@@ -1556,13 +1552,11 @@ async function startServer() {
     }
 
     const tasksRes = await pool.query(`
-      SELECT t.*, array_remove(array_agg(tc.class_id), NULL) as class_ids
+      SELECT t.*, (SELECT array_remove(array_agg(class_id), NULL) FROM task_classes WHERE task_id = t.id) as class_ids
       FROM tasks t
-      LEFT JOIN task_classes tc ON t.id = tc.task_id
-      WHERE tc.class_id = $1
+      WHERE EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id AND class_id = $1)
          OR (t.department_id = $2 AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
          OR (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
-      GROUP BY t.id
     `, [classId, deptId]);
     const tasks = tasksRes.rows;
 
