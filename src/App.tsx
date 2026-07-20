@@ -611,17 +611,22 @@ export default function App() {
     try {
       setHasError(false);
       const headers = { Authorization: `Bearer ${token}` };
+
+      const savedUserStr = localStorage.getItem('user');
+      const savedUser = savedUserStr ? JSON.parse(savedUserStr) : null;
+      const canViewUsers = savedUser && ['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR'].includes(savedUser.role);
+
       // Fire all requests in parallel
       const [deptsRes, classesRes, usersRes, tasksRes, submissionsRes, notificationsRes] = await Promise.all([
         fetch(`${API_URL}/api/departments`, { headers }),
         fetch(`${API_URL}/api/classes`, { headers }),
-        fetch(`${API_URL}/api/users`, { headers }),
+        canViewUsers ? fetch(`${API_URL}/api/users`, { headers }) : Promise.resolve(null),
         fetch(`${API_URL}/api/tasks`, { headers }),
         fetch(`${API_URL}/api/submissions`, { headers }),
         fetch(`${API_URL}/api/notifications`, { headers })
       ]);
 
-      const responses = [deptsRes, classesRes, usersRes, tasksRes, submissionsRes, notificationsRes];
+      const responses = [deptsRes, classesRes, usersRes, tasksRes, submissionsRes, notificationsRes].filter(Boolean) as Response[];
       
       const hasAuthError = responses.some(r => r.status === 401);
       if (hasAuthError) {
@@ -637,9 +642,9 @@ export default function App() {
         return;
       }
 
-      // Helper to safely parse JSON or return an empty array if the request failed (e.g., 403 for students)
-      const parseJSON = async (res: Response) => {
-        if (res.ok) {
+      // Helper to safely parse JSON or return an empty array if the request failed or was skipped
+      const parseJSON = async (res: Response | null) => {
+        if (res && res.ok) {
           try {
             return await res.json();
           } catch (e) {
