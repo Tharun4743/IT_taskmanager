@@ -67,6 +67,10 @@ async function startServer() {
     credentials: true
   }));
 
+  app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok' });
+  });
+
   // Auth Middleware
   const authenticate = (req: any, res: any, next: any) => {
     const token = req.headers.authorization?.split(' ')[1];
@@ -87,35 +91,22 @@ async function startServer() {
   };
 
   // ── Auth ──────────────────────────────────────────────────────────────────
+  // Login accepts `email` field for HOD/Advisor accounts.
+  // Students may still log in using their Registration Number (intentional).
   app.post('/api/auth/login', async (req, res) => {
-    const { username, password, role } = req.body;
+    const { email, username, password } = req.body;
+    // Accept either `email` (new) or `username` (legacy) field from the client
+    const loginId = (email || username || '').trim();
+    if (!loginId) return res.status(401).json({ error: 'Invalid credentials' });
+
     const userRes = await pool.query(
       'SELECT * FROM users WHERE LOWER(username) = LOWER($1) OR LOWER(register_number) = LOWER($1) LIMIT 1',
-      [username]
+      [loginId]
     );
     const user = userRes.rows[0];
 
     if (!user || !bcrypt.compareSync(password, user.password)) {
       return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    if (role) {
-      if (role === 'STUDENT_COORDINATOR') {
-        if (user.role !== 'STUDENT' || !user.is_coordinator) {
-          return res.status(403).json({ error: 'This account is not registered as a Coordinator' });
-        }
-      } else if (role === 'STUDENT') {
-        if (user.role !== 'STUDENT') {
-          return res.status(403).json({ error: 'This account is not registered as a Student' });
-        }
-      } else if (user.role !== role) {
-        const roleMap: Record<string, string> = {
-          'CLASS_ADVISOR': 'Class Advisor',
-          'HOD': 'Department HOD',
-          'SUPREME_ADMIN': 'Supreme Admin'
-        };
-        return res.status(403).json({ error: `This account is not registered as a ${roleMap[role] || role}` });
-      }
     }
 
     const token = jwt.sign({
@@ -170,6 +161,9 @@ async function startServer() {
 
   app.post('/api/departments', authenticate, authorize(['SUPREME_ADMIN']), async (req, res) => {
     const { name } = req.body;
+    if (name !== 'Information Technology') {
+      return res.status(400).json({ error: 'Only Information Technology department is allowed.' });
+    }
     try {
       const resDept = await pool.query('INSERT INTO departments (name) VALUES ($1) RETURNING *', [name]);
       const d = resDept.rows[0];
@@ -246,6 +240,10 @@ async function startServer() {
 
   app.post('/api/classes', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), async (req: any, res) => {
     const { name, department_id, year, batch } = req.body;
+    const validNames = ['III IT A', 'III IT B', 'III IT C'];
+    if (!validNames.includes(name) || Number(year) !== 3 || batch !== '2024-2028') {
+      return res.status(400).json({ error: 'Only III IT A, III IT B, and III IT C (Year 3, Batch 2024-2028) classes are allowed.' });
+    }
     if (req.user.role === 'CLASS_ADVISOR') {
       if (!req.user.class_id) return res.status(400).json({ error: 'No class assigned to advisor' });
       await pool.query('UPDATE classes SET name = $1, year = $2, batch = $3, updated_at = NOW() WHERE id = $4', [name, year, batch, req.user.class_id]);
@@ -316,7 +314,7 @@ async function startServer() {
         LEFT JOIN departments d ON u.department_id = d.id
         LEFT JOIN classes c ON u.class_id = c.id
         WHERE u.role != 'SUPREME_ADMIN'
-        ORDER BY u.role ASC, u.created_at DESC
+        ORDER BY u.role ASC, u.register_number ASC NULLS LAST, u.full_name ASC
       `);
     } else if (req.user.role === 'HOD') {
       usersRes = await pool.query(`
@@ -324,7 +322,7 @@ async function startServer() {
         FROM users u
         LEFT JOIN classes c ON u.class_id = c.id
         WHERE u.department_id = $1 AND u.role != 'SUPREME_ADMIN'
-        ORDER BY u.role ASC, u.created_at DESC
+        ORDER BY u.role ASC, u.register_number ASC NULLS LAST, u.full_name ASC
       `, [req.user.department_id]);
     } else if (req.user.role === 'CLASS_ADVISOR' || (req.user.role === 'STUDENT' && req.user.is_coordinator)) {
       usersRes = await pool.query(`
@@ -332,7 +330,7 @@ async function startServer() {
         FROM users u
         LEFT JOIN classes c ON u.class_id = c.id
         WHERE u.class_id = $1 AND u.role = 'STUDENT'
-        ORDER BY u.created_at DESC
+        ORDER BY u.register_number ASC, u.full_name ASC
       `, [req.user.class_id]);
     } else {
       return res.status(403).json({ error: 'Forbidden' });
@@ -384,8 +382,8 @@ async function startServer() {
       const newUserRes = await pool.query(`
         INSERT INTO users (
           username, password, role, department_id, class_id, full_name, email,
-          register_number, is_coordinator, is_year_coordinator, year_scope, must_change_password
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, $9, $10, FALSE)
+          register_number, is_coordinator, is_year_coordinator, year_scope
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, $9, $10)
         RETURNING *
       `, [
         username.trim(), hashed, userRole, deptId, clsId, full_name?.trim(),
@@ -398,6 +396,110 @@ async function startServer() {
       const isDuplicate = e.code === '23505';
       const field = isDuplicate ? (e.detail?.includes('username') ? 'Username' : 'Register Number') : '';
       res.status(400).json({ error: isDuplicate ? `${field} already exists. Please choose a different one.` : 'Failed to create user' });
+    }
+  });
+
+  // Dedicated endpoint for student creation
+  app.post('/api/users/students', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), async (req: any, res) => {
+    const { fullName, registrationNumber, password, classId } = req.body;
+
+    if (!fullName || !fullName.trim()) return res.status(400).json({ error: 'Full Name is required' });
+    if (!registrationNumber || !registrationNumber.trim()) return res.status(400).json({ error: 'Registration Number is required' });
+
+    let clsId = classId || null;
+    let deptId = req.user.department_id || null;
+
+    if (req.user.role === 'CLASS_ADVISOR') {
+      clsId = req.user.class_id;
+      deptId = req.user.department_id;
+    } else if (req.user.role === 'HOD') {
+      deptId = req.user.department_id;
+      if (!clsId) return res.status(400).json({ error: 'Class ID is required' });
+      // Validate class belongs to HOD department
+      const targetClassRes = await pool.query('SELECT * FROM classes WHERE id = $1 LIMIT 1', [clsId]);
+      const targetClass = targetClassRes.rows[0];
+      if (!targetClass || targetClass.department_id.toString() !== req.user.department_id.toString()) {
+        return res.status(403).json({ error: 'Forbidden: Class does not belong to your department' });
+      }
+    } else if (req.user.role === 'SUPREME_ADMIN') {
+      if (!clsId) return res.status(400).json({ error: 'Class ID is required' });
+      const targetClassRes = await pool.query('SELECT * FROM classes WHERE id = $1 LIMIT 1', [clsId]);
+      const targetClass = targetClassRes.rows[0];
+      if (!targetClass) return res.status(400).json({ error: 'Invalid Class ID' });
+      deptId = targetClass.department_id;
+    }
+
+    const finalPassword = password || registrationNumber;
+    const hashed = bcrypt.hashSync(finalPassword, 10);
+
+    try {
+      const newUserRes = await pool.query(`
+        INSERT INTO users (
+          username, password, role, department_id, class_id, full_name, register_number
+        ) VALUES ($1, $2, 'STUDENT', $3, $4, $5, $6)
+        RETURNING *
+      `, [
+        registrationNumber.trim(), hashed, deptId, clsId, fullName.trim(), registrationNumber.trim()
+      ]);
+      const u = newUserRes.rows[0];
+      res.json({ id: u.id, username: u.username, role: u.role, department_id: u.department_id, class_id: u.class_id, full_name: u.full_name, register_number: u.register_number });
+    } catch (e: any) {
+      const isDuplicate = e.code === '23505';
+      const field = isDuplicate ? (e.detail?.includes('username') ? 'Username' : 'Register Number') : '';
+      res.status(400).json({ error: isDuplicate ? `${field} already exists. Please choose a different one.` : 'Failed to create student' });
+    }
+  });
+
+  // Dedicated endpoint for advisor creation
+  app.post('/api/users/advisors', authenticate, authorize(['SUPREME_ADMIN', 'HOD']), async (req: any, res) => {
+    const { fullName, username, password, classId, is_year_coordinator, year_scope } = req.body;
+
+    if (!fullName || !fullName.trim()) return res.status(400).json({ error: 'Full Name is required' });
+    if (!username || !username.trim()) return res.status(400).json({ error: 'Username/Email is required' });
+
+    let clsId = classId || null;
+    let deptId = req.user.department_id || null;
+
+    if (req.user.role === 'HOD') {
+      deptId = req.user.department_id;
+      if (clsId) {
+        const targetClassRes = await pool.query('SELECT * FROM classes WHERE id = $1 LIMIT 1', [clsId]);
+        const targetClass = targetClassRes.rows[0];
+        if (!targetClass || targetClass.department_id.toString() !== req.user.department_id.toString()) {
+          return res.status(403).json({ error: 'Forbidden: Class does not belong to your department' });
+        }
+      }
+    } else if (req.user.role === 'SUPREME_ADMIN') {
+      if (clsId) {
+        const targetClassRes = await pool.query('SELECT * FROM classes WHERE id = $1 LIMIT 1', [clsId]);
+        const targetClass = targetClassRes.rows[0];
+        if (!targetClass) return res.status(400).json({ error: 'Invalid Class ID' });
+        deptId = targetClass.department_id;
+      } else {
+        return res.status(400).json({ error: 'Class ID is required' });
+      }
+    }
+
+    const finalPassword = password || username;
+    const hashed = bcrypt.hashSync(finalPassword, 10);
+
+    try {
+      const newUserRes = await pool.query(`
+        INSERT INTO users (
+          username, password, role, department_id, class_id, full_name, email,
+          is_coordinator, is_year_coordinator, year_scope
+        ) VALUES ($1, $2, 'CLASS_ADVISOR', $3, $4, $5, $6, FALSE, $7, $8)
+        RETURNING *
+      `, [
+        username.trim(), hashed, deptId, clsId, fullName.trim(), username.trim(),
+        is_year_coordinator || false, year_scope || null
+      ]);
+      const u = newUserRes.rows[0];
+      res.json({ id: u.id, username: u.username, role: u.role, department_id: u.department_id, class_id: u.class_id, full_name: u.full_name, email: u.email });
+    } catch (e: any) {
+      const isDuplicate = e.code === '23505';
+      const field = isDuplicate ? 'Username/Email' : '';
+      res.status(400).json({ error: isDuplicate ? `${field} already exists. Please choose a different one.` : 'Failed to create advisor' });
     }
   });
 
@@ -414,8 +516,8 @@ async function startServer() {
         const hashed = bcrypt.hashSync(regNo, 10);
         await pool.query(`
           INSERT INTO users (
-            username, password, role, department_id, class_id, full_name, email, register_number, must_change_password
-          ) VALUES ($1, $2, 'STUDENT', $3, $4, $5, $6, $7, TRUE)
+            username, password, role, department_id, class_id, full_name, email, register_number
+          ) VALUES ($1, $2, 'STUDENT', $3, $4, $5, $6, $7)
         `, [regNo, hashed, deptId, classId, s.name?.trim(), s.email?.trim() || null, regNo]);
         success++;
       } catch { failed++; }
@@ -541,8 +643,8 @@ async function startServer() {
         LEFT JOIN departments d ON t.department_id = d.id
         LEFT JOIN task_classes tc ON t.id = tc.task_id
         WHERE t.created_by = $1
-           OR (t.department_id IS NULL AND t.id NOT IN (SELECT task_id FROM task_classes))
-           OR (t.department_id = $2 AND t.id NOT IN (SELECT task_id FROM task_classes))
+           OR (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
+           OR (t.department_id = $2 AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
            OR tc.class_id = $3
       `;
       let params: any[] = [dbUser.id, dbUser.department_id, dbUser.class_id];
@@ -571,7 +673,7 @@ async function startServer() {
         LEFT JOIN departments d ON t.department_id = d.id
         LEFT JOIN task_classes tc ON t.id = tc.task_id
         WHERE t.created_by = $1
-           OR (t.department_id IS NULL AND t.id NOT IN (SELECT task_id FROM task_classes))
+           OR (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
            OR t.department_id = $2
       `;
       let params: any[] = [dbUser.id, dbUser.department_id];
@@ -823,7 +925,7 @@ async function startServer() {
     const classes = classesRes.rows;
     const classIds = classes.map(c => c.id);
 
-    const deptStudentsRes = await pool.query('SELECT id, full_name, register_number, class_id FROM users WHERE department_id = $1 AND role = \'STUDENT\'', [deptId]);
+    const deptStudentsRes = await pool.query('SELECT id, full_name, register_number, class_id FROM users WHERE department_id = $1 AND role = \'STUDENT\' ORDER BY register_number ASC', [deptId]);
     const deptStudents = deptStudentsRes.rows;
     const deptStudentIds = deptStudents.map(s => s.id);
 
@@ -840,14 +942,14 @@ async function startServer() {
         LEFT JOIN task_classes tc ON t.id = tc.task_id
         WHERE t.department_id = $1
            OR tc.class_id = ANY($2)
-           OR (t.department_id IS NULL AND t.id NOT IN (SELECT task_id FROM task_classes))
+           OR (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
       `, [deptId, classIds]);
     } else {
       tasksRes = await pool.query(`
         SELECT DISTINCT t.*
         FROM tasks t
         WHERE t.department_id = $1
-           OR (t.department_id IS NULL AND t.id NOT IN (SELECT task_id FROM task_classes))
+           OR (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
       `, [deptId]);
     }
     const tasks = tasksRes.rows;
@@ -953,13 +1055,13 @@ async function startServer() {
       FROM tasks t
       LEFT JOIN task_classes tc ON t.id = tc.task_id
       WHERE tc.class_id = $1
-         OR (t.department_id = $2 AND t.id NOT IN (SELECT task_id FROM task_classes))
-         OR (t.department_id IS NULL AND t.id NOT IN (SELECT task_id FROM task_classes))
+         OR (t.department_id = $2 AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
+         OR (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
       GROUP BY t.id
     `, [classId, deptId]);
     const tasks = tasksRes.rows;
 
-    const studentsRes = await pool.query('SELECT id, full_name, register_number FROM users WHERE class_id = $1 AND role = \'STUDENT\'', [classId]);
+    const studentsRes = await pool.query('SELECT id, full_name, register_number FROM users WHERE class_id = $1 AND role = \'STUDENT\' ORDER BY register_number ASC', [classId]);
     const students = studentsRes.rows;
     const studentIds = students.map(s => s.id);
 
@@ -1450,13 +1552,13 @@ async function startServer() {
       FROM tasks t
       LEFT JOIN task_classes tc ON t.id = tc.task_id
       WHERE tc.class_id = $1
-         OR (t.department_id = $2 AND t.id NOT IN (SELECT task_id FROM task_classes))
-         OR (t.department_id IS NULL AND t.id NOT IN (SELECT task_id FROM task_classes))
+         OR (t.department_id = $2 AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
+         OR (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
       GROUP BY t.id
     `, [classId, deptId]);
     const tasks = tasksRes.rows;
 
-    const studentsRes = await pool.query('SELECT id, full_name, register_number FROM users WHERE class_id = $1 AND role = \'STUDENT\'', [classId]);
+    const studentsRes = await pool.query('SELECT id, full_name, register_number FROM users WHERE class_id = $1 AND role = \'STUDENT\' ORDER BY register_number ASC', [classId]);
     const students = studentsRes.rows;
     const studentIds = students.map(s => s.id);
 
@@ -1539,8 +1641,8 @@ async function startServer() {
       FROM tasks t
       LEFT JOIN task_classes tc ON t.id = tc.task_id
       WHERE tc.class_id = ANY($1)
-         OR (t.department_id = $2 AND t.id NOT IN (SELECT task_id FROM task_classes))
-         OR (t.department_id IS NULL AND t.id NOT IN (SELECT task_id FROM task_classes))
+         OR (t.department_id = $2 AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
+         OR (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
     `, [classIds, deptId]);
     const tasks = tasksRes.rows;
 
@@ -1592,8 +1694,8 @@ async function startServer() {
       FROM tasks t
       LEFT JOIN task_classes tc ON t.id = tc.task_id
       WHERE tc.class_id = $1
-         OR (t.department_id = $2 AND t.id NOT IN (SELECT task_id FROM task_classes))
-         OR (t.department_id IS NULL AND t.id NOT IN (SELECT task_id FROM task_classes))
+         OR (t.department_id = $2 AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
+         OR (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
     `, [classId, deptId]);
     const totalTasks = parseInt(tasksRes.rows[0].count);
 

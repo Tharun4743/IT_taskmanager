@@ -778,7 +778,7 @@ export default function App() {
               <img src="/logo.png" alt="VSBEC Logo" className="w-full h-full object-cover" />
             </div>
             <h1 className="text-4xl font-bold text-zinc-900 tracking-tight">Academic Portal</h1>
-            <p className="text-zinc-500 mt-2 text-lg">VSBEC Task Management System</p>
+            <p className="text-zinc-500 mt-2 text-lg">VSBEC IT Task Management System</p>
           </div>
 
           <AnimatePresence mode="wait">

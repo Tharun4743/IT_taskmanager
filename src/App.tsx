@@ -189,15 +189,15 @@ import * as XLSX from 'xlsx';
 
 const Button = ({ className, variant = 'primary', ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'success' }) => {
   const variants = {
-    primary: 'bg-black text-white hover:bg-zinc-800',
-    secondary: 'bg-zinc-100 text-zinc-900 hover:bg-zinc-200',
-    danger: 'bg-red-500 text-white hover:bg-red-600',
-    ghost: 'hover:bg-zinc-100 text-zinc-600',
-    success: 'bg-emerald-600 text-white hover:bg-emerald-700'
+    primary: 'bg-black text-white hover:bg-zinc-800 focus:ring-black/10',
+    secondary: 'bg-zinc-100 text-zinc-900 hover:bg-zinc-200 focus:ring-zinc-200/50',
+    danger: 'bg-red-500 text-white hover:bg-red-600 focus:ring-red-500/20',
+    ghost: 'hover:bg-zinc-100 text-zinc-600 focus:ring-zinc-150',
+    success: 'bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-600/20'
   };
   return (
     <button
-      className={cn('px-4 py-2 rounded-lg font-medium transition-all active:scale-95 disabled:opacity-50', variants[variant], className)}
+      className={cn('h-11 px-4 rounded-lg font-semibold text-sm transition-all active:scale-95 disabled:opacity-50 inline-flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-1 shrink-0', variants[variant], className)}
       {...props}
     />
   );
@@ -205,16 +205,131 @@ const Button = ({ className, variant = 'primary', ...props }: React.ButtonHTMLAt
 
 const Input = ({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) => (
   <input
-    className={cn('w-full px-4 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all', className)}
+    className={cn('w-full h-11 px-4 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm bg-white truncate', className)}
+    {...props}
+  />
+);
+
+const Select = ({ className, children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) => (
+  <select
+    className={cn('w-full h-11 px-4 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm bg-white', className)}
+    {...props}
+  >
+    {children}
+  </select>
+);
+
+const Textarea = ({ className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
+  <textarea
+    className={cn('w-full px-4 py-2.5 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm min-h-[100px] resize-y bg-white', className)}
     {...props}
   />
 );
 
 const Card = ({ children, className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm', className)} {...props}>
+  <div className={cn('bg-white border border-zinc-200 rounded-xl p-4 md:p-6 shadow-sm', className)} {...props}>
     {children}
   </div>
 );
+
+const FooterContext = React.createContext<((type: 'PRIVACY' | 'TERMS' | 'SUPPORT') => void) | null>(null);
+
+const Footer = ({ onShowModal }: { onShowModal: (type: 'PRIVACY' | 'TERMS' | 'SUPPORT') => void }) => (
+  <footer className="mt-8 pt-4 pb-2 border-t border-zinc-200/60 shrink-0 w-full">
+    <div className="flex flex-col md:flex-row items-center justify-between text-zinc-500 text-xs gap-4 w-full">
+      <div className="text-center md:text-left">
+        <p className="font-bold text-zinc-900 text-sm">VSBEC IT Academic Task Management System</p>
+        <p className="mt-1">Empowering students through structured achievements.</p>
+      </div>
+      <div className="flex flex-col items-center md:items-end gap-2">
+        <div className="flex gap-6">
+          <button onClick={() => onShowModal('PRIVACY')} className="hover:text-zinc-900 transition-colors font-medium">Privacy Policy</button>
+          <button onClick={() => onShowModal('TERMS')} className="hover:text-zinc-900 transition-colors font-medium">Terms of Service</button>
+          <button onClick={() => onShowModal('SUPPORT')} className="hover:text-zinc-900 transition-colors font-medium">Support</button>
+        </div>
+        <p className="text-[10px] text-zinc-400 font-medium text-center md:text-right leading-relaxed mt-1">
+          Developed and maintained by <a href="https://tharunkumark4743.netlify.app/" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-900 transition-colors font-bold underline decoration-zinc-300 underline-offset-2">Tharunkumar K</a><br />
+          Department of Information Technology, VSB Engineering College.
+        </p>
+      </div>
+    </div>
+  </footer>
+);
+
+const PageLayout = ({ children, className, ...props }: React.HTMLAttributes<HTMLDivElement>) => {
+  const onShowModal = React.useContext(FooterContext);
+  return (
+    <div className="absolute inset-0 overflow-y-auto p-4 md:p-8 bg-[#F5F5F4] flex flex-col min-h-0">
+      <div className="w-full flex flex-col min-h-full">
+        <div className={cn("flex-1 flex flex-col space-y-6 w-full", className)} {...props}>
+          {children}
+        </div>
+        {onShowModal && <Footer onShowModal={onShowModal} />}
+      </div>
+    </div>
+  );
+};
+
+const ContentCard = ({ children, className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+  <div className={cn("bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm w-full", className)} {...props}>
+    {children}
+  </div>
+);
+
+const Badge = ({ children, variant, className }: { children: React.ReactNode; variant: 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'primary'; className?: string }) => {
+  const styles = {
+    success: "bg-emerald-50 text-emerald-700 border border-emerald-100",
+    warning: "bg-amber-50 text-amber-700 border border-amber-100",
+    danger: "bg-red-50 text-red-700 border border-red-100",
+    info: "bg-blue-50 text-blue-700 border border-blue-100",
+    neutral: "bg-zinc-100 text-zinc-600 border border-zinc-200",
+    primary: "bg-indigo-50 text-indigo-700 border border-indigo-100"
+  };
+  return (
+    <span className={cn("px-2 py-0.5 rounded text-xs font-bold uppercase tracking-tight inline-flex items-center gap-1.5", styles[variant], className)}>
+      {children}
+    </span>
+  );
+};
+
+const Table = ({ children, className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) => (
+  <div className="w-full overflow-x-auto custom-scrollbar border border-zinc-200 rounded-2xl bg-white shadow-sm">
+    <table className={cn("w-full text-left border-collapse", className)} {...props}>
+      {children}
+    </table>
+  </div>
+);
+
+const THead = ({ children, className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) => (
+  <thead className={cn("bg-zinc-50 border-b border-zinc-200", className)} {...props}>
+    {children}
+  </thead>
+);
+
+const TBody = ({ children, className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) => (
+  <tbody className={cn("divide-y divide-zinc-100 bg-white", className)} {...props}>
+    {children}
+  </tbody>
+);
+
+const TR = ({ children, className, ...props }: React.HTMLAttributes<HTMLTableRowElement>) => (
+  <tr className={cn("hover:bg-zinc-50/50 transition-colors h-14 text-sm", className)} {...props}>
+    {children}
+  </tr>
+);
+
+const TH = ({ children, className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) => (
+  <th className={cn("px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider", className)} {...props}>
+    {children}
+  </th>
+);
+
+const TD = ({ children, className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) => (
+  <td className={cn("px-6 py-3.5 text-sm text-zinc-900", className)} {...props}>
+    {children}
+  </td>
+);
+
 
 const CircularProgress = ({ value, total, label, color = "text-indigo-600", size = "lg" }: { value: number; total: number; label: string; color?: string; size?: 'sm' | 'lg' }) => {
   const percentage = total > 0 ? (value / total) * 100 : 0;
@@ -242,10 +357,10 @@ const CircularProgress = ({ value, total, label, color = "text-indigo-600", size
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className={cn("font-bold text-zinc-900", size === 'lg' ? "text-lg" : "text-[10px]")}>{Math.round(percentage)}%</span>
+          <span className={cn("font-bold text-zinc-900", size === 'lg' ? "text-lg" : "text-xs")}>{Math.round(percentage)}%</span>
         </div>
       </div>
-      <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">{label}</span>
+      <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest">{label}</span>
     </div>
   );
 };
@@ -253,15 +368,15 @@ const CircularProgress = ({ value, total, label, color = "text-indigo-600", size
 const SimpleBarChart = ({ data, label, color = "bg-indigo-500" }: { data: { label: string; value: number; total: number }[]; label: string; color?: string }) => {
   return (
     <div className="flex flex-col gap-4 w-full h-full">
-      <h4 className="text-[11px] font-black text-zinc-400 uppercase tracking-widest mb-2 border-b border-zinc-100 pb-2">{label}</h4>
+      <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 border-b border-zinc-100 pb-2">{label}</h4>
       <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
         {data.map((item, i) => {
           const percentage = item.total > 0 ? (item.value / item.total) * 100 : 0;
           return (
             <div key={i} className="group">
-              <div className="flex justify-between items-center mb-1.5 text-[11px] font-bold text-zinc-700">
+              <div className="flex justify-between items-center mb-1.5 text-xs font-bold text-zinc-700">
                 <span className="truncate mr-4">{item.label}</span>
-                <span className="text-zinc-400 font-mono text-[10px] whitespace-nowrap">{item.value}/{item.total}</span>
+                <span className="text-zinc-400 font-mono text-xs whitespace-nowrap">{item.value}/{item.total}</span>
               </div>
               <div className="h-2 w-full bg-zinc-100 rounded-full overflow-hidden border border-zinc-200/50">
                 <div
@@ -338,6 +453,9 @@ export default function App() {
   const [view, setView] = useState<string>('dashboard');
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [isServerAwake, setIsServerAwake] = useState(false);
+  const [isWakingServer, setIsWakingServer] = useState(true);
+  const [wakeAttempt, setWakeAttempt] = useState(0);
 
   // Toast State
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -370,6 +488,7 @@ export default function App() {
   const [myClass, setMyClass] = useState<Class | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [reportFilters, setReportFilters] = useState({ classId: '', year: '', category: '', taskId: '', status: '' });
   const [expandedClass, setExpandedClass] = useState<number | null>(null);
   const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
@@ -380,7 +499,7 @@ export default function App() {
 
   // Forms
   const [newDept, setNewDept] = useState('');
-  const [newClass, setNewClass] = useState({ name: '', department_id: '', year: '', batch: '' });
+  const [newClass, setNewClass] = useState({ name: '', department_id: '', year: '3', batch: '2024-2028' });
   const [newUser, setNewUser] = useState({
     username: '',
     password: '',
@@ -404,6 +523,7 @@ export default function App() {
     class_ids: []
   });
   const [uploading, setUploading] = useState<number | null>(null);
+  const [hodCreationRole, setHodCreationRole] = useState<'CLASS_ADVISOR' | 'STUDENT'>('CLASS_ADVISOR');
   const [showTaskPreview, setShowTaskPreview] = useState(false);
   const [verificationFilter, setVerificationFilter] = useState<'PENDING' | 'VERIFIED' | 'REJECTED' | 'ALL'>('PENDING');
   const [verificationClassFilter, setVerificationClassFilter] = useState('');
@@ -431,18 +551,61 @@ export default function App() {
   const [userRoleFilter, setUserRoleFilter] = useState('');
   const [userDeptFilter, setUserDeptFilter] = useState('');
 
-  useEffect(() => {
-    if (token) {
-      fetchInitialData();
-      // Poll for live updates every 60 seconds (reduced from 30s to cut re-renders)
-      const interval = setInterval(() => {
-        fetchTasks();
-        fetchSubmissions();
-        fetchNotifications();
-      }, 60000);
-      return () => clearInterval(interval);
+  const runHealthCheckWithRetries = async () => {
+    setIsWakingServer(true);
+    setHasError(false);
+
+    const delays = [0, 3000, 6000, 12000, 24000, 30000];
+    for (let i = 0; i < delays.length; i++) {
+      setWakeAttempt(i + 1);
+      if (delays[i] > 0) {
+        await new Promise(resolve => setTimeout(resolve, delays[i]));
+      }
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        
+        const res = await fetch(`${API_URL}/health`, {
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'ok') {
+            setIsServerAwake(true);
+            setIsWakingServer(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn(`Health check attempt ${i + 1} failed, retrying...`, err);
+      }
     }
-  }, [token]);
+    setIsWakingServer(false);
+    setHasError(true);
+  };
+
+  useEffect(() => {
+    runHealthCheckWithRetries();
+  }, []);
+
+  useEffect(() => {
+    if (isServerAwake) {
+      if (token) {
+        fetchInitialData();
+        // Poll for live updates every 60 seconds
+        const interval = setInterval(() => {
+          fetchTasks();
+          fetchSubmissions();
+          fetchNotifications();
+        }, 60000);
+        return () => clearInterval(interval);
+      } else {
+        setIsLoading(false);
+      }
+    }
+  }, [isServerAwake, token]);
 
   const fetchInitialData = async () => {
     try {
@@ -804,7 +967,7 @@ export default function App() {
       body: JSON.stringify(payload)
     });
     if (res.ok) {
-      setNewClass({ name: '', department_id: '', year: '', batch: '' });
+      setNewClass({ name: '', department_id: '', year: '3', batch: '2024-2028' });
       // Only re-fetch classes and my-class, not everything
       const [classesRes] = await Promise.all([
         fetch(`${API_URL}/api/classes`, { headers: { Authorization: `Bearer ${token}` } })
@@ -817,26 +980,54 @@ export default function App() {
   const createUser = async (e: React.FormEvent) => {
     e.preventDefault();
     let role = 'STUDENT';
-    if (user?.role === 'SUPREME_ADMIN') role = 'HOD';
-    else if (user?.role === 'HOD') role = 'CLASS_ADVISOR';
+    if (user?.role === 'SUPREME_ADMIN') {
+      role = 'HOD';
+    } else if (user?.role === 'HOD') {
+      role = studentFilter === 'STUDENT' ? 'STUDENT' : (studentFilter === 'CLASS_ADVISOR' ? 'CLASS_ADVISOR' : hodCreationRole);
+    } else if (user?.role === 'CLASS_ADVISOR') {
+      role = 'STUDENT';
+    }
 
-    // Sanitize: convert empty strings to null so PostgreSQL doesn't store ''
-    const payload = {
-      ...newUser,
-      role,
-      department_id: newUser.department_id || null,
-      class_id: newUser.class_id || null,
-      register_number: newUser.register_number || null,
-      email: newUser.email || null,
-    };
+    let url = `${API_URL}/api/users`;
+    let bodyData: any = {};
 
-    const res = await fetch(`${API_URL}/api/users`, {
+    if (role === 'STUDENT') {
+      url = `${API_URL}/api/users/students`;
+      bodyData = {
+        fullName: newUser.full_name,
+        registrationNumber: newUser.username,
+        password: newUser.password,
+        classId: newUser.class_id || (user?.role === 'CLASS_ADVISOR' ? user.class_id : null)
+      };
+    } else if (role === 'CLASS_ADVISOR') {
+      url = `${API_URL}/api/users/advisors`;
+      bodyData = {
+        fullName: newUser.full_name,
+        username: newUser.username,
+        password: newUser.password,
+        classId: newUser.class_id || null,
+        is_year_coordinator: newUser.is_year_coordinator,
+        year_scope: newUser.year_scope ? parseInt(newUser.year_scope) : null
+      };
+    } else {
+      // HOD or generic
+      bodyData = {
+        ...newUser,
+        role,
+        department_id: newUser.department_id || null,
+        class_id: newUser.class_id || null,
+        register_number: newUser.register_number || null,
+        email: newUser.email || null,
+      };
+    }
+
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(bodyData)
     });
     if (res.ok) {
-      setNewUser({ username: '', password: '', full_name: '', department_id: '', class_id: '', email: '', register_number: '' });
+      setNewUser({ username: '', password: '', full_name: '', department_id: '', class_id: '', email: '', register_number: '', is_year_coordinator: false, year_scope: '' });
       fetchInitialData();
       addToast(`${role === 'HOD' ? 'HOD' : role === 'CLASS_ADVISOR' ? 'Advisor' : 'Student'} account created successfully!`, 'success');
     } else {
@@ -1120,7 +1311,7 @@ export default function App() {
     XLSX.utils.book_append_sheet(wb, wsTasks, "Task Summary");
     XLSX.utils.book_append_sheet(wb, wsClasses, "Class Summary");
 
-    const fileName = filters ? `Filtered_Report_${new Date().toISOString().split('T')[0]}.xlsx` : `Department_Report_${new Date().toISOString().split('T')[0]}.xlsx`;
+    const fileName = filters ? `Filtered_Report_${new Date().toISOString().split('T')[0]}.xlsx` : `Class_Report_${new Date().toISOString().split('T')[0]}.xlsx`;
     XLSX.writeFile(wb, fileName);
     setShowExportModal(false);
   };
@@ -1211,8 +1402,8 @@ export default function App() {
             <div className="w-24 h-24 rounded-full overflow-hidden mb-6 shadow-2xl border-4 border-white ring-2 ring-zinc-200">
               <img src="/logo.png" alt="VSBEC Logo" className="w-full h-full object-cover" />
             </div>
-            <h1 className="text-4xl font-black text-zinc-900 tracking-tight">Academic Portal v2</h1>
-            <p className="text-zinc-500 mt-2 text-lg">VSBEC Task Management System</p>
+            <h1 className="text-4xl font-black text-zinc-900 tracking-tight">Academic Portal</h1>
+            <p className="text-zinc-500 mt-2 text-lg">VSBEC IT Task Management System</p>
           </div>
 
           <AnimatePresence mode="wait">
@@ -1229,11 +1420,11 @@ export default function App() {
                   <p className="text-zinc-500 text-sm mt-1">Please enter your credentials</p>
                 </div>
 
-                <form onSubmit={handleLogin} className="space-y-4">
+                 <form onSubmit={handleLogin} className="space-y-4">
                   <div>
-                    <label className="text-sm font-medium text-zinc-700 mb-1 block">Email Address / Username</label>
+                    <label className="text-sm font-medium text-zinc-700 mb-1 block">Email</label>
                     <Input
-                      placeholder="e.g. user@gmail.com"
+                      placeholder="it@gmail.com"
                       value={loginData.username}
                       onChange={e => setLoginData(prev => ({ ...prev, username: e.target.value }))}
                       required
@@ -1245,7 +1436,7 @@ export default function App() {
                     <div className="relative">
                       <Input
                         type={showPassword ? 'text' : 'password'}
-                        placeholder="••••••••"
+                        placeholder="Password"
                         value={loginData.password}
                         onChange={e => setLoginData(prev => ({ ...prev, password: e.target.value }))}
                         required
@@ -1377,31 +1568,29 @@ export default function App() {
     const pendingCount = enriched.filter(s => s.submissionStatus === 'PENDING').length;
 
     return (
-      <Card className="p-0 overflow-hidden rounded-[2.5rem] border-zinc-100 shadow-xl bg-white mt-10">
-        <div className="p-8 border-b border-zinc-100 bg-zinc-50/50">
-          <h3 className="text-2xl font-black text-zinc-900 tracking-tight">{title}</h3>
-          <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest mt-1">Track student progress and events</p>
+      <ContentCard className="p-0 overflow-hidden mt-10">
+        <div className="p-6 border-b border-zinc-200 bg-zinc-50/50">
+          <h3 className="text-xl font-bold text-zinc-900 tracking-tight">{title}</h3>
+          <p className="text-xs font-medium text-zinc-500 mt-1">Track student progress and events</p>
         </div>
 
-        <div className="px-8 pt-6 pb-4 grid grid-cols-1 md:grid-cols-4 gap-4 bg-white border-b border-zinc-100">
+        <div className="px-6 py-4 grid grid-cols-1 md:grid-cols-4 gap-4 bg-white border-b border-zinc-200">
           {isGlobal && (
             <div>
-              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1.5 block">Department</label>
-              <select
-                className="w-full px-4 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl text-sm font-bold"
+              <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5 block">Departments</label>
+              <Select
                 value={adminDeptFilter}
                 onChange={e => setAdminDeptFilter(e.target.value)}
               >
                 <option value="">All Departments</option>
                 {departments.map(d => <option key={d.id} value={d.id.toString()}>{d.name}</option>)}
-              </select>
+              </Select>
             </div>
           )}
           {!isCls && (
             <div>
-              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1.5 block">Class</label>
-              <select
-                className="w-full px-4 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl text-sm font-bold"
+              <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5 block">Class</label>
+              <Select
                 value={analyzerClassFilter}
                 onChange={e => setAnalyzerClassFilter(e.target.value)}
               >
@@ -1413,13 +1602,12 @@ export default function App() {
                 }).map(c => (
                   <option key={c.id} value={c.id.toString()}>{c.name}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
           <div className={cn(isGlobal ? "md:col-span-1" : isCls ? "md:col-span-2" : "md:col-span-1")}>
-            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1.5 block">Event</label>
-            <select
-              className="w-full px-4 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl text-sm font-bold"
+            <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5 block">Event</label>
+            <Select
               value={analyzerTaskFilter}
               onChange={e => setAnalyzerTaskFilter(e.target.value)}
             >
@@ -1437,19 +1625,18 @@ export default function App() {
               }).map(t => (
                 <option key={t.id} value={t.id.toString()}>{t.title}</option>
               ))}
-            </select>
+            </Select>
           </div>
           <div>
-            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1.5 block">Status</label>
-            <select
-              className="w-full px-4 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl text-sm font-bold"
+            <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5 block">Status</label>
+            <Select
               value={analyzerStatusFilter}
               onChange={e => setAnalyzerStatusFilter(e.target.value as any)}
             >
               <option value="ALL">All Students</option>
               <option value="COMPLETED">Completed</option>
               <option value="PENDING">Not Registered</option>
-            </select>
+            </Select>
           </div>
         </div>
 
@@ -1508,65 +1695,63 @@ export default function App() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <div className="px-8 py-3 flex flex-wrap gap-3 border-b border-zinc-100 bg-zinc-50/30">
+        <div className="overflow-x-auto custom-scrollbar">
+          <div className="px-6 py-3 flex flex-wrap gap-3 border-b border-zinc-200 bg-zinc-50/30">
             <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-full border border-zinc-200">
-              <span className="text-[11px] font-black">{enriched.length} Students</span>
+              <span className="text-xs font-bold text-zinc-700">{enriched.length} Students</span>
             </div>
             <div className="flex items-center gap-1.5 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
-              <span className="text-[11px] font-black text-emerald-700">{completedCount} Done</span>
+              <span className="text-xs font-bold text-emerald-700">{completedCount} Done</span>
             </div>
             <div className="flex items-center gap-1.5 bg-red-50 px-3 py-1.5 rounded-full border border-red-100">
-              <span className="text-[11px] font-black text-red-700">{pendingCount} Not Register</span>
+              <span className="text-xs font-bold text-red-700">{pendingCount} Not Registered</span>
             </div>
           </div>
 
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-zinc-100 bg-zinc-50/40">
-                <th className="px-8 py-3 text-[10px] uppercase font-black text-zinc-400">Student</th>
-                <th className="px-4 py-3 text-[10px] uppercase font-black text-zinc-400 text-center">Status</th>
-                <th className="px-8 py-3 text-[10px] uppercase font-black text-zinc-400 text-right">Progress</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
+          <Table>
+            <THead>
+              <TR>
+                <TH>Student</TH>
+                <TH className="text-center">Status</TH>
+                <TH className="text-right">Progress</TH>
+              </TR>
+            </THead>
+            <TBody>
               {filtered.map(student => {
                 const isCompleted = student.submissionStatus === 'VERIFIED' || student.submissionStatus === 'SUBMITTED';
                 return (
-                  <tr key={student.id} className="hover:bg-zinc-50/50 transition-colors text-sm">
-                    <td className="px-8 py-4">
+                  <TR key={student.id}>
+                    <TD className="text-sm text-zinc-900">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-zinc-900">{student.full_name}</span>
                         {!analyzerClassFilter && (
-                          <span className="px-2 py-0.5 bg-indigo-50 text-indigo-500 text-[9px] font-black rounded uppercase border border-indigo-100">
+                          <span className="px-2 py-0.5 bg-indigo-50 text-indigo-500 text-xs font-bold rounded uppercase border border-indigo-100">
                             {student.clsName}
                           </span>
                         )}
-                        <span className="text-[10px] text-zinc-400 font-mono italic">{student.register_number}</span>
+                        <span className="text-xs text-zinc-400 font-mono italic">{student.register_number}</span>
                       </div>
                       {!analyzerTaskFilter && student.missingTasks && student.missingTasks.length > 0 && (
                         <div className="mt-1 flex flex-wrap gap-1">
-                          <span className="text-[9px] text-zinc-400 font-bold uppercase mr-1">Missing:</span>
+                          <span className="text-xs text-zinc-400 font-bold uppercase mr-1">Missing:</span>
                           {student.missingTasks.slice(0, 3).map((t: any) => (
-                            <span key={t.id} className="px-1.5 py-0.5 bg-zinc-100 text-zinc-500 rounded text-[9px] font-medium">{t.title}</span>
+                            <span key={t.id} className="px-1.5 py-0.5 bg-zinc-100 text-zinc-500 rounded text-xs font-medium">{t.title}</span>
                           ))}
-                          {student.missingTasks.length > 3 && <span className="text-[9px] text-zinc-400">+{student.missingTasks.length - 3} more</span>}
+                          {student.missingTasks.length > 3 && <span className="text-xs text-zinc-400">+{student.missingTasks.length - 3} more</span>}
                         </div>
                       )}
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <span className={cn(
-                        "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase border",
-                        student.submissionStatus === 'VERIFIED' ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
-                          student.submissionStatus === 'SUBMITTED' ? "bg-amber-50 text-amber-700 border-amber-100" :
-                            "bg-red-50 text-red-600 border-red-100"
-                      )}>
+                    </TD>
+                    <TD className="text-center">
+                      <Badge variant={
+                        student.submissionStatus === 'VERIFIED' ? 'success' :
+                        student.submissionStatus === 'SUBMITTED' ? 'warning' : 'danger'
+                      }>
                         {student.submissionStatus === 'SUBMITTED' && !analyzerTaskFilter ? 'In Progress' :
                           student.submissionStatus === 'SUBMITTED' && analyzerTaskFilter ? 'Submitted' :
                             student.submissionLabel}
-                      </span>
-                    </td>
-                    <td className="px-8 py-4 text-right font-black text-zinc-400">
+                      </Badge>
+                    </TD>
+                    <TD className="text-right font-black text-zinc-400">
                       {(() => {
                         if (analyzerTaskFilter) return isCompleted ? '100%' : '0%';
                         const parts = student.submissionLabel.split('/');
@@ -1576,20 +1761,39 @@ export default function App() {
                         if (isNaN(done) || isNaN(total) || total === 0) return '0%';
                         return `${Math.min(100, Math.round((done / total) * 100))}%`;
                       })()}
-                    </td>
-                  </tr>
+                    </TD>
+                  </TR>
                 );
               })}
-            </tbody>
-          </table>
+            </TBody>
+          </Table>
         </div>
-      </Card>
+      </ContentCard>
     );
   };
 
   const isAdvisor = user?.role === 'CLASS_ADVISOR';
   const isStudent = user?.role === 'STUDENT';
   const isCoordinator = user?.role === 'STUDENT' && user?.is_coordinator;
+
+  if (isWakingServer) {
+    return (
+      <div className="min-h-screen bg-[#F5F5F4] flex items-center justify-center p-4">
+        <Card className="p-8 text-center max-w-md w-full flex flex-col items-center gap-4">
+          <div className="w-16 h-16 bg-zinc-50 text-zinc-900 rounded-2xl flex items-center justify-center mx-auto mb-2 border border-zinc-200">
+            <Loader2 className="w-8 h-8 text-black animate-spin" />
+          </div>
+          <h2 className="text-2xl font-bold text-zinc-900">Connecting to Server</h2>
+          <p className="text-zinc-500 text-sm">
+            Waking up the server — this can take up to a minute on first load...
+          </p>
+          <div className="px-3 py-1.5 bg-zinc-100 rounded-full text-xs font-semibold text-zinc-600">
+            Attempt {wakeAttempt} of 6
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   if (hasError) {
     return (
@@ -1607,7 +1811,7 @@ export default function App() {
             onClick={() => {
               setIsLoading(true);
               setHasError(false);
-              fetchInitialData();
+              runHealthCheckWithRetries();
             }}
           >
             Retry Connection
@@ -1644,400 +1848,410 @@ export default function App() {
     );
   }
 
+  const renderSidebarContent = () => (
+    <div className="flex flex-col h-full bg-white">
+      <div className="p-4 border-b border-zinc-100 flex items-center justify-between shrink-0 h-20">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 shadow-md border-2 border-zinc-200">
+            <img src="/logo.png" alt="VSBEC Logo" className="w-full h-full object-cover" />
+          </div>
+          <span className={cn(
+            "font-bold px-2 py-0.5 rounded text-xs tracking-wider",
+            user?.is_year_coordinator
+              ? "bg-indigo-100 text-indigo-700"
+              : "text-zinc-900"
+          )}>
+            {isAdmin ? 'SUPREME' : isHOD ? 'HOD PORTAL' : user?.is_year_coordinator ? 'YEAR COORD' : isAdvisor ? 'ADVISOR' : isCoordinator ? 'COORDINATOR' : 'STUDENT'}
+          </span>
+        </div>
+        <button 
+          onClick={() => setIsMobileSidebarOpen(false)}
+          className="p-1 text-zinc-400 hover:text-zinc-900 md:hidden rounded-lg hover:bg-zinc-100"
+        >
+          <X size={20} />
+        </button>
+      </div>
+
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
+        <SidebarItem
+          icon={<LayoutDashboard size={20} />}
+          label="Dashboard"
+          active={view === 'dashboard'}
+          onClick={() => { setView('dashboard'); setIsMobileSidebarOpen(false); }}
+        />
+
+        {isAdmin && (
+          <>
+            <SidebarItem
+              icon={<Building2 size={20} />}
+              label="Departments"
+              active={view === 'departments'}
+              onClick={() => { setView('departments'); setIsMobileSidebarOpen(false); }}
+            />
+            <SidebarItem
+              icon={<Users size={20} />}
+              label="HOD Accounts"
+              active={view === 'users'}
+              onClick={() => { setView('users'); setIsMobileSidebarOpen(false); }}
+            />
+          </>
+        )}
+
+        {isHOD && (
+          <>
+            <SidebarItem
+              icon={<Building2 size={20} />}
+              label="Classes"
+              active={view === 'classes'}
+              onClick={() => { setView('classes'); setIsMobileSidebarOpen(false); }}
+            />
+            <SidebarItem
+              icon={<Users size={20} />}
+              label="Class Advisors"
+              active={view === 'users'}
+              onClick={() => { setView('users'); setIsMobileSidebarOpen(false); }}
+            />
+          </>
+        )}
+
+        {isAdvisor && (
+          <>
+            <SidebarItem
+              icon={<Building2 size={20} />}
+              label="My Class"
+              active={view === 'my-class'}
+              onClick={() => { setView('my-class'); setIsMobileSidebarOpen(false); }}
+            />
+            <SidebarItem
+              icon={<Users size={20} />}
+              label="Students"
+              active={view === 'users'}
+              onClick={() => { setView('users'); setIsMobileSidebarOpen(false); }}
+            />
+          </>
+        )}
+
+        <SidebarItem
+          icon={<ClipboardList size={20} />}
+          label="Tasks"
+          active={view === 'tasks'}
+          onClick={() => { setView('tasks'); setIsMobileSidebarOpen(false); }}
+        />
+
+        {(isAdvisor || isHOD || isAdmin || isCoordinator) && (
+          <SidebarItem
+            icon={<ShieldCheck size={20} />}
+            label="Verifications"
+            active={view === 'verifications'}
+            onClick={() => { setView('verifications'); setIsMobileSidebarOpen(false); }}
+          />
+        )}
+
+        {isStudent && (
+          <>
+            <SidebarItem
+              icon={<CheckCircle2 size={20} />}
+              label="My Submissions"
+              active={view === 'submissions'}
+              onClick={() => { setView('submissions'); setIsMobileSidebarOpen(false); }}
+            />
+          </>
+        )}
+      </nav>
+
+      <div className="p-4 border-t border-zinc-100 shrink-0 bg-white">
+        <div className="px-4 py-2 mb-4 bg-zinc-50 rounded-xl">
+          <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Logged in as</p>
+          <p className="text-sm font-semibold text-zinc-900 truncate">{user?.full_name}</p>
+          <p className="text-xs text-zinc-500 font-medium mt-0.5">
+            {user?.is_year_coordinator ? `Year ${user.year_scope} Coordinator` : user?.role}
+            {user?.department_name ? ` • ${user.department_name}` : ''}
+          </p>
+        </div>
+        <button
+          onClick={() => { handleLogout(); setIsMobileSidebarOpen(false); }}
+          className="flex items-center gap-3 w-full px-4 py-2.5 text-zinc-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all font-semibold text-sm"
+        >
+          <LogOut size={20} />
+          <span>Logout</span>
+        </button>
+
+      </div>
+    </div>
+  );
+
   return (
-    <div className="h-screen bg-[#F5F5F4] flex overflow-hidden">
-      <ToastContainer toasts={toasts} removeToast={removeToast} />
-      {/* Rejection Modal */}
-      <AnimatePresence>
-        {showRejectionModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl"
-            >
-              <h2 className="text-xl font-bold mb-4">Reject Submission</h2>
-              <textarea
-                className="w-full px-4 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all min-h-[100px] mb-4"
-                placeholder="Reason for rejection..."
-                value={rejectionReason}
-                onChange={e => setRejectionReason(e.target.value)}
-                required
-              />
-              <div className="flex gap-4">
-                <Button variant="ghost" className="flex-1" onClick={() => setShowRejectionModal(null)}>Cancel</Button>
-                <Button variant="danger" className="flex-1" onClick={() => verifySubmission(showRejectionModal, 'REJECTED')}>Reject</Button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {showTaskPreview && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-2xl p-8 w-full max-w-2xl shadow-2xl relative"
-            >
-              <button
-                onClick={() => setShowTaskPreview(false)}
-                className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-zinc-900 transition-colors"
+    <FooterContext.Provider value={setShowFooterModal}>
+      <div className="h-screen bg-[#F5F5F4] flex overflow-hidden">
+        <ToastContainer toasts={toasts} removeToast={removeToast} />
+        {/* Rejection Modal */}
+        <AnimatePresence>
+          {showRejectionModal && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl"
               >
-                <XCircle size={24} />
-              </button>
-              <h2 className="text-2xl font-bold mb-2">Live Preview</h2>
-              <p className="text-zinc-500 text-sm mb-6">This is exactly what students will see.</p>
-
-              <Card className="border-2 border-zinc-100 bg-zinc-50/50">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-[10px] font-bold uppercase tracking-wider mb-2 inline-block">
-                      {newTask.category}
-                    </span>
-                    <h3 className="text-xl font-bold text-zinc-900">{newTask.title || "Untitled Task"}</h3>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] text-zinc-400 uppercase font-bold">Deadline</p>
-                    <p className="text-sm font-medium text-red-500">
-                      {newTask.deadline ? new Date(newTask.deadline).toLocaleString() : "No deadline set"}
-                    </p>
-                  </div>
+                <h2 className="text-xl font-bold mb-4">Reject Submission</h2>
+                <Textarea
+                  placeholder="Reason for rejection..."
+                  value={rejectionReason}
+                  onChange={e => setRejectionReason(e.target.value)}
+                  required
+                  className="mb-4"
+                />
+                <div className="flex gap-4">
+                  <Button variant="ghost" className="flex-1" onClick={() => setShowRejectionModal(null)}>Cancel</Button>
+                  <Button variant="danger" className="flex-1" onClick={() => verifySubmission(showRejectionModal, 'REJECTED')}>Reject</Button>
                 </div>
-                <p className="text-zinc-600 text-sm mb-6 whitespace-pre-wrap">{newTask.description || "No description provided."}</p>
-
-                {newTask.external_link && (
-                  <div className="mb-6">
-                    <a
-                      href={newTask.external_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 text-blue-600 hover:underline text-sm font-medium"
-                    >
-                      <ExternalLink size={16} /> Visit External Link
-                    </a>
-                  </div>
-                )}
-
-                <div className="bg-white p-6 rounded-xl border border-zinc-200 space-y-4">
-                  <div>
-                    <label className="text-sm font-medium text-zinc-700 mb-2 block">
-                      {newTask.custom_field_label || "Custom Field"}
-                    </label>
-                    <Input placeholder={`Enter ${newTask.custom_field_label || "value"}...`} disabled />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-zinc-700 mb-2 block">
-                      {newTask.screenshot_instruction || "Upload Screenshot"}
-                    </label>
-                    <div className="border-2 border-dashed border-zinc-200 rounded-xl p-8 flex flex-col items-center justify-center text-zinc-400 bg-zinc-50">
-                      <Upload size={32} className="mb-2" />
-                      <p className="text-sm">Click or drag to upload screenshot</p>
-                    </div>
-                  </div>
-                  <Button className="w-full" disabled>Submit Task</Button>
-                </div>
-              </Card>
-
-              <div className="mt-8 flex gap-4">
-                <Button variant="secondary" className="flex-1" onClick={() => setShowTaskPreview(false)}>Back to Edit</Button>
-                <Button className="flex-1" onClick={() => { createTask(); setShowTaskPreview(false); }}>Publish Task</Button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-      {/* Reviews Modal */}
-      <AnimatePresence>
-        {showReviewsModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl relative"
-            >
-              <button
-                onClick={() => setShowReviewsModal(false)}
-                className="absolute top-6 right-6 p-2 hover:bg-zinc-100 rounded-full transition-colors"
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+        <AnimatePresence>
+          {showTaskPreview && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-2xl p-8 w-full max-w-2xl shadow-2xl relative"
               >
-                <XCircle size={24} className="text-zinc-400" />
-              </button>
-              <h3 className="text-xl font-bold text-zinc-900 mb-6">Review & Feedback History</h3>
-              <div className="space-y-6 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
-                {selectedSubReviews.length === 0 ? (
-                  <p className="text-sm text-zinc-500 text-center py-4">No review history available.</p>
-                ) : (
-                  selectedSubReviews.map((review: any) => (
-                    <div key={review.id} className="relative pl-6 border-l-2 border-zinc-200 last:border-transparent pb-4">
-                      <div className={cn(
-                        "absolute -left-[9px] top-1 w-4 h-4 rounded-full border-2 border-white",
-                        review.new_status === 'VERIFIED' ? "bg-emerald-500" :
-                          review.new_status === 'REJECTED' ? "bg-red-500" : "bg-orange-500"
-                      )} />
-                      <div className="bg-zinc-50 p-4 rounded-2xl border border-zinc-100">
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <span className="text-xs font-bold text-zinc-700">{review.reviewer_name}</span>
-                            <span className="text-[10px] text-zinc-400 bg-zinc-200 px-1.5 py-0.5 rounded ml-2 font-mono uppercase">
-                              {review.reviewer_role === 'CLASS_ADVISOR' ? 'Advisor' : review.reviewer_role}
-                            </span>
-                          </div>
-                          <span className="text-[10px] text-zinc-400">{new Date(review.created_at).toLocaleString()}</span>
-                        </div>
-                        <p className="text-xs text-zinc-500">
-                          Status: <span className="font-bold">{review.previous_status || 'PENDING'}</span> &rarr; <span className="font-bold">{review.new_status}</span>
+                <button
+                  onClick={() => setShowTaskPreview(false)}
+                  className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-zinc-900 transition-colors"
+                >
+                  <XCircle size={24} />
+                </button>
+                <h2 className="text-2xl font-bold mb-2">Live Preview</h2>
+                <p className="text-zinc-500 text-sm mb-6">This is exactly what students will see.</p>
+
+                <ContentCard className="p-0 overflow-hidden mb-6 border-2 border-zinc-100 shadow-none">
+                  <div className="p-6 md:p-8 border-b border-zinc-100 bg-zinc-50/50">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
+                      <div>
+                        <span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-xs font-bold uppercase tracking-wider mb-2 inline-block border border-indigo-100">
+                          {newTask.category || 'CATEGORY'}
+                        </span>
+                        <h3 className="text-xl font-bold text-zinc-900 tracking-tight">{newTask.title || "Untitled Task"}</h3>
+                      </div>
+                      <div className="text-left md:text-right">
+                        <p className="text-xs text-zinc-400 uppercase font-bold tracking-wider mb-1">Deadline</p>
+                        <p className="text-sm font-bold text-red-500 bg-red-50 px-2 py-1 rounded inline-block border border-red-100">
+                          {newTask.deadline ? new Date(newTask.deadline).toLocaleString() : "No deadline set"}
                         </p>
-                        {review.feedback && (
-                          <div className="mt-2 text-xs font-medium text-zinc-600 bg-white p-2 rounded-lg border border-zinc-150 whitespace-pre-wrap">
-                            "{review.feedback}"
-                          </div>
-                        )}
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
-              <Button onClick={() => setShowReviewsModal(false)} className="w-full mt-6">Close History</Button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+                    <p className="text-zinc-600 text-sm whitespace-pre-wrap">{newTask.description || "No description provided."}</p>
 
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-zinc-200 flex flex-col">
-        <div className="p-4 border-b border-zinc-100">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 shadow-md border-2 border-zinc-200">
-              <img src="/logo.png" alt="VSBEC Logo" className="w-full h-full object-cover" />
+                    {newTask.external_link && (
+                      <div className="mt-4">
+                        <a
+                          href={newTask.external_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-700 text-sm font-bold"
+                        >
+                          <ExternalLink size={16} /> Visit External Link
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-6 md:p-8 space-y-6">
+                    <div>
+                      <label className="text-sm font-bold text-zinc-700 mb-2 block tracking-tight">
+                        {newTask.custom_field_label || "Custom Field"}
+                      </label>
+                      <Input placeholder={`Enter ${newTask.custom_field_label || "value"}...`} disabled />
+                    </div>
+                    <div>
+                      <label className="text-sm font-bold text-zinc-700 mb-2 block tracking-tight">
+                        {newTask.screenshot_instruction || "Upload Screenshot"}
+                      </label>
+                      <div className="border-2 border-dashed border-zinc-200 rounded-xl p-8 flex flex-col items-center justify-center text-zinc-400 bg-zinc-50 cursor-not-allowed">
+                        <Upload size={32} className="mb-2 opacity-50" />
+                        <p className="text-sm font-medium">Click or drag to upload screenshot</p>
+                      </div>
+                    </div>
+                    <Button className="w-full" disabled>Submit Task</Button>
+                  </div>
+                </ContentCard>
+
+                <div className="mt-8 flex gap-4">
+                  <Button variant="secondary" className="flex-1" onClick={() => setShowTaskPreview(false)}>Back to Edit</Button>
+                  <Button className="flex-1" onClick={() => { createTask(); setShowTaskPreview(false); }}>Publish Task</Button>
+                </div>
+              </motion.div>
             </div>
-            <span className={cn(
-              "font-bold px-2 py-0.5 rounded text-xs tracking-wider",
-              user?.is_year_coordinator
-                ? "bg-indigo-100 text-indigo-700"
-                : "text-zinc-900"
-            )}>
-              {isAdmin ? 'SUPREME' : isHOD ? 'HOD PORTAL' : user?.is_year_coordinator ? 'YEAR COORD' : isAdvisor ? 'ADVISOR' : isCoordinator ? 'COORDINATOR' : 'STUDENT'}
-            </span>
-          </div>
-        </div>
-
-        <nav className="flex-1 p-4 space-y-1">
-          <SidebarItem
-            icon={<LayoutDashboard size={20} />}
-            label="Dashboard"
-            active={view === 'dashboard'}
-            onClick={() => setView('dashboard')}
-          />
-
-          {isAdmin && (
-            <>
-              <SidebarItem
-                icon={<Building2 size={20} />}
-                label="Departments"
-                active={view === 'departments'}
-                onClick={() => setView('departments')}
-              />
-              <SidebarItem
-                icon={<Users size={20} />}
-                label="HOD Accounts"
-                active={view === 'users'}
-                onClick={() => setView('users')}
-              />
-            </>
           )}
-
-          {isHOD && (
-            <>
-              <SidebarItem
-                icon={<Building2 size={20} />}
-                label="Classes"
-                active={view === 'classes'}
-                onClick={() => setView('classes')}
-              />
-              <SidebarItem
-                icon={<Users size={20} />}
-                label="Class Advisors"
-                active={view === 'users'}
-                onClick={() => setView('users')}
-              />
-            </>
-          )}
-
-          {isAdvisor && (
-            <>
-              <SidebarItem
-                icon={<Building2 size={20} />}
-                label="My Class"
-                active={view === 'my-class'}
-                onClick={() => setView('my-class')}
-              />
-              <SidebarItem
-                icon={<Users size={20} />}
-                label="Students"
-                active={view === 'users'}
-                onClick={() => setView('users')}
-              />
-            </>
-          )}
-
-          <SidebarItem
-            icon={<ClipboardList size={20} />}
-            label="Tasks"
-            active={view === 'tasks'}
-            onClick={() => setView('tasks')}
-          />
-
-          {(isAdvisor || isHOD || isAdmin || isCoordinator) && (
-            <SidebarItem
-              icon={<ShieldCheck size={20} />}
-              label="Verifications"
-              active={view === 'verifications'}
-              onClick={() => setView('verifications')}
-            />
-          )}
-
-          {isStudent && (
-            <>
-              <SidebarItem
-                icon={<CheckCircle2 size={20} />}
-                label="My Submissions"
-                active={view === 'submissions'}
-                onClick={() => setView('submissions')}
-              />
-            </>
-          )}
-        </nav>
-
-        <div className="p-4 border-t border-zinc-100">
-          <div className="px-4 py-2 mb-4">
-            <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Logged in as</p>
-            <p className="text-sm font-medium text-zinc-900 truncate">{user?.full_name}</p>
-            <p className="text-[10px] text-zinc-500">
-              {user?.is_year_coordinator ? `Year ${user.year_scope} Coordinator` : user?.role}
-              {user?.department_name ? ` • ${user.department_name}` : ''}
-            </p>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-4 py-2 text-zinc-500 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-          >
-            <LogOut size={20} />
-            <span className="font-medium">Logout</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto flex flex-col">
-        <header className="bg-white border-b border-zinc-200 px-4 md:px-8 py-4 flex items-center justify-between sticky top-0 z-10 w-full shrink-0">
-          <div>
-            <h2 className="text-lg font-semibold text-zinc-900 capitalize">{view}</h2>
-            <p className="text-sm text-zinc-500">Academic Management System</p>
-          </div>
-          <div className="flex items-center gap-4">
-            {isHOD && (
-              <Button variant="success" className="flex items-center gap-2" onClick={() => setShowExportModal(true)}>
-                <FileDown size={18} /> Export Custom Report
-              </Button>
-            )}
-            {(isAdvisor || isCoordinator) && (
-              <Button variant="success" className="flex items-center gap-2" onClick={() => setShowExportModal(true)}>
-                <FileDown size={18} /> Export Class Report
-              </Button>
-            )}
-            <div className="flex-1" />
-            <div className="relative group">
-              <button
-                className="p-2 text-zinc-400 hover:text-zinc-900 transition-colors relative"
-                onClick={markNotificationsRead}
+        </AnimatePresence>
+        {/* Reviews Modal */}
+        <AnimatePresence>
+          {showReviewsModal && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl relative"
               >
-                <Bell size={20} />
-                {notifications.filter(n => !n.is_read).length > 0 && (
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
-                )}
-              </button>
-              <div className="absolute right-0 mt-2 w-80 bg-white border border-zinc-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-4">
-                <h3 className="text-sm font-bold mb-3">Notifications</h3>
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {notifications.length === 0 ? (
-                    <p className="text-xs text-zinc-400 text-center py-4">No notifications yet</p>
+                <button
+                  onClick={() => setShowReviewsModal(false)}
+                  className="absolute top-6 right-6 p-2 hover:bg-zinc-100 rounded-full transition-colors"
+                >
+                  <XCircle size={24} className="text-zinc-400" />
+                </button>
+                <h3 className="text-xl font-bold text-zinc-900 mb-6">Review & Feedback History</h3>
+                <div className="space-y-6 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+                  {selectedSubReviews.length === 0 ? (
+                    <p className="text-sm text-zinc-500 text-center py-4">No review history available.</p>
                   ) : (
-                    notifications.map(n => (
-                      <div key={n.id} className={cn("p-3 rounded-lg text-xs", n.is_read ? "bg-zinc-50" : "bg-blue-50 border border-blue-100")}>
-                        <p className="text-zinc-900 mb-1">{n.message}</p>
-                        <p className="text-[10px] text-zinc-400">{new Date(n.created_at).toLocaleString()}</p>
+                    selectedSubReviews.map((review: any) => (
+                      <div key={review.id} className="relative pl-6 border-l-2 border-zinc-200 last:border-transparent pb-4">
+                        <div className={cn(
+                          "absolute -left-[9px] top-1 w-4 h-4 rounded-full border-2 border-white",
+                          review.new_status === 'VERIFIED' ? "bg-emerald-500" :
+                            review.new_status === 'REJECTED' ? "bg-red-500" : "bg-orange-500"
+                        )} />
+                        <div className="bg-zinc-50 p-4 rounded-2xl border border-zinc-100">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <span className="text-xs font-bold text-zinc-700">{review.reviewer_name}</span>
+                              <span className="text-xs text-zinc-400 bg-zinc-200 px-1.5 py-0.5 rounded ml-2 font-mono uppercase">
+                                {review.reviewer_role === 'CLASS_ADVISOR' ? 'Advisor' : review.reviewer_role}
+                              </span>
+                            </div>
+                            <span className="text-xs text-zinc-400">{new Date(review.created_at).toLocaleString()}</span>
+                          </div>
+                          <p className="text-xs text-zinc-500">
+                            Status: <span className="font-bold">{review.previous_status || 'PENDING'}</span> &rarr; <span className="font-bold">{review.new_status}</span>
+                          </p>
+                          {review.feedback && (
+                            <div className="mt-2 text-xs font-medium text-zinc-600 bg-white p-2 rounded-lg border border-zinc-150 whitespace-pre-wrap">
+                              "{review.feedback}"
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ))
                   )}
                 </div>
+                <Button onClick={() => setShowReviewsModal(false)} className="w-full mt-6">Close History</Button>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Sidebar - Desktop */}
+        <aside className="w-64 bg-white border-r border-zinc-200 flex flex-col shrink-0 hidden md:flex h-full">
+          {renderSidebarContent()}
+        </aside>
+
+        {/* Sidebar - Mobile Drawer */}
+        <AnimatePresence>
+          {isMobileSidebarOpen && (
+            <div className="fixed inset-0 z-50 flex md:hidden">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsMobileSidebarOpen(false)}
+                className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+              />
+              <motion.aside
+                initial={{ x: '-100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '-100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                className="relative w-64 max-w-xs bg-white h-full flex flex-col border-r border-zinc-200 shadow-2xl z-10"
+              >
+                {renderSidebarContent()}
+              </motion.aside>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Main Content */}
+        <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+          <header className="h-20 bg-white border-b border-zinc-200 px-4 md:px-8 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-4 min-w-0">
+              <button 
+                onClick={() => setIsMobileSidebarOpen(true)}
+                className="p-2 -ml-2 text-zinc-500 hover:text-zinc-900 md:hidden rounded-lg hover:bg-zinc-50"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
+              </button>
+              <div className="min-w-0">
+                <h2 className="text-xl font-bold text-zinc-900 tracking-tight capitalize truncate">{view === 'departments' ? 'Classes' : view}</h2>
+                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider truncate">Academic Management System</p>
               </div>
             </div>
-          </div>
-        </header>
+            <div className="flex items-center gap-4 shrink-0">
+              {isHOD && (
+                <Button variant="success" className="flex items-center gap-2" onClick={() => setShowExportModal(true)}>
+                  <FileDown size={18} /> Export Custom Report
+                </Button>
+              )}
+              {(isAdvisor || isCoordinator) && (
+                <Button variant="success" className="flex items-center gap-2" onClick={() => setShowExportModal(true)}>
+                  <FileDown size={18} /> Export Class Report
+                </Button>
+              )}
+              <div className="flex-1" />
+              <div className="relative group">
+                <button
+                  className="p-2 text-zinc-400 hover:text-zinc-900 transition-colors relative"
+                  onClick={markNotificationsRead}
+                >
+                  <Bell size={20} />
+                  {notifications.filter(n => !n.is_read).length > 0 && (
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
+                  )}
+                </button>
+                <div className="absolute right-0 mt-2 w-80 bg-white border border-zinc-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-4">
+                  <h3 className="text-sm font-bold mb-3">Notifications</h3>
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <p className="text-xs text-zinc-400 text-center py-4">No notifications yet</p>
+                    ) : (
+                      notifications.map(n => (
+                        <div key={n.id} className={cn("p-3 rounded-lg text-xs", n.is_read ? "bg-zinc-50" : "bg-blue-50 border border-blue-100")}>
+                          <p className="text-zinc-900 mb-1">{n.message}</p>
+                          <p className="text-xs text-zinc-400">{new Date(n.created_at).toLocaleString()}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </header>
 
-        <div className="p-8 max-w-7xl mx-auto">
-          <AnimatePresence mode="wait">
+          <div className="flex-1 min-h-0 bg-[#F5F5F4] relative">
+            <AnimatePresence mode="wait">
             {view === 'dashboard' && (
               <motion.div
                 key="dashboard"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="space-y-8"
+                className="w-full h-full flex flex-col min-h-0"
               >
-                {isAdmin ? (
-                  <UnifiedAnalyzer role="SUPREME_ADMIN" title="Global System Analyzer" />
-                ) : isHOD ? (
-                  <div className="flex flex-col gap-10">
-                    {/* Premium Header Stats */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                      <div className="bg-white p-6 rounded-3xl border border-zinc-100 shadow-sm hover:shadow-md transition-all group">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
-                            <Building2 size={24} />
-                          </div>
-                          <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-full uppercase tracking-widest">Departments</span>
-                        </div>
-                        <p className="text-3xl font-black text-zinc-900">{hodStats?.total_classes || 0}</p>
-                        <p className="text-xs font-bold text-zinc-400 mt-1 uppercase tracking-tighter">Active Dept. Classes</p>
+                <PageLayout>
+                  {isAdmin ? (
+                    <UnifiedAnalyzer role="SUPREME_ADMIN" title="Global System Analyzer" />
+                  ) : isHOD ? (
+                    <div className="flex flex-col gap-10">
+                      {/* Premium Header Stats */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <StatCard title="Active Classes" value={hodStats?.total_classes || 0} icon={<Building2 />} color="blue" />
+                        <StatCard title="Class Advisors" value={hodStats?.total_advisors || 0} icon={<Users />} color="emerald" />
+                        <StatCard title="Total Enrollment" value={hodStats?.total_students || 0} icon={<Users />} color="indigo" />
+                        <StatCard title="Tasks Under Oversight" value={hodStats?.taskStats?.length || 0} icon={<ClipboardList />} color="orange" />
                       </div>
-
-                      <div className="bg-white p-6 rounded-3xl border border-zinc-100 shadow-sm hover:shadow-md transition-all group">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 group-hover:scale-110 transition-transform">
-                            <Users size={24} />
-                          </div>
-                          <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full uppercase tracking-widest">Advisors</span>
-                        </div>
-                        <p className="text-3xl font-black text-zinc-900">{hodStats?.total_advisors || 0}</p>
-                        <p className="text-xs font-bold text-zinc-400 mt-1 uppercase tracking-tighter">Dept. Class Advisors</p>
-                      </div>
-
-                      <div className="bg-white p-6 rounded-3xl border border-zinc-100 shadow-sm hover:shadow-md transition-all group">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
-                            <Users size={24} />
-                          </div>
-                          <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full uppercase tracking-widest">Students</span>
-                        </div>
-                        <p className="text-3xl font-black text-zinc-900">{hodStats?.total_students || 0}</p>
-                        <p className="text-xs font-bold text-zinc-400 mt-1 uppercase tracking-tighter">Total Dept. Enrollment</p>
-                      </div>
-
-                      <div className="bg-white p-6 rounded-3xl border border-zinc-100 shadow-sm hover:shadow-md transition-all group">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-600 group-hover:scale-110 transition-transform">
-                            <ClipboardList size={24} />
-                          </div>
-                          <span className="text-[10px] font-black text-orange-600 bg-orange-50 px-2 py-1 rounded-full uppercase tracking-widest">Tasks</span>
-                        </div>
-                        <p className="text-3xl font-black text-zinc-900">{hodStats?.taskStats?.length || 0}</p>
-                        <p className="text-xs font-bold text-zinc-400 mt-1 uppercase tracking-tighter">Tasks Under Oversight</p>
-                      </div>
-                    </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                       {/* Left Column: Quick Actions & Overview */}
@@ -2083,9 +2297,9 @@ export default function App() {
 
                       </div>
 
-                      {/* Right Column: Unified Department Analyzer */}
+                      {/* Right Column: Unified Class Analyzer */}
                       <div className="lg:col-span-8 space-y-8">
-                        <UnifiedAnalyzer role="HOD" title="Department Analyzer" />
+                        <UnifiedAnalyzer role="HOD" title="Class Analyzer" />
                       </div>
                     </div>
                   </div>
@@ -2093,38 +2307,9 @@ export default function App() {
                   <div className="flex flex-col gap-10">
                     {/* Coordinator Header Stats */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div className="bg-white p-6 rounded-3xl border border-zinc-100 shadow-sm hover:shadow-md transition-all group">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
-                            <Building2 size={24} />
-                          </div>
-                          <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-full uppercase tracking-widest">Year Classes</span>
-                        </div>
-                        <p className="text-3xl font-black text-zinc-900">{yearStats?.total_classes || 0}</p>
-                        <p className="text-xs font-bold text-zinc-400 mt-1 uppercase tracking-tighter">Oversight for Year {user.year_scope}</p>
-                      </div>
-
-                      <div className="bg-white p-6 rounded-3xl border border-zinc-100 shadow-sm hover:shadow-md transition-all group">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
-                            <Users size={24} />
-                          </div>
-                          <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full uppercase tracking-widest">Year Enrollment</span>
-                        </div>
-                        <p className="text-3xl font-black text-zinc-900">{yearStats?.total_students || 0}</p>
-                        <p className="text-xs font-bold text-zinc-400 mt-1 uppercase tracking-tighter">Total Students in Year</p>
-                      </div>
-
-                      <div className="bg-white p-6 rounded-3xl border border-zinc-100 shadow-sm hover:shadow-md transition-all group">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-600 group-hover:scale-110 transition-transform">
-                            <ClipboardList size={24} />
-                          </div>
-                          <span className="text-[10px] font-black text-orange-600 bg-orange-50 px-2 py-1 rounded-full uppercase tracking-widest">Year Events</span>
-                        </div>
-                        <p className="text-3xl font-black text-zinc-900">{yearStats?.taskStats?.length || 0}</p>
-                        <p className="text-xs font-bold text-zinc-400 mt-1 uppercase tracking-tighter">Active Year-wide Tasks</p>
-                      </div>
+                      <StatCard title={`Oversight for Year ${user.year_scope}`} value={yearStats?.total_classes || 0} icon={<Building2 />} color="blue" />
+                      <StatCard title="Total Students in Year" value={yearStats?.total_students || 0} icon={<Users />} color="indigo" />
+                      <StatCard title="Active Year-wide Tasks" value={yearStats?.taskStats?.length || 0} icon={<ClipboardList />} color="orange" />
                     </div>
 
                     <UnifiedAnalyzer role="YEAR_COORDINATOR" title={`Year ${user.year_scope} Oversight Analyzer`} />
@@ -2137,9 +2322,9 @@ export default function App() {
                           <h3 className="text-xl font-bold text-zinc-600">My Class Dashboard</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                          <StatCard title="Class Students" value={users.filter(u => u.role === 'STUDENT' && u.class_id?.toString() === user?.class_id?.toString()).length} icon={<Users />} color="bg-blue-500" />
-                          <StatCard title="Submitted" value={new Set(submissions.filter(s => s.status === 'SUBMITTED' && s.class_id?.toString() === user?.class_id?.toString()).map(s => `${s.user_id}-${s.task_id}`)).size} icon={<Clock />} color="bg-orange-500" />
-                          <StatCard title="Verified" value={new Set(submissions.filter(s => s.status === 'VERIFIED' && s.class_id?.toString() === user?.class_id?.toString()).map(s => `${s.user_id}-${s.task_id}`)).size} icon={<CheckCircle2 />} color="bg-emerald-500" />
+                          <StatCard title="Class Students" value={coordinatorStats?.total_students || 0} icon={<Users />} color="bg-blue-500" />
+                          <StatCard title="Submitted" value={coordinatorStats?.pending_reviews || 0} icon={<Clock />} color="bg-orange-500" />
+                          <StatCard title="Verified" value={coordinatorStats?.verified_submissions || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
                         </div>
                         <div className="mt-8">
                           <UnifiedAnalyzer role="CLASS_ADVISOR" title="Class Performance Analyzer" />
@@ -2150,9 +2335,9 @@ export default function App() {
                 ) : isAdvisor ? (
                   <div className="flex flex-col gap-10">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <StatCard title="Class Students" value={users.filter(u => u.role === 'STUDENT' && u.class_id?.toString() === user?.class_id?.toString()).length} icon={<Users />} color="bg-blue-500" />
-                      <StatCard title="Submitted" value={new Set(submissions.filter(s => s.status === 'SUBMITTED' && s.class_id?.toString() === user?.class_id?.toString()).map(s => `${s.user_id}-${s.task_id}`)).size} icon={<Clock />} color="bg-orange-500" />
-                      <StatCard title="Verified" value={new Set(submissions.filter(s => s.status === 'VERIFIED' && s.class_id?.toString() === user?.class_id?.toString()).map(s => `${s.user_id}-${s.task_id}`)).size} icon={<CheckCircle2 />} color="bg-emerald-500" />
+                      <StatCard title="Class Students" value={advisorStats?.total_students || 0} icon={<Users />} color="bg-blue-500" />
+                      <StatCard title="Submitted" value={advisorStats?.submitted_tasks_count || 0} icon={<Clock />} color="bg-orange-500" />
+                      <StatCard title="Verified" value={advisorStats?.verified_tasks_count || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
                     </div>
                     <UnifiedAnalyzer role="CLASS_ADVISOR" title="Class Performance Analyzer" />
                   </div>
@@ -2191,7 +2376,7 @@ export default function App() {
 
                 {/* Removed redundant HOD Stats section */}
 
-                <Card>
+                <ContentCard>
                   <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
                   <div className="space-y-4">
                     {tasks.slice(0, 5).map(task => (
@@ -2214,7 +2399,8 @@ export default function App() {
                       </div>
                     ))}
                   </div>
-                </Card>
+                </ContentCard>
+                </PageLayout>
               </motion.div>
             )}
 
@@ -2223,43 +2409,45 @@ export default function App() {
                 key="departments"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="space-y-6"
+                className="w-full h-full flex flex-col min-h-0"
               >
-                <Card>
-                  <h3 className="text-lg font-semibold mb-4">Create New Department</h3>
-                  <form onSubmit={createDepartment} className="flex gap-4">
-                    <Input
-                      placeholder="e.g. Computer Science & Engineering"
-                      value={newDept}
-                      onChange={e => setNewDept(e.target.value)}
-                      required
-                    />
-                    <Button className="whitespace-nowrap flex items-center gap-2">
-                      <Plus size={18} /> Create
-                    </Button>
-                  </form>
-                </Card>
+                <PageLayout>
+                  <ContentCard>
+                    <h3 className="text-lg font-semibold mb-4">Create New Department</h3>
+                    <form onSubmit={createDepartment} className="flex gap-4">
+                      <Input
+                        placeholder="e.g. Computer Science & Engineering"
+                        value={newDept}
+                        onChange={e => setNewDept(e.target.value)}
+                        required
+                      />
+                      <Button className="whitespace-nowrap flex items-center gap-2">
+                        <Plus size={18} /> Create Department
+                      </Button>
+                    </form>
+                  </ContentCard>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {departments.map(dept => (
-                    <Card key={dept.id} className="flex items-center justify-between group">
-                      <div>
-                        <p className="font-bold text-zinc-900">{dept.name}</p>
-                        <p className="text-xs text-zinc-500">ID: {dept.id}</p>
-                      </div>
-                      <button
-                        onClick={() => {
-                          if (confirm('Delete department?')) {
-                            fetch(`${API_URL}/api/departments/${dept.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).then(() => fetchInitialData());
-                          }
-                        }}
-                        className="p-2 text-zinc-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </Card>
-                  ))}
-                </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {departments.map(dept => (
+                      <Card key={dept.id} className="flex items-center justify-between group">
+                        <div>
+                          <p className="font-bold text-zinc-900">{dept.name}</p>
+                          <p className="text-xs text-zinc-500">ID: {dept.id}</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            if (confirm('Delete department?')) {
+                              fetch(`${API_URL}/api/departments/${dept.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).then(() => fetchInitialData());
+                            }
+                          }}
+                          className="p-2 text-zinc-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </Card>
+                    ))}
+                  </div>
+                </PageLayout>
               </motion.div>
             )}
 
@@ -2268,81 +2456,85 @@ export default function App() {
                 key="classes"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="space-y-6"
+                className="w-full h-full flex flex-col min-h-0"
               >
-                <Card>
-                  <h3 className="text-lg font-bold mb-4">Add New Class</h3>
-                  <form onSubmit={createClass} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-1 md:col-span-3">
-                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Class Name</label>
-                        <Input
-                          placeholder="e.g. CSE-A"
-                          value={newClass.name}
-                          onChange={e => setNewClass(prev => ({ ...prev, name: e.target.value }))}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Year</label>
-                        <Input
-                          type="number"
-                          placeholder="e.g. 3"
-                          value={newClass.year}
-                          onChange={e => setNewClass(prev => ({ ...prev, year: e.target.value }))}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-1 md:col-span-2">
-                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Batch Period</label>
-                        <Input
-                          placeholder="e.g. 2023-2027"
-                          value={newClass.batch}
-                          onChange={e => setNewClass(prev => ({ ...prev, batch: e.target.value }))}
-                          required
-                        />
-                      </div>
-                    </div>
-                    <Button className="w-full flex items-center justify-center gap-2">
-                      <Plus size={18} /> Add New Class to Department
-                    </Button>
-                  </form>
-                </Card>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {classes.map(c => (
-                    <Card key={c.id} className="relative overflow-hidden group border-zinc-200 hover:border-blue-500 transition-colors">
-                      <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/5 -mr-4 -mt-4 rounded-full" />
-                      <div className="flex flex-col h-full">
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="p-2.5 bg-blue-100 text-blue-600 rounded-xl">
-                            <Building2 size={20} />
-                          </div>
-                          <button
-                            onClick={() => {
-                              if (confirm('Are you sure? This will delete all students and tasks associated with this class.')) {
-                                fetch(`${API_URL}/api/classes/${c.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).then(() => fetchInitialData());
-                              }
-                            }}
-                            className="p-2 text-zinc-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                <PageLayout>
+                  <ContentCard>
+                    <h3 className="text-lg font-bold mb-4">Add New Class</h3>
+                    <form onSubmit={createClass} className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1 md:col-span-2">
+                          <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Class Name</label>
+                          <Select
+                            value={newClass.name}
+                            onChange={e => setNewClass(prev => ({ ...prev, name: e.target.value }))}
+                            required
                           >
-                            <Trash2 size={18} />
-                          </button>
+                            <option value="">Select Class Name</option>
+                            <option value="III IT A">III IT A</option>
+                            <option value="III IT B">III IT B</option>
+                            <option value="III IT C">III IT C</option>
+                          </Select>
                         </div>
-                        <h4 className="font-black text-lg text-zinc-900 mb-1">{c.name}</h4>
-                        <div className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-tight">
-                          <span>Year {c.year}</span>
-                          <span className="w-1 h-1 bg-zinc-300 rounded-full" />
-                          <span>{c.batch}</span>
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Year</label>
+                          <Input
+                            type="number"
+                            value={newClass.year || '3'}
+                            disabled
+                            required
+                          />
                         </div>
-                        <div className="mt-auto pt-6 flex items-center justify-between text-[10px] font-black text-zinc-400 uppercase tracking-widest">
-                          <span>Class ID: {c.id}</span>
-                          <span className="px-2 py-0.5 bg-zinc-100 rounded text-zinc-500">Department Pool</span>
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Batch Period</label>
+                          <Input
+                            value={newClass.batch || '2024-2028'}
+                            disabled
+                            required
+                          />
                         </div>
                       </div>
-                    </Card>
-                  ))}
-                </div>
+                      <Button className="w-full flex items-center justify-center gap-2">
+                        <Plus size={18} /> Add New Class to Department
+                      </Button>
+                    </form>
+                  </ContentCard>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {classes.map(c => (
+                      <Card key={c.id} className="relative overflow-hidden group border-zinc-200 hover:border-blue-500 transition-colors">
+                        <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/5 -mr-4 -mt-4 rounded-full" />
+                        <div className="flex flex-col h-full">
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="p-2.5 bg-blue-100 text-blue-600 rounded-xl">
+                              <Building2 size={20} />
+                            </div>
+                            <button
+                              onClick={() => {
+                                if (confirm('Are you sure? This will delete all students and tasks associated with this class.')) {
+                                  fetch(`${API_URL}/api/classes/${c.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).then(() => fetchInitialData());
+                                }
+                              }}
+                              className="p-2 text-zinc-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                          <h4 className="font-black text-lg text-zinc-900 mb-1">{c.name}</h4>
+                          <div className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-tight">
+                            <span>Year {c.year}</span>
+                            <span className="w-1 h-1 bg-zinc-300 rounded-full" />
+                            <span>{c.batch}</span>
+                          </div>
+                          <div className="mt-auto pt-6 flex items-center justify-between text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                            <span>Class ID: {c.id}</span>
+                            <span className="px-2 py-0.5 bg-zinc-100 rounded text-zinc-500">Class Pool</span>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </PageLayout>
               </motion.div>
             )}
 
@@ -2351,54 +2543,53 @@ export default function App() {
                 key="my-class"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="space-y-6"
+                className="w-full h-full flex flex-col min-h-0"
               >
-                <Card>
-                  <h3 className="text-lg font-semibold mb-4">Class Details</h3>
-                  <form onSubmit={createClass} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500 uppercase">Class Name</label>
-                        <Input
-                          placeholder="e.g. CSE-A"
-                          value={newClass.name || myClass?.name || ''}
-                          onChange={e => setNewClass(prev => ({ ...prev, name: e.target.value }))}
-                          required
-                        />
+                <PageLayout>
+                  <ContentCard>
+                    <h3 className="text-lg font-semibold mb-4">Class Details</h3>
+                    <form onSubmit={createClass} className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-zinc-500 uppercase">Class Name</label>
+                          <Input
+                            value={newClass.name || myClass?.name || ''}
+                            disabled
+                            required
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-zinc-500 uppercase">Year</label>
+                          <Input
+                            type="number"
+                            value={newClass.year || myClass?.year || '3'}
+                            disabled
+                            required
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-zinc-500 uppercase">Batch</label>
+                          <Input
+                            value={newClass.batch || myClass?.batch || '2024-2028'}
+                            disabled
+                            required
+                          />
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500 uppercase">Year</label>
-                        <Input
-                          type="number"
-                          placeholder="e.g. 3"
-                          value={newClass.year || myClass?.year || ''}
-                          onChange={e => setNewClass(prev => ({ ...prev, year: e.target.value }))}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500 uppercase">Batch</label>
-                        <Input
-                          placeholder="e.g. 2023-2027"
-                          value={newClass.batch || myClass?.batch || ''}
-                          onChange={e => setNewClass(prev => ({ ...prev, batch: e.target.value }))}
-                          required
-                        />
-                      </div>
-                    </div>
-                    <Button className="flex items-center gap-2">
-                      <Plus size={18} /> Update Class Info
-                    </Button>
-                  </form>
-                </Card>
+                      <Button className="flex items-center gap-2">
+                        <Plus size={18} /> Update Class Info
+                      </Button>
+                    </form>
+                  </ContentCard>
 
-                {myClass && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <StatCard title="Class Name" value={myClass.name as any} icon={<Building2 />} color="bg-blue-500" />
-                    <StatCard title="Year" value={myClass.year as any} icon={<ClipboardList />} color="bg-emerald-500" />
-                    <StatCard title="Batch" value={myClass.batch as any} icon={<Users />} color="bg-purple-500" />
-                  </div>
-                )}
+                  {myClass && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <StatCard title="Class Name" value={myClass.name as any} icon={<Building2 />} color="bg-blue-500" />
+                      <StatCard title="Year" value={myClass.year as any} icon={<ClipboardList />} color="bg-emerald-500" />
+                      <StatCard title="Batch" value={myClass.batch as any} icon={<Users />} color="bg-purple-500" />
+                    </div>
+                  )}
+                </PageLayout>
               </motion.div>
             )}
 
@@ -2407,235 +2598,281 @@ export default function App() {
                 key="users"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="space-y-6"
+                className="w-full h-full flex flex-col min-h-0"
               >
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
-                  <h3 className="text-xl font-bold text-zinc-900">
-                    {isAdmin ? 'All Users' : isHOD ? 'Class Advisors & Students' : 'Students'}
-                  </h3>
-                  {/* SA Filters */}
-                  {isAdmin && (
-                    <div className="flex flex-wrap gap-3 w-full md:w-auto">
-                      <select
-                        className="px-3 py-2 rounded-xl border border-zinc-200 bg-white text-sm font-semibold text-zinc-700 focus:outline-none focus:ring-2 focus:ring-black/10"
-                        value={userRoleFilter}
-                        onChange={e => { setUserRoleFilter(e.target.value); setUserPage(1); }}
-                      >
-                        <option value="">All Roles</option>
-                        <option value="HOD">HOD</option>
-                        <option value="CLASS_ADVISOR">Class Advisor</option>
-                        <option value="STUDENT">Student</option>
-                      </select>
-                      <select
-                        className="px-3 py-2 rounded-xl border border-zinc-200 bg-white text-sm font-semibold text-zinc-700 focus:outline-none focus:ring-2 focus:ring-black/10"
-                        value={userDeptFilter}
-                        onChange={e => { setUserDeptFilter(e.target.value); setUserPage(1); }}
-                      >
-                        <option value="">All Departments</option>
-                        {departments.map(d => (
-                          <option key={d.id} value={d.id}>{d.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  {isHOD && (
-                    <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
-                      <div className="bg-zinc-100 p-1 rounded-xl flex">
-                        {['ALL', 'CLASS_ADVISOR', 'STUDENT'].map(filter => (
-                          <button
-                            key={filter}
-                            onClick={() => setStudentFilter(filter as any)}
-                            className={cn(
-                              "px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex-1",
-                              studentFilter === filter ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
-                            )}
-                          >
-                            {filter === 'CLASS_ADVISOR' ? 'Advisors' : filter === 'STUDENT' ? 'Students' : 'All'}
-                          </button>
-                        ))}
+                <PageLayout>
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
+                    <h3 className="text-xl font-bold text-zinc-900">
+                      {isAdmin ? 'All Users' : isHOD ? 'Class Advisors & Students' : 'Students'}
+                    </h3>
+                    {/* SA Filters */}
+                    {isAdmin && (
+                      <div className="flex flex-wrap gap-3 w-full md:w-auto">
+                        <select
+                          className="px-3 py-2 rounded-xl border border-zinc-200 bg-white text-sm font-semibold text-zinc-700 focus:outline-none focus:ring-2 focus:ring-black/10"
+                          value={userRoleFilter}
+                          onChange={e => { setUserRoleFilter(e.target.value); setUserPage(1); }}
+                        >
+                          <option value="">All Roles</option>
+                          <option value="HOD">HOD</option>
+                          <option value="CLASS_ADVISOR">Class Advisor</option>
+                          <option value="STUDENT">Student</option>
+                        </select>
+                        <select
+                          className="px-3 py-2 rounded-xl border border-zinc-200 bg-white text-sm font-semibold text-zinc-700 focus:outline-none focus:ring-2 focus:ring-black/10"
+                          value={userDeptFilter}
+                          onChange={e => { setUserDeptFilter(e.target.value); setUserPage(1); }}
+                        >
+                          <option value="">All Departments</option>
+                          {departments.map(d => (
+                            <option key={d.id} value={d.id}>{d.name}</option>
+                          ))}
+                        </select>
                       </div>
-                    </div>
-                  )}
-                  {isAdvisor && (
-                    <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
-                      <div className="bg-zinc-100 p-1 rounded-xl flex">
-                        {['ALL', 'ACTIVE', 'COORDINATORS'].map(filter => (
-                          <button
-                            key={filter}
-                            onClick={() => setStudentFilter(filter as any)}
-                            className={cn(
-                              "px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex-1",
-                              studentFilter === filter ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
-                            )}
-                          >
-                            {filter.charAt(0) + filter.slice(1).toLowerCase()}
-                          </button>
-                        ))}
-                      </div>
-                      <label
-                        className={cn(
-                          "cursor-pointer flex-shrink-0 relative group border-2 border-dashed rounded-xl transition-all",
-                          isDraggingExcel ? "border-blue-500 bg-blue-50 scale-105" : "border-transparent"
-                        )}
-                        onDragOver={(e) => { e.preventDefault(); setIsDraggingExcel(true); }}
-                        onDragLeave={() => setIsDraggingExcel(false)}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          setIsDraggingExcel(false);
-                          const file = e.dataTransfer.files[0];
-                          if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
-                            handleBulkImport({ target: { files: [file] } } as any);
-                          } else {
-                            alert('Please drop a valid Excel file (.xlsx or .xls)');
-                          }
-                        }}
-                      >
-                        <input type="file" accept=".xlsx, .xls" className="hidden" onClick={(e: any) => { e.target.value = ''; }} onChange={handleBulkImport} />
-                        <div className="bg-zinc-100 text-zinc-900 hover:bg-zinc-200 px-4 py-2 rounded-lg font-medium transition-all active:scale-95 flex items-center justify-center gap-2 w-full h-full pr-10 relative overflow-visible">
-                          <Upload size={18} /> Import Excel
-                          <div
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-blue-500 transition-colors"
-                            title="Excel Format Rules: Must have columns 'Register Number' and 'Name'. Optional 'Email'. Register numbers should be plain text, avoid scientific notation."
-                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); alert("Excel Rules:\n1. Column headers must include 'Register Number' (or Reg No) and 'Name'.\n2. Do NOT add trailing spaces or zeroes to IDs.\n3. Make sure ID columns are formatted as Text in Excel to prevent auto-zeroes."); }}
-                          >
-                            <Info size={16} />
-                          </div>
-                        </div>
-                      </label>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mb-6">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-                    <Input
-                      placeholder={`Search ${isAdmin ? 'HODs' : isHOD ? 'Advisors or Students' : 'Students'} by name or registration number...`}
-                      className="pl-10"
-                      value={searchTerm}
-                      onChange={e => { setSearchTerm(e.target.value); setUserPage(1); }}
-                    />
-                  </div>
-                </div>
-
-                <Card>
-                  <h3 className="text-lg font-semibold mb-4">
-                    {isAdvisor ? 'Add Student' : `Create ${isAdmin ? 'HOD' : 'Advisor'} Account`}
-                  </h3>
-                  <form onSubmit={createUser} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input
-                      placeholder={isAdvisor ? "Register Number" : "Username"}
-                      value={newUser.username}
-                      onChange={e => setNewUser(prev => ({ ...prev, username: e.target.value, register_number: isAdvisor ? e.target.value : '' }))}
-                      required
-                    />
-                    {!isAdvisor && (
-                      <Input
-                        type="password"
-                        placeholder="Password"
-                        value={newUser.password}
-                        onChange={e => setNewUser(prev => ({ ...prev, password: e.target.value }))}
-                        required
-                      />
                     )}
-                    <Input
-                      placeholder="Full Name"
-                      value={newUser.full_name}
-                      onChange={e => setNewUser(prev => ({ ...prev, full_name: e.target.value }))}
-                      required
-                    />
+                    {isHOD && (
+                      <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+                        <div className="bg-zinc-100 p-1 rounded-xl flex">
+                          {['ALL', 'CLASS_ADVISOR', 'STUDENT'].map(filter => (
+                            <button
+                              key={filter}
+                              onClick={() => setStudentFilter(filter as any)}
+                              className={cn(
+                                "px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex-1",
+                                studentFilter === filter ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                              )}
+                            >
+                              {filter === 'CLASS_ADVISOR' ? 'Advisors' : filter === 'STUDENT' ? 'Students' : 'All'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {isAdvisor && (
-                      <Input
-                        type="email"
-                        placeholder="Email Address"
-                        value={newUser.email}
-                        onChange={e => setNewUser(prev => ({ ...prev, email: e.target.value }))}
-                        required
-                      />
-                    )}
-                    {isAdmin ? (
-                      <select
-                        className="w-full px-4 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all bg-white"
-                        value={newUser.department_id}
-                        onChange={e => setNewUser(prev => ({ ...prev, department_id: e.target.value }))}
-                        required
-                      >
-                        <option value="">Select Department</option>
-                        {departments.map(d => (
-                          <option key={d.id} value={d.id}>{d.name}</option>
-                        ))}
-                      </select>
-                    ) : isHOD ? (
-                      <select
-                        className="w-full px-4 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all bg-white"
-                        value={newUser.class_id}
-                        onChange={e => setNewUser(prev => ({ ...prev, class_id: e.target.value }))}
-                        required
-                      >
-                        <option value="">Select Class</option>
-                        {classes.map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-                    ) : null}
-
-                    {isHOD && newUser.role === 'CLASS_ADVISOR' && (
-                      <div className="md:col-span-2 p-4 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-0.5">
-                            <label className="text-sm font-bold text-zinc-900">Assign as Year Coordinator</label>
-                            <p className="text-xs text-zinc-500">Enable this to allow this advisor to post tasks for an entire year.</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setNewUser(prev => ({ ...prev, is_year_coordinator: !prev.is_year_coordinator }))}
-                            className={cn(
-                              "w-12 h-6 rounded-full transition-colors relative",
-                              newUser.is_year_coordinator ? "bg-black" : "bg-zinc-200"
-                            )}
-                          >
-                            <div className={cn(
-                              "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
-                              newUser.is_year_coordinator ? "right-1" : "left-1"
-                            )} />
-                          </button>
+                      <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+                        <div className="bg-zinc-100 p-1 rounded-xl flex">
+                          {['ALL', 'ACTIVE', 'COORDINATORS'].map(filter => (
+                            <button
+                              key={filter}
+                              onClick={() => setStudentFilter(filter as any)}
+                              className={cn(
+                                "px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex-1",
+                                studentFilter === filter ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                              )}
+                            >
+                              {filter.charAt(0) + filter.slice(1).toLowerCase()}
+                            </button>
+                          ))}
                         </div>
-
-                        {newUser.is_year_coordinator && (
-                          <div className="pt-2 border-t border-zinc-200">
-                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest block mb-2">Coordinator Year</label>
-                            <Input
-                              type="number"
-                              placeholder="e.g. 3"
-                              value={newUser.year_scope}
-                              onChange={e => setNewUser(prev => ({ ...prev, year_scope: e.target.value }))}
-                              required={newUser.is_year_coordinator}
-                            />
-                          </div>
-                        )}
                       </div>
                     )}
-                    <Button className="md:col-span-2 flex items-center justify-center gap-2">
-                      <Plus size={18} /> {isAdvisor ? 'Add Student' : 'Create Account'}
-                    </Button>
-                  </form>
-                </Card>
+                  </div>
 
-                <Card className="overflow-hidden p-0">
-                  <table className="w-full text-left">
-                    <thead className="bg-zinc-50 border-b border-zinc-200">
-                      <tr>
-                        <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Name</th>
-                        <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-                          {isAdvisor ? 'Register No' : 'Username'}
-                        </th>
-                        {isAdvisor && <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Email</th>}
-                        {!isAdvisor && <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">{isAdmin ? 'Department' : 'Class'}</th>}
-                        <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Status</th>
-                        <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-100">
+                  <div className="mb-6">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+                      <Input
+                        placeholder={`Search ${isAdmin ? 'HODs' : isHOD ? 'Advisors or Students' : 'Students'} by name or registration number...`}
+                        className="pl-10"
+                        value={searchTerm}
+                        onChange={e => { setSearchTerm(e.target.value); setUserPage(1); }}
+                      />
+                    </div>
+                  </div>
+
+                  {(() => {
+                    // Show create form for Advisors tab (CLASS_ADVISOR), Students tab (STUDENT), and All tab (uses hodCreationRole toggle)
+                    // HOD: hide only when isAdmin and not on users view (never hide for HOD)
+                    const effectiveRole = isAdvisor ? 'STUDENT' : (isAdmin ? 'HOD' : (isHOD ? (studentFilter === 'STUDENT' ? 'STUDENT' : (studentFilter === 'CLASS_ADVISOR' ? 'CLASS_ADVISOR' : hodCreationRole)) : 'STUDENT'));
+                    return (
+                      <ContentCard>
+                        <h3 className="text-lg font-semibold mb-4">
+                          {effectiveRole === 'STUDENT' ? 'Create Student Account' : `Create ${isAdmin ? 'HOD' : 'Advisor'} Account`}
+                        </h3>
+                        <form onSubmit={createUser} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {isHOD && studentFilter === 'ALL' && (
+                            <div className="md:col-span-2">
+                              <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest block mb-2">Role to Create</label>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setHodCreationRole('CLASS_ADVISOR')}
+                                  className={cn(
+                                    "px-4 py-2 rounded-xl text-sm font-bold border transition-all",
+                                    effectiveRole === 'CLASS_ADVISOR' ? "bg-black text-white border-black" : "bg-white text-zinc-700 border-zinc-200"
+                                  )}
+                                >
+                                  Class Advisor
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setHodCreationRole('STUDENT')}
+                                  className={cn(
+                                    "px-4 py-2 rounded-xl text-sm font-bold border transition-all",
+                                    effectiveRole === 'STUDENT' ? "bg-black text-white border-black" : "bg-white text-zinc-700 border-zinc-200"
+                                  )}
+                                >
+                                  Student
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {effectiveRole === 'STUDENT' ? (
+                            <>
+                              <div className="min-w-0">
+                                <Input
+                                  placeholder="Full Name"
+                                  value={newUser.full_name}
+                                  onChange={e => setNewUser(prev => ({ ...prev, full_name: e.target.value }))}
+                                  required
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <Input
+                                  placeholder="Registration Number (e.g. 922524205171)"
+                                  value={newUser.username}
+                                  onChange={e => setNewUser(prev => ({ ...prev, username: e.target.value, register_number: e.target.value }))}
+                                  required
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <Input
+                                  type="password"
+                                  placeholder="Password"
+                                  value={newUser.password}
+                                  onChange={e => setNewUser(prev => ({ ...prev, password: e.target.value }))}
+                                  required
+                                />
+                              </div>
+                              {isHOD && (
+                                <div className="min-w-0">
+                                  <Select
+                                    value={newUser.class_id}
+                                    onChange={e => setNewUser(prev => ({ ...prev, class_id: e.target.value }))}
+                                    required
+                                  >
+                                    <option value="">Select Class (III IT A / B / C)</option>
+                                    {classes.map(c => (
+                                      <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                  </Select>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <div className="min-w-0">
+                                <Input
+                                  placeholder="Username"
+                                  value={newUser.username}
+                                  onChange={e => setNewUser(prev => ({ ...prev, username: e.target.value, register_number: '' }))}
+                                  required
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <Input
+                                  type="password"
+                                  placeholder="Password"
+                                  value={newUser.password}
+                                  onChange={e => setNewUser(prev => ({ ...prev, password: e.target.value }))}
+                                  required
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <Input
+                                  placeholder="Full Name"
+                                  value={newUser.full_name}
+                                  onChange={e => setNewUser(prev => ({ ...prev, full_name: e.target.value }))}
+                                  required
+                                />
+                              </div>
+                              {isAdmin ? (
+                                <div className="min-w-0">
+                                  <Select
+                                    value={newUser.department_id}
+                                    onChange={e => setNewUser(prev => ({ ...prev, department_id: e.target.value }))}
+                                    required
+                                  >
+                                    <option value="">Select Department</option>
+                                    {departments.map(d => (
+                                      <option key={d.id} value={d.id}>{d.name}</option>
+                                    ))}
+                                  </Select>
+                                </div>
+                              ) : isHOD ? (
+                                <div className="min-w-0">
+                                  <Select
+                                    value={newUser.class_id}
+                                    onChange={e => setNewUser(prev => ({ ...prev, class_id: e.target.value }))}
+                                    required
+                                  >
+                                    <option value="">Select Class</option>
+                                    {classes.map(c => (
+                                      <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                  </Select>
+                                </div>
+                              ) : null}
+
+                              {isHOD && (
+                                <div className="md:col-span-2 p-4 bg-zinc-50 rounded-lg border border-zinc-200 space-y-4">
+                                  <div className="flex items-center justify-between">
+                                    <div className="space-y-0.5">
+                                      <label className="text-sm font-bold text-zinc-900">Assign as Year Coordinator</label>
+                                      <p className="text-xs text-zinc-500">Enable this to allow this advisor to post tasks for an entire year.</p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => setNewUser(prev => ({ ...prev, is_year_coordinator: !prev.is_year_coordinator }))}
+                                      className={cn(
+                                        "w-12 h-6 rounded-full transition-colors relative",
+                                        newUser.is_year_coordinator ? "bg-black" : "bg-zinc-200"
+                                      )}
+                                    >
+                                      <div className={cn(
+                                        "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
+                                        newUser.is_year_coordinator ? "right-1" : "left-1"
+                                      )} />
+                                    </button>
+                                  </div>
+
+                                  {newUser.is_year_coordinator && (
+                                    <div className="pt-2 border-t border-zinc-200">
+                                      <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest block mb-2">Coordinator Year</label>
+                                      <Input
+                                        type="number"
+                                        placeholder="e.g. 3"
+                                        value={newUser.year_scope}
+                                        onChange={e => setNewUser(prev => ({ ...prev, year_scope: e.target.value }))}
+                                        required={newUser.is_year_coordinator}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </>
+                          )}
+                          <Button className="md:col-span-2 flex items-center justify-center gap-2">
+                            <Plus size={18} /> {effectiveRole === 'STUDENT' ? 'Add Student' : 'Create Account'}
+                          </Button>
+                        </form>
+                      </ContentCard>
+                    );
+                  })()}
+
+                  <Table className="min-w-[700px] md:min-w-0">
+                    <THead>
+                      <TR>
+                        <TH>Name</TH>
+                        <TH>{isAdvisor ? 'Register No' : 'Username'}</TH>
+                        {isAdvisor && <TH>Email</TH>}
+                        {!isAdvisor && <TH>{isAdmin ? 'Department' : 'Class'}</TH>}
+                        <TH>Status</TH>
+                        <TH className="text-right">Actions</TH>
+                      </TR>
+                    </THead>
+                    <TBody>
                       {(() => {
                         const filtered = users
                           .filter(u => {
@@ -2665,46 +2902,44 @@ export default function App() {
                         return (
                           <>
                             {paginated.map(u => (
-                              <tr key={u.id} className={cn("hover:bg-zinc-50 transition-colors", !u.is_active && "opacity-50 grayscale")}>
-                                <td className="px-6 py-4 font-medium text-zinc-900">
+                              <TR key={u.id} className={cn(!u.is_active && "opacity-50 grayscale")}>
+                                <TD className="font-medium text-zinc-900 break-words">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     {u.full_name}
                                     {u.is_year_coordinator && (
-                                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-600 text-white rounded-full text-[10px] font-black uppercase tracking-tighter shadow-sm animate-in fade-in zoom-in duration-300">
+                                      <Badge variant="primary" className="bg-indigo-600 text-white border-none shadow-sm px-3 py-1 rounded-full">
                                         <CalendarRange size={12} />
                                         Year {u.year_scope} Overall Coord
-                                      </span>
+                                      </Badge>
                                     )}
                                     {!!u.is_coordinator && (
-                                      <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-bold uppercase whitespace-nowrap">Class Coord</span>
+                                      <Badge variant="warning">Class Coord</Badge>
                                     )}
                                     {isAdmin && (
-                                      <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold uppercase whitespace-nowrap",
-                                        u.role === 'HOD' ? 'bg-blue-100 text-blue-700' :
-                                          u.role === 'CLASS_ADVISOR' ? 'bg-purple-100 text-purple-700' :
-                                            'bg-zinc-100 text-zinc-600'
-                                      )}>{u.role === 'CLASS_ADVISOR' ? 'Advisor' : u.role}</span>
+                                      <Badge variant={
+                                        u.role === 'HOD' ? 'info' :
+                                        u.role === 'CLASS_ADVISOR' ? 'primary' : 'neutral'
+                                      }>
+                                        {u.role === 'CLASS_ADVISOR' ? 'Advisor' : u.role}
+                                      </Badge>
                                     )}
                                   </div>
-                                </td>
-                                <td className="px-6 py-4 text-zinc-500">{u.register_number || u.username}</td>
-                                {isAdvisor && <td className="px-6 py-4 text-zinc-500">{u.email}</td>}
+                                </TD>
+                                <TD className="text-zinc-500 break-all">{u.register_number || u.username}</TD>
+                                {isAdvisor && <TD className="text-zinc-500">{u.email}</TD>}
                                 {!isAdvisor && (
-                                  <td className="px-6 py-4">
+                                  <TD>
                                     <span className="px-2 py-1 bg-zinc-100 rounded text-xs text-zinc-600">
                                       {isAdmin ? (u.department_name || '—') : u.class_name}
                                     </span>
-                                  </td>
+                                  </TD>
                                 )}
-                                <td className="px-6 py-4">
-                                  <span className={cn(
-                                    "px-2 py-1 rounded text-[10px] font-bold uppercase tracking-tight",
-                                    u.is_active ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
-                                  )}>
+                                <TD>
+                                  <Badge variant={u.is_active ? 'success' : 'danger'}>
                                     {u.is_active ? 'Active' : 'Deactivated'}
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4 text-right">
+                                  </Badge>
+                                </TD>
+                                <TD className="text-right">
                                   <div className="flex justify-end gap-2">
                                     {isAdvisor && (
                                       <Button
@@ -2736,7 +2971,7 @@ export default function App() {
                                     </Button>
                                     <Button
                                       variant="ghost"
-                                      className="p-2 text-zinc-400 hover:text-blue-600"
+                                      className={cn("p-2", u.is_active !== false ? "text-zinc-400 hover:text-red-500" : "text-emerald-600")}
                                       onClick={() => toggleUserStatus(u.id, u.is_active !== false)}
                                       title={u.is_active !== false ? "Deactivate" : "Activate"}
                                     >
@@ -2761,12 +2996,12 @@ export default function App() {
                                       <Trash2 size={18} />
                                     </button>
                                   </div>
-                                </td>
-                              </tr>
+                                </TD>
+                              </TR>
                             ))}
                             {filtered.length > itemsPerPage && (
-                              <tr>
-                                <td colSpan={6} className="px-6 py-4">
+                              <TR>
+                                <TD colSpan={6}>
                                   <div className="flex items-center justify-between">
                                     <p className="text-xs text-zinc-500">
                                       Showing {(userPage - 1) * itemsPerPage + 1} to {Math.min(userPage * itemsPerPage, filtered.length)} of {filtered.length} entries
@@ -2804,22 +3039,22 @@ export default function App() {
                                       </Button>
                                     </div>
                                   </div>
-                                </td>
-                              </tr>
+                                </TD>
+                              </TR>
                             )}
                             {filtered.length === 0 && (
-                              <tr>
-                                <td colSpan={6} className="px-6 py-12 text-center text-zinc-500 text-sm">
+                              <TR>
+                                <TD colSpan={6} className="text-center text-zinc-500 text-sm py-12">
                                   No matching records found.
-                                </td>
-                              </tr>
+                                </TD>
+                              </TR>
                             )}
                           </>
                         );
                       })()}
-                    </tbody>
-                  </table>
-                </Card>
+                    </TBody>
+                  </Table>
+                </PageLayout>
               </motion.div>
             )}
 
@@ -2828,79 +3063,91 @@ export default function App() {
                 key="tasks"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="space-y-6"
+                className="w-full h-full flex flex-col min-h-0"
               >
-                {(isAdmin || isHOD || isAdvisor || isCoordinator) && (
-                  <Card className={cn(
-                    "p-8 rounded-[2rem] shadow-sm border transition-all mb-8",
-                    user?.is_year_coordinator ? "border-indigo-100 bg-indigo-50/10" : "border-zinc-100 bg-white"
-                  )}>
+                <PageLayout>
+                  {(isAdmin || isHOD || isAdvisor || isCoordinator) && (
+                    <ContentCard className={cn(
+                      user?.is_year_coordinator ? "border-indigo-100 bg-indigo-50/10" : ""
+                    )}>
                     <h3 className={cn(
-                      "text-xl font-black mb-8 uppercase tracking-tight flex items-center gap-3",
+                      "text-xl font-bold mb-6 flex items-center gap-3",
                       user?.is_year_coordinator ? "text-indigo-900" : "text-zinc-900"
                     )}>
                       <div className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center",
+                        "w-10 h-10 rounded-lg flex items-center justify-center shrink-0",
                         user?.is_year_coordinator ? "bg-indigo-600 text-white" : "bg-black text-white"
                       )}>
                         <Plus size={20} />
                       </div>
                       {user?.is_year_coordinator ? `Post Year ${user.year_scope} Task` : 'Post New Task'}
                     </h3>
-                    <form onSubmit={handleTaskPreview} className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Input
-                          placeholder="Task Title"
-                          value={newTask.title}
-                          onChange={e => setNewTask(prev => ({ ...prev, title: e.target.value }))}
-                          required
-                        />
-                        <select
-                          className="w-full px-4 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all bg-white"
-                          value={newTask.category}
-                          onChange={e => setNewTask(prev => ({ ...prev, category: e.target.value }))}
-                          required
-                        >
-                          <option value="Competition">🏆 Competition</option>
-                          <option value="Course">📚 Course</option>
-                          <option value="Workshop">🏫 Workshop</option>
-                          <option value="College Work">📋 College Work</option>
-                        </select>
-                        <Input
-                          placeholder="External Link (Optional)"
-                          value={newTask.external_link}
-                          onChange={e => setNewTask(prev => ({ ...prev, external_link: e.target.value }))}
-                        />
-                        <Input
-                          type="datetime-local"
-                          value={newTask.deadline}
-                          onChange={e => setNewTask(prev => ({ ...prev, deadline: e.target.value }))}
-                          required
-                        />
-                        <Input
-                          placeholder="Screenshot Instruction (e.g. Upload registration page)"
-                          value={newTask.screenshot_instruction}
-                          onChange={e => setNewTask(prev => ({ ...prev, screenshot_instruction: e.target.value }))}
-                          required
-                        />
-                        <Input
-                          placeholder="Custom Verification Field Label (e.g. Team ID)"
-                          value={newTask.custom_field_label}
-                          onChange={e => setNewTask(prev => ({ ...prev, custom_field_label: e.target.value }))}
-                          required
-                        />
+                    <form onSubmit={handleTaskPreview} className="space-y-4 w-full">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full min-w-0">
+                        <div className="min-w-0">
+                          <Input
+                            placeholder="Task Title"
+                            value={newTask.title}
+                            onChange={e => setNewTask(prev => ({ ...prev, title: e.target.value }))}
+                            required
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <Select
+                            value={newTask.category}
+                            onChange={e => setNewTask(prev => ({ ...prev, category: e.target.value }))}
+                            required
+                          >
+                            <option value="Competition">🏆 Competition</option>
+                            <option value="Course">📚 Course</option>
+                            <option value="Workshop">🏫 Workshop</option>
+                            <option value="College Work">📋 College Work</option>
+                          </Select>
+                        </div>
+                        <div className="min-w-0">
+                          <Input
+                            placeholder="External Link (Optional)"
+                            value={newTask.external_link}
+                            onChange={e => setNewTask(prev => ({ ...prev, external_link: e.target.value }))}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <Input
+                            type="datetime-local"
+                            value={newTask.deadline}
+                            onChange={e => setNewTask(prev => ({ ...prev, deadline: e.target.value }))}
+                            required
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <Input
+                            placeholder="Screenshot Instruction (e.g. Upload registration page)"
+                            value={newTask.screenshot_instruction}
+                            onChange={e => setNewTask(prev => ({ ...prev, screenshot_instruction: e.target.value }))}
+                            required
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <Input
+                            placeholder="Custom Verification Field Label (e.g. Team ID)"
+                            value={newTask.custom_field_label}
+                            onChange={e => setNewTask(prev => ({ ...prev, custom_field_label: e.target.value }))}
+                            required
+                          />
+                        </div>
 
                         {isAdmin && (
-                          <select
-                            className="w-full px-4 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all bg-white"
-                            value={newTask.department_id || ''}
-                            onChange={e => setNewTask(prev => ({ ...prev, department_id: e.target.value, class_ids: [] }))}
-                          >
-                            <option value="">Global Task (Visible to All)</option>
-                            {departments.map(d => (
-                              <option key={d.id} value={d.id}>{d.name}</option>
-                            ))}
-                          </select>
+                          <div className="min-w-0">
+                            <Select
+                              value={newTask.department_id || ''}
+                              onChange={e => setNewTask(prev => ({ ...prev, department_id: e.target.value, class_ids: [] }))}
+                            >
+                              <option value="">Global Task (Visible to All)</option>
+                              {departments.map(d => (
+                                <option key={d.id} value={d.id}>{d.name}</option>
+                              ))}
+                            </Select>
+                          </div>
                         )}
 
                         {user?.is_year_coordinator && (
@@ -2908,14 +3155,14 @@ export default function App() {
                             <p className="text-sm font-bold text-indigo-700 mb-1 flex items-center gap-2">
                               📅 Year {user.year_scope} Coordinator Scope
                             </p>
-                            <p className="text-xs text-indigo-600">
+                            <p className="text-xs text-indigo-600 font-medium">
                               This task will be automatically assigned to all classes in Year {user.year_scope}.
                             </p>
                           </div>
                         )}
 
                         {(isAdmin || isHOD || user?.is_year_coordinator) && (
-                          <div className="w-full bg-white border border-zinc-200 rounded-lg p-3">
+                          <div className="w-full bg-white border border-zinc-200 rounded-lg p-3 md:col-span-2 min-w-0">
                             <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest mb-3 block">
                               {isAdmin ? 'Select Specific Classes (Optional)' :
                                 user?.is_year_coordinator ? `Classes in Year ${user.year_scope}` :
@@ -2933,7 +3180,7 @@ export default function App() {
                                   <label key={c.id} className="flex items-center gap-2 p-2 hover:bg-zinc-50 rounded-md cursor-pointer transition-colors border border-transparent hover:border-zinc-200">
                                     <input
                                       type="checkbox"
-                                      className="w-4 h-4 rounded border-zinc-300 text-black focus:ring-black/20"
+                                      className="w-4 h-4 rounded border-zinc-300 text-black focus:ring-black/20 font-medium text-xs"
                                       checked={(newTask.class_ids || []).includes(c.id)}
                                       onChange={(e) => {
                                         if (e.target.checked) {
@@ -2947,33 +3194,38 @@ export default function App() {
                                   </label>
                                 ))}
                             </div>
-                            {(newTask.class_ids || []).length === 0 && (
-                              <p className="text-xs text-zinc-500 mt-3 bg-zinc-50 p-2 rounded">
-                                ℹ️ {user?.is_year_coordinator ? `No specific classes selected. This task will be automatically assigned to ALL Year ${user.year_scope} classes.` :
-                                  `No specific classes selected. This task will act as a ${newTask.department_id ? 'Department-Wide' : 'Global'} broadcast to everyone applicable.`}
-                              </p>
-                            )}
+                            <p className="text-xs text-zinc-500 mt-3 bg-zinc-50 p-2 rounded min-h-[2.5rem] flex items-center font-medium">
+                              {(newTask.class_ids || []).length === 0 ? (
+                                <>
+                                  ℹ️ {user?.is_year_coordinator ? `No specific classes selected. This task will be automatically assigned to ALL Year ${user.year_scope} classes.` :
+                                    `No specific classes selected. This task will act as a ${newTask.department_id ? 'Class-Wide' : 'Global'} broadcast to everyone applicable.`}
+                                </>
+                              ) : (
+                                <>
+                                  🎯 Assigned to: {(newTask.class_ids || []).map(id => classes.find(c => c.id === id)?.name || id).join(', ')}
+                                </>
+                              )}
+                            </p>
                           </div>
                         )}
                       </div>
-                      <textarea
-                        className="w-full px-4 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all min-h-[100px]"
+                      <Textarea
                         placeholder="Task Description..."
                         value={newTask.description}
                         onChange={e => setNewTask(prev => ({ ...prev, description: e.target.value }))}
                         required
                       />
                       <div className="flex gap-4">
-                        <Button type="submit" variant="secondary" className="flex-1 flex items-center justify-center gap-2">
+                        <Button type="submit" variant="secondary" className="flex-1">
                           <ImageIcon size={18} /> Live Preview
                         </Button>
-                        <Button type="button" onClick={createTask} className="flex-1 flex items-center justify-center gap-2">
+                        <Button type="button" onClick={createTask} className="flex-1">
                           <ClipboardList size={18} /> Post Task
                         </Button>
                       </div>
                     </form>
-                  </Card>
-                )}
+                  </ContentCard>
+                  )}
 
                 <div className="space-y-4 pb-12">
                   {tasks.map(task => {
@@ -3005,7 +3257,7 @@ export default function App() {
                               <span className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1", catStyle)}>
                                 {catIcon} {task.category || 'General'}
                               </span>
-                              <h4 className="font-bold text-zinc-900 text-lg md:text-xl">{task.title}</h4>
+                              <h4 className="font-bold text-zinc-900 text-lg md:text-xl break-words">{task.title}</h4>
                             </div>
                             <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
                               <span className="font-medium text-zinc-700">{task.creator_name}</span>
@@ -3021,7 +3273,7 @@ export default function App() {
                                   "px-2 py-0.5 rounded-full border border-transparent whitespace-nowrap",
                                   task.department_name ? "bg-blue-50 text-blue-600 border-blue-100" : "bg-orange-50 text-orange-600 border-orange-100"
                                 )}>
-                                  {task.department_name ? 'Department Task' : 'Global Task'}
+                                  {task.department_name ? 'Class Task' : 'Global Task'}
                                 </span>
                               )}
                               <span className="hidden md:inline">•</span>
@@ -3044,7 +3296,7 @@ export default function App() {
                           </div>
                         </div>
 
-                        <p className="text-zinc-600 text-sm mb-6 whitespace-pre-wrap">{task.description}</p>
+                        <p className="text-zinc-600 text-sm mb-6 whitespace-pre-wrap break-words">{task.description}</p>
 
                         {task.external_link && (
                           <div className="mb-6">
@@ -3216,7 +3468,7 @@ export default function App() {
                               })()
                             )}
                           </div>
-                        )}                {(isAdmin || (isHOD && task.department_id === user?.department_id) || (isAdvisor && Array.isArray(task.class_ids) && task.class_ids.includes(Number(user?.class_id))) || (isCoordinator && Array.isArray(task.class_ids) && task.class_ids.includes(Number(user?.class_id)))) && (
+                        )}                {(isAdmin || (isHOD && task.department_id === user?.department_id) || task.created_by === user?.id || (isAdvisor && Array.isArray(task.class_ids) && task.class_ids.includes(user?.class_id)) || (isCoordinator && Array.isArray(task.class_ids) && task.class_ids.includes(user?.class_id))) && (
                           <div className="mt-6 flex gap-4 border-t border-zinc-100 pt-4">
                             <Button
                               variant="ghost"
@@ -3238,6 +3490,7 @@ export default function App() {
                     );
                   })}
                 </div>
+                </PageLayout>
               </motion.div>
             )}
 
@@ -3246,96 +3499,94 @@ export default function App() {
                 key="verifications"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="space-y-6"
+                className="w-full h-full flex flex-col min-h-0"
               >
-                <div className="flex justify-between items-center">
-                  <div className="flex gap-2">
-                    {['PENDING', 'VERIFIED', 'REJECTED', 'ALL'].map(f => (
-                      <button
-                        key={f}
-                        onClick={() => setVerificationFilter(f as any)}
-                        className={cn(
-                          "px-4 py-2 rounded-full text-xs font-bold transition-all",
-                          verificationFilter === f ? "bg-black text-white" : "bg-white text-zinc-400 border border-zinc-200 hover:border-zinc-300"
-                        )}
-                      >
-                        {f}
-                      </button>
-                    ))}
-                  </div>
-                  {selectedSubmissions.length > 0 && (
-                    <Button
-                      variant="success"
-                      onClick={() => {
-                        if (confirm(`Verify ${selectedSubmissions.length} submissions?`)) {
-                          Promise.all(selectedSubmissions.map(id =>
-                            fetch(`${API_URL}/api/submissions/${id}/verify`, {
-                              method: 'PATCH',
-                              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                              body: JSON.stringify({ status: 'VERIFIED' })
-                            })
-                          )).then(() => {
-                            setSelectedSubmissions([]);
-                            fetchInitialData();
-                          });
-                        }
-                      }}
-                    >
-                      Bulk Verify ({selectedSubmissions.length})
-                    </Button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                  <div className={cn((isHOD || isAdmin || user?.is_year_coordinator) ? "md:col-span-2" : "md:col-span-3", "relative")}>
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-                    <Input
-                      placeholder="Search submissions by student name or register number..."
-                      className="pl-10 h-10 text-sm"
-                      value={submissionSearchTerm}
-                      onChange={e => { setSubmissionSearchTerm(e.target.value); setSubmissionPage(1); }}
-                    />
-                  </div>
-
-                  {(isHOD || isAdmin || user?.is_year_coordinator) && (
-                    <div>
-                      <select
-                        className="w-full px-4 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all bg-white font-medium text-zinc-700 text-sm h-10"
-                        value={verificationClassFilter}
-                        onChange={e => { setVerificationClassFilter(e.target.value); setSubmissionPage(1); }}
-                      >
-                        <option value="">All Classes</option>
-                        {classes.filter(c => {
-                          if (isAdmin) return true;
-                          if (isHOD) return c.department_id?.toString() === user?.department_id?.toString();
-                          if (user?.is_year_coordinator) return c.department_id?.toString() === user?.department_id?.toString() && c.year === user?.year_scope;
-                          return false;
-                        }).map(c => (
-                          <option key={c.id} value={c.id.toString()}>{c.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  <div>
-                    <select
-                      className="w-full px-4 py-2 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all bg-white font-medium text-zinc-700 text-sm h-10"
-                      value={verificationTaskFilter}
-                      onChange={e => { setVerificationTaskFilter(e.target.value); setSubmissionPage(1); }}
-                    >
-                      <option value="">All Tasks</option>
-                      {tasks.map(t => (
-                        <option key={t.id} value={t.id.toString()}>{t.title}</option>
+                <PageLayout>
+                  <div className="flex justify-between items-center">
+                    <div className="flex gap-2">
+                      {['PENDING', 'VERIFIED', 'REJECTED', 'ALL'].map(f => (
+                        <button
+                          key={f}
+                          onClick={() => setVerificationFilter(f as any)}
+                          className={cn(
+                            "px-4 py-2 rounded-full text-xs font-bold transition-all",
+                            verificationFilter === f ? "bg-black text-white" : "bg-white text-zinc-400 border border-zinc-200 hover:border-zinc-300"
+                          )}
+                        >
+                          {f}
+                        </button>
                       ))}
-                    </select>
+                    </div>
+                    {selectedSubmissions.length > 0 && (
+                      <Button
+                        variant="success"
+                        onClick={() => {
+                          if (confirm(`Verify ${selectedSubmissions.length} submissions?`)) {
+                            Promise.all(selectedSubmissions.map(id =>
+                              fetch(`${API_URL}/api/submissions/${id}/verify`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({ status: 'VERIFIED' })
+                              })
+                            )).then(() => {
+                              setSelectedSubmissions([]);
+                              fetchInitialData();
+                            });
+                          }
+                        }}
+                      >
+                        Bulk Verify ({selectedSubmissions.length})
+                      </Button>
+                    )}
                   </div>
-                </div>
 
-                <Card className="overflow-hidden p-0">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-zinc-50 border-b border-zinc-100">
-                        <th className="p-4 text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <div className={cn((isHOD || isAdmin || user?.is_year_coordinator) ? "md:col-span-2" : "md:col-span-3", "relative")}>
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+                      <Input
+                        placeholder="Search submissions by student name or register number..."
+                        className="pl-10 h-10 text-sm"
+                        value={submissionSearchTerm}
+                        onChange={e => { setSubmissionSearchTerm(e.target.value); setSubmissionPage(1); }}
+                      />
+                    </div>
+
+                    {(isHOD || isAdmin || user?.is_year_coordinator) && (
+                      <div>
+                        <Select
+                          value={verificationClassFilter}
+                          onChange={e => { setVerificationClassFilter(e.target.value); setSubmissionPage(1); }}
+                        >
+                          <option value="">All Classes</option>
+                          {classes.filter(c => {
+                            if (isAdmin) return true;
+                            if (isHOD) return c.department_id?.toString() === user?.department_id?.toString();
+                            if (user?.is_year_coordinator) return c.department_id?.toString() === user?.department_id?.toString() && c.year === user?.year_scope;
+                            return false;
+                          }).map(c => (
+                            <option key={c.id} value={c.id.toString()}>{c.name}</option>
+                          ))}
+                        </Select>
+                      </div>
+                    )}
+
+                    <div>
+                      <Select
+                        value={verificationTaskFilter}
+                        onChange={e => { setVerificationTaskFilter(e.target.value); setSubmissionPage(1); }}
+                      >
+                        <option value="">All Tasks</option>
+                        {tasks.map(t => (
+                          <option key={t.id} value={t.id.toString()}>{t.title}</option>
+                        ))}
+                      </Select>
+                    </div>
+                  </div>
+
+                  <Table className="min-w-[800px] md:min-w-0">
+                    <THead>
+                      <TR>
+                        <TH className="w-12">
                           <input
                             type="checkbox"
                             className="w-4 h-4 rounded border-zinc-300"
@@ -3347,44 +3598,44 @@ export default function App() {
                               }
                             }}
                           />
-                        </th>
-                        <th className="p-4 text-xs font-bold text-zinc-400 uppercase tracking-widest">Student</th>
-                        <th className="p-4 text-xs font-bold text-zinc-400 uppercase tracking-widest">Task</th>
-                        <th className="p-4 text-xs font-bold text-zinc-400 uppercase tracking-widest">Custom Field</th>
-                        <th className="p-4 text-xs font-bold text-zinc-400 uppercase tracking-widest">Screenshot</th>
-                        <th className="p-4 text-xs font-bold text-zinc-400 uppercase tracking-widest">Status</th>
-                        <th className="p-4 text-xs font-bold text-zinc-400 uppercase tracking-widest text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-100">
+                        </TH>
+                        <TH>Student</TH>
+                        <TH>Task</TH>
+                        <TH>Custom Field</TH>
+                        <TH>Screenshot</TH>
+                        <TH className="text-center">Status</TH>
+                        <TH className="text-right">Actions</TH>
+                      </TR>
+                    </THead>
+                    <TBody>
                       {(() => {
                         const filtered = submissions
                           .filter(s => verificationFilter === 'ALL' ? true : (verificationFilter === 'PENDING' ? s.status === 'SUBMITTED' : s.status === verificationFilter))
                           .filter(s => {
-                            if (!verificationClassFilter) return true;
-                            return s.class_id?.toString() === verificationClassFilter;
+                            if (verificationClassFilter) {
+                              const std = users.find(u => u.id === s.user_id);
+                              return std?.class_id?.toString() === verificationClassFilter;
+                            }
+                            return true;
                           })
-                          .filter(s => {
-                            if (!verificationTaskFilter) return true;
-                            return s.task_id?.toString() === verificationTaskFilter;
-                          })
+                          .filter(s => verificationTaskFilter ? s.task_id?.toString() === verificationTaskFilter : true)
                           .filter(s => {
                             if (!submissionSearchTerm) return true;
                             const query = submissionSearchTerm.toLowerCase();
-                            return (s.student_name?.toLowerCase().includes(query) || s.register_number?.toLowerCase().includes(query) || s.task_title?.toLowerCase().includes(query));
+                            return s.student_name?.toLowerCase().includes(query) || s.register_number?.toLowerCase().includes(query) || s.task_title?.toLowerCase().includes(query);
                           });
 
                         if (filtered.length === 0) {
                           return (
-                            <tr>
-                              <td colSpan={7} className="px-8 py-16 text-center text-zinc-500">
-                                <div className="flex flex-col items-center justify-center gap-2">
-                                  <ImageIcon size={40} className="text-zinc-300 mb-2" />
+                            <TR>
+                              <TD colSpan={7} className="text-center py-12">
+                                <div className="max-w-md mx-auto">
+                                  <Users size={48} className="mx-auto text-zinc-300 mb-4" />
                                   <p className="font-bold text-base text-zinc-900">No submissions found</p>
                                   <p className="text-sm text-zinc-400">There are no task submissions matching the filters.</p>
                                 </div>
-                              </td>
-                            </tr>
+                              </TD>
+                            </TR>
                           );
                         }
 
@@ -3394,8 +3645,8 @@ export default function App() {
                         return (
                           <>
                             {paginated.map(s => (
-                              <tr key={s.id} className={cn("hover:bg-zinc-50/50 transition-colors border-l-4", s.status === 'VERIFIED' ? "border-emerald-500" : s.status === 'REJECTED' ? "border-red-500" : "border-orange-500")}>
-                                <td className="p-4">
+                              <TR key={s.id} className={cn("border-l-4", s.status === 'VERIFIED' ? "border-emerald-500" : s.status === 'REJECTED' ? "border-red-500" : "border-orange-500")}>
+                                <TD>
                                   {s.status === 'SUBMITTED' && (
                                     <input
                                       type="checkbox"
@@ -3407,32 +3658,32 @@ export default function App() {
                                       }}
                                     />
                                   )}
-                                </td>
-                                <td className="p-4">
+                                </TD>
+                                <TD>
                                   <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center shrink-0">
                                       <Users size={16} className="text-zinc-500" />
                                     </div>
-                                    <div>
-                                      <p className="text-sm font-bold text-zinc-900 leading-tight">{s.student_name}</p>
+                                    <div className="break-words min-w-0">
+                                      <p className="text-sm font-bold text-zinc-900 leading-tight break-words">{s.student_name}</p>
                                       <div className="flex items-center gap-2">
-                                        <p className="text-[10px] text-zinc-500 font-mono italic">{s.register_number}</p>
-                                        <span className="px-1.5 py-0.5 bg-zinc-100 text-zinc-500 text-[8px] font-black rounded uppercase border border-zinc-200">
+                                        <p className="text-xs text-zinc-500 font-mono italic break-all">{s.register_number}</p>
+                                        <span className="px-1.5 py-0.5 bg-zinc-100 text-zinc-500 text-xs font-bold rounded uppercase border border-zinc-200">
                                           {s.class_name || 'N/A'}
                                         </span>
                                       </div>
                                     </div>
                                   </div>
-                                </td>
-                                <td className="p-4">
-                                  <p className="text-sm font-medium text-zinc-900">{s.task_title}</p>
-                                  <p className="text-[10px] text-zinc-400 capitalize">{new Date(s.submitted_at).toLocaleDateString()}</p>
-                                </td>
-                                <td className="p-4">
-                                  <p className="text-[10px] text-zinc-400 uppercase font-bold mb-1 tracking-widest">Field Data</p>
-                                  <p className="text-sm font-mono text-zinc-900 bg-zinc-100 px-2 py-1 rounded inline-block">{s.custom_field_value}</p>
-                                </td>
-                                <td className="p-4">
+                                </TD>
+                                <TD>
+                                  <p className="text-sm font-medium text-zinc-900 break-words">{s.task_title}</p>
+                                  <p className="text-xs text-zinc-400 capitalize">{new Date(s.submitted_at).toLocaleDateString()}</p>
+                                </TD>
+                                <TD>
+                                  <p className="text-xs text-zinc-400 uppercase font-bold mb-1 tracking-widest">Field Data</p>
+                                  <p className="text-sm font-mono text-zinc-900 bg-zinc-100 px-2 py-1 rounded inline-block break-all">{s.custom_field_value}</p>
+                                </TD>
+                                <TD>
                                   <div className="relative group/img">
                                     <img
                                       src={s.screenshot_url}
@@ -3442,18 +3693,16 @@ export default function App() {
                                     />
                                     <div className="absolute top-0 left-0 w-full h-full bg-black/5 rounded-lg pointer-events-none group-hover/img:bg-transparent transition-colors" />
                                   </div>
-                                </td>
-                                <td className="p-4 text-center">
-                                  <div className={cn(
-                                    "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border",
-                                    s.status === 'VERIFIED' ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
-                                      s.status === 'REJECTED' ? "bg-red-50 text-red-700 border-red-100" : "bg-orange-50 text-orange-700 border-orange-100"
-                                  )}>
-                                    <span className={cn("w-1.5 h-1.5 rounded-full", s.status === 'VERIFIED' ? "bg-emerald-500" : s.status === 'REJECTED' ? "bg-red-500" : "bg-orange-500")} />
+                                </TD>
+                                <TD className="text-center">
+                                  <Badge variant={
+                                    s.status === 'VERIFIED' ? 'success' :
+                                    s.status === 'REJECTED' ? 'danger' : 'warning'
+                                  }>
                                     {s.status === 'SUBMITTED' ? 'PENDING' : s.status}
-                                  </div>
-                                </td>
-                                <td className="p-4 text-right">
+                                  </Badge>
+                                </TD>
+                                <TD className="text-right">
                                   {s.status === 'SUBMITTED' && (
                                     <div className="flex justify-end gap-2">
                                       <Button
@@ -3473,12 +3722,13 @@ export default function App() {
                                     </div>
                                   )}
                                   {s.status === 'REJECTED' && (
-                                    <p className="text-[10px] text-red-500 font-medium">Wait for Resubmission</p>
+                                    <p className="text-xs text-red-500 font-medium">Wait for Resubmission</p>
                                   )}
                                   {s.status === 'VERIFIED' && (
-                                    <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest">Completed</p>
+                                    <p className="text-xs text-emerald-500 font-medium flex items-center gap-1 justify-end">
+                                      <CheckCircle2 size={14} /> Verified
+                                    </p>
                                   )}
-
                                   <Button
                                     variant="ghost"
                                     className="p-1.5 ml-1 text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-colors rounded-lg"
@@ -3500,12 +3750,12 @@ export default function App() {
                                   >
                                     <Trash2 size={16} />
                                   </Button>
-                                </td>
-                              </tr>
+                                </TD>
+                              </TR>
                             ))}
                             {filtered.length > itemsPerPage && (
-                              <tr>
-                                <td colSpan={7} className="px-4 py-4">
+                              <TR>
+                                <TD colSpan={7}>
                                   <div className="flex items-center justify-between">
                                     <p className="text-xs text-zinc-500">
                                       Showing {(submissionPage - 1) * itemsPerPage + 1} to {Math.min(submissionPage * itemsPerPage, filtered.length)} of {filtered.length} entries
@@ -3543,25 +3793,24 @@ export default function App() {
                                       </Button>
                                     </div>
                                   </div>
-                                </td>
-                              </tr>
+                                </TD>
+                              </TR>
                             )}
                             {filtered.length === 0 && (
-                              <tr>
-                                <td colSpan={7} className="p-12 text-center text-zinc-500 text-sm">
+                              <TR>
+                                <TD colSpan={7} className="text-center text-zinc-500 text-sm py-12">
                                   No submissions found matching your filters.
-                                </td>
-                              </tr>
+                                </TD>
+                              </TR>
                             )}
                           </>
                         );
                       })()}
-                    </tbody>
-                  </table>
-                </Card>
+                    </TBody>
+                  </Table>
+                </PageLayout>
               </motion.div>
-            )
-            }
+            )}
 
             {
               view === 'submissions' && (
@@ -3569,107 +3818,89 @@ export default function App() {
                   key="submissions"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="space-y-6"
+                  className="w-full h-full flex flex-col min-h-0"
                 >
-                  <div className="grid grid-cols-1 gap-4">
-                    {submissions.filter(s => s.user_id?.toString() === user?.id?.toString()).length === 0 ? (
-                      <Card className="flex flex-col items-center justify-center py-12 text-zinc-500">
-                        <ImageIcon size={48} className="mb-4 opacity-20" />
-                        <p>No submissions found</p>
-                      </Card>
-                    ) : (
-                      submissions
-                        .filter(s => s.user_id?.toString() === user?.id?.toString())
-                        .map(sub => (
-                        <Card key={sub.id} className="flex flex-col md:flex-row gap-6">
-                          <div className="w-full md:w-48 h-48 bg-zinc-100 rounded-xl overflow-hidden border border-zinc-200 flex-shrink-0">
-                            <img
-                              src={sub.screenshot_url}
-                              alt="Submission"
-                              className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
-                              onClick={() => window.open(sub.screenshot_url, '_blank')}
-                              referrerPolicy="no-referrer"
-                            />
-                          </div>
-                          <div className="flex-1 flex flex-col justify-between">
-                            <div>
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <h4 className="font-bold text-zinc-900 text-lg">{sub.task_title}</h4>
-                                  <p className="text-sm text-zinc-500">
-                                    {isAdvisor ? `Student: ${sub.student_name}` : `Submitted on ${new Date(sub.submitted_at).toLocaleString()}`}
-                                  </p>
-                                </div>
-                                <span className={cn(
-                                  "px-3 py-1 rounded-full text-xs font-bold uppercase",
-                                  sub.status === 'VERIFIED' ? "bg-emerald-100 text-emerald-700" :
-                                    sub.status === 'REJECTED' ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700"
-                                )}>
-                                  {sub.status}
-                                </span>
-                              </div>
-                              {sub.verified_at && (
-                                <p className="text-[10px] text-zinc-400 mt-2 uppercase font-bold">
-                                  Verified on {new Date(sub.verified_at).toLocaleString()}
-                                </p>
-                              )}
-                            </div>
-
-                            {(isHOD || isAdmin) && sub.status === 'SUBMITTED' && (
-                              <div className="flex gap-2 mt-4">
-                                <Button
-                                  variant="success"
-                                  className="flex-1 flex items-center justify-center gap-2"
-                                  onClick={() => verifySubmission(sub.id, 'VERIFIED')}
-                                >
-                                  <CheckCircle2 size={18} /> Verify
-                                </Button>
-                                <Button
-                                  variant="danger"
-                                  className="flex-1 flex items-center justify-center gap-2"
-                                  onClick={() => verifySubmission(sub.id, 'REJECTED')}
-                                >
-                                  <XCircle size={18} /> Reject
-                                </Button>
-                              </div>
-                            )}
-
-                            <Button
-                              variant="ghost"
-                              className="mt-4 text-xs flex items-center gap-2 w-fit"
-                              onClick={() => window.open(sub.screenshot_url, '_blank')}
-                            >
-                              <ExternalLink size={14} /> View Full Screenshot
-                            </Button>
-                          </div>
+                  <PageLayout>
+                    <div className="grid grid-cols-1 gap-4">
+                      {submissions.filter(s => s.user_id?.toString() === user?.id?.toString()).length === 0 ? (
+                        <Card className="flex flex-col items-center justify-center py-12 text-zinc-500">
+                          <ImageIcon size={48} className="mb-4 opacity-20" />
+                          <p>No submissions found</p>
                         </Card>
-                      ))
-                    )}
-                  </div>
+                      ) : (
+                        submissions
+                          .filter(s => s.user_id?.toString() === user?.id?.toString())
+                          .map(sub => (
+                          <Card key={sub.id} className="flex flex-col md:flex-row gap-6">
+                            <div className="w-full md:w-48 h-48 bg-zinc-100 rounded-xl overflow-hidden border border-zinc-200 flex-shrink-0">
+                              <img
+                                src={sub.screenshot_url}
+                                alt="Submission"
+                                className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
+                                onClick={() => window.open(sub.screenshot_url, '_blank')}
+                                referrerPolicy="no-referrer"
+                              />
+                            </div>
+                            <div className="flex-1 flex flex-col justify-between">
+                              <div>
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <h4 className="font-bold text-zinc-900 text-lg">{sub.task_title}</h4>
+                                    <p className="text-sm text-zinc-500">
+                                      {isAdvisor ? `Student: ${sub.student_name}` : `Submitted on ${new Date(sub.submitted_at).toLocaleString()}`}
+                                    </p>
+                                  </div>
+                                  <Badge variant={
+                                    sub.status === 'VERIFIED' ? 'success' :
+                                    sub.status === 'REJECTED' ? 'danger' : 'warning'
+                                  }>
+                                    {sub.status}
+                                  </Badge>
+                                </div>
+                                {sub.verified_at && (
+                                  <p className="text-xs text-zinc-400 mt-2 uppercase font-bold">
+                                    Verified on {new Date(sub.verified_at).toLocaleString()}
+                                  </p>
+                                )}
+                              </div>
+
+                              {(isHOD || isAdmin) && sub.status === 'SUBMITTED' && (
+                                <div className="flex gap-2 mt-4">
+                                  <Button
+                                    variant="success"
+                                    className="flex-1 flex items-center justify-center gap-2"
+                                    onClick={() => verifySubmission(sub.id, 'VERIFIED')}
+                                  >
+                                    <CheckCircle2 size={18} /> Verify
+                                  </Button>
+                                  <Button
+                                    variant="danger"
+                                    className="flex-1 flex items-center justify-center gap-2"
+                                    onClick={() => verifySubmission(sub.id, 'REJECTED')}
+                                  >
+                                    <XCircle size={18} /> Reject
+                                  </Button>
+                                </div>
+                              )}
+
+                              <Button
+                                variant="ghost"
+                                className="mt-4 text-xs flex items-center gap-2 w-fit"
+                                onClick={() => window.open(sub.screenshot_url, '_blank')}
+                              >
+                                <ExternalLink size={14} /> View Full Screenshot
+                              </Button>
+                            </div>
+                          </Card>
+                        ))
+                      )}
+                    </div>
+                  </PageLayout>
                 </motion.div>
               )
             }
           </AnimatePresence >
         </div >
-
-        <footer className="mt-auto border-t border-zinc-200 bg-zinc-50 py-8 shrink-0">
-          <div className="max-w-7xl mx-auto px-8 flex flex-col md:flex-row items-center justify-between text-zinc-500">
-            <div className="mb-4 md:mb-0 text-center md:text-left">
-              <p className="text-sm font-bold text-zinc-900">VSBEC Academic Task Management System</p>
-              <p className="text-xs mt-1">Empowering students through structured achievements.</p>
-            </div>
-            <div className="flex flex-col items-center md:items-end gap-1">
-              <div className="flex gap-6 text-sm">
-                <button onClick={() => setShowFooterModal('PRIVACY')} className="hover:text-zinc-900 transition-colors">Privacy Policy</button>
-                <button onClick={() => setShowFooterModal('TERMS')} className="hover:text-zinc-900 transition-colors">Terms of Service</button>
-                <button onClick={() => setShowFooterModal('SUPPORT')} className="hover:text-zinc-900 transition-colors">Support</button>
-              </div>
-              <p className="text-[10px] text-zinc-400 mt-2 font-medium">
-                Developed and maintained by the Department of Information Technology, VSB Engineering College. ✨
-              </p>
-            </div>
-          </div>
-        </footer>
 
         <AnimatePresence>
           {showExportModal && (
@@ -3689,7 +3920,7 @@ export default function App() {
 
                 <h3 className="text-3xl font-black text-zinc-900 tracking-tight">Report Studio</h3>
                 <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest mt-2 mb-8">
-                  {isHOD ? 'Configure your department report' : `Exporting report for ${user?.class_name || 'your class'}`}
+                  {isHOD ? 'Configure your class report' : `Exporting report for ${user?.class_name || 'your class'}`}
                 </p>
 
                 <div className="space-y-6">
@@ -3701,7 +3932,7 @@ export default function App() {
                         value={reportFilters.classId}
                         onChange={(e) => setReportFilters(prev => ({ ...prev, classId: e.target.value }))}
                       >
-                        <option value="">All Department Classes</option>
+                        <option value="">All Classes</option>
                         {hodStats?.classStats.map(c => (
                           <option key={c.id} value={c.id.toString()}>{c.name}</option>
                         ))}
@@ -3716,7 +3947,7 @@ export default function App() {
                       value={reportFilters.taskId}
                       onChange={(e) => setReportFilters(prev => ({ ...prev, taskId: e.target.value }))}
                     >
-                      <option value="">{isHOD ? 'All Department Tasks' : 'All Class Events'}</option>
+                      <option value="">{isHOD ? 'All Class Tasks' : 'All Class Events'}</option>
                       {(isHOD ? (hodStats?.taskStats || []) : tasks).map((t: any) => (
                         <option key={t.id} value={t.id.toString()}>{t.title}</option>
                       ))}
@@ -3799,7 +4030,7 @@ export default function App() {
                   <div className="space-y-4">
                     <h3 className="text-2xl font-black">Privacy Policy</h3>
                     <div className="text-zinc-600 leading-relaxed text-sm space-y-4">
-                      <p>The VSBEC Academic Task Management System respects the privacy of all users.</p>
+                      <p>The VSBEC IT Academic Task Management System respects the privacy of all users.</p>
                       <p>Information collected through the platform, including login credentials, academic task records, submissions, and user activity, is used only for academic administration and internal institutional purposes.</p>
                       <p>User data is securely stored and accessed only by authorized administrators, department staff, and relevant academic authorities. The system does not share personal information with external parties without institutional approval.</p>
                       <p>All users are expected to maintain confidentiality of their account credentials and report any unauthorized access immediately.</p>
@@ -3811,7 +4042,7 @@ export default function App() {
                   <div className="space-y-4">
                     <h3 className="text-2xl font-black">Terms of Service</h3>
                     <div className="text-zinc-600 leading-relaxed text-sm space-y-4">
-                      <p>By using the VSBEC Academic Task Management System, users agree to use the platform only for academic and institutional purposes.</p>
+                      <p>By using the VSBEC IT Academic Task Management System, users agree to use the platform only for academic and institutional purposes.</p>
                       <p>Students, faculty, and administrators must provide accurate information and use their assigned accounts responsibly.</p>
                       <p>Any misuse of the system, unauthorized access, manipulation of records, or disruption of platform operations may lead to institutional action.</p>
                       <p>The institution reserves the right to modify features, permissions, or policies whenever required for academic management.</p>
@@ -3837,6 +4068,7 @@ export default function App() {
         </AnimatePresence>
       </main >
     </div >
+    </FooterContext.Provider>
   );
 }
 

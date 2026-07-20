@@ -61,7 +61,6 @@ export async function initDB() {
         is_coordinator BOOLEAN DEFAULT FALSE,
         is_year_coordinator BOOLEAN DEFAULT FALSE,
         year_scope INT DEFAULT NULL,
-        must_change_password BOOLEAN DEFAULT FALSE,
         is_active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -154,8 +153,8 @@ export async function initDB() {
     if (adminRes.rowCount === 0) {
       const hashedPassword = await bcrypt.hash('admin123', 10);
       await client.query(`
-        INSERT INTO users (username, password, role, full_name, must_change_password)
-        VALUES ('admin', $1, 'SUPREME_ADMIN', 'Supreme Administrator', FALSE);
+        INSERT INTO users (username, password, role, full_name)
+        VALUES ('admin', $1, 'SUPREME_ADMIN', 'Supreme Administrator');
       `, [hashedPassword]);
       console.log('Supreme Admin seeded: admin / admin123');
     }
