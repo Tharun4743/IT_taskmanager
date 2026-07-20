@@ -1,16 +1,16 @@
--- Database Full Washout & Re-setup Script
-TRUNCATE task_classes, task_submissions, tasks, users, classes, departments CASCADE;
+-- Reset Student Accounts (Preserves Tasks, Task Submissions, Staff, HODs, Classes, and Departments)
+DELETE FROM users WHERE role = 'STUDENT';
 
-INSERT INTO departments (id, name) VALUES ('a6a12dd8-1863-4a21-9d3d-f6d67486788a', 'Information Technology');
-INSERT INTO classes (id, name, department_id, year, batch) VALUES ('a1a12dd8-1863-4a21-9d3d-f6d67486788a', 'III IT A', 'a6a12dd8-1863-4a21-9d3d-f6d67486788a', 3, '2024-2028');
-INSERT INTO classes (id, name, department_id, year, batch) VALUES ('b2b12dd8-1863-4a21-9d3d-f6d67486788a', 'III IT B', 'a6a12dd8-1863-4a21-9d3d-f6d67486788a', 3, '2024-2028');
-INSERT INTO classes (id, name, department_id, year, batch) VALUES ('24d62f4b-871d-44a6-9818-87ee2c943df8', 'III IT C', 'a6a12dd8-1863-4a21-9d3d-f6d67486788a', 3, '2024-2028');
+INSERT INTO departments (id, name) VALUES ('a6a12dd8-1863-4a21-9d3d-f6d67486788a', 'Information Technology') ON CONFLICT (id) DO NOTHING;
+INSERT INTO classes (id, name, department_id, year, batch) VALUES ('a1a12dd8-1863-4a21-9d3d-f6d67486788a', 'III IT A', 'a6a12dd8-1863-4a21-9d3d-f6d67486788a', 3, '2024-2028') ON CONFLICT (id) DO NOTHING;
+INSERT INTO classes (id, name, department_id, year, batch) VALUES ('b2b12dd8-1863-4a21-9d3d-f6d67486788a', 'III IT B', 'a6a12dd8-1863-4a21-9d3d-f6d67486788a', 3, '2024-2028') ON CONFLICT (id) DO NOTHING;
+INSERT INTO classes (id, name, department_id, year, batch) VALUES ('24d62f4b-871d-44a6-9818-87ee2c943df8', 'III IT C', 'a6a12dd8-1863-4a21-9d3d-f6d67486788a', 3, '2024-2028') ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO users (username, password, role, full_name, email) VALUES ('tharunkumar6083@gmail.com', '$2b$10$eB4kU4Y8NvunBDiC.74/lOwcGTXTO4FTcuDnp5MqdqRagTU1a/FH6', 'SUPREME_ADMIN', 'Supreme Administrator', 'tharunkumar6083@gmail.com');
-INSERT INTO users (username, password, role, department_id, full_name, email) VALUES ('hodit@gmail.com', '$2b$10$cS2DW0Gd36RgVisSXeBH6eFOQCtUaWc8YZIEGW6qTTwEOk/hTDbBK', 'HOD', 'a6a12dd8-1863-4a21-9d3d-f6d67486788a', 'IT', 'hodit@gmail.com');
-INSERT INTO users (username, password, role, department_id, class_id, full_name, email) VALUES ('ita@gmail.com', '$2b$10$Cmca6RBMnX42byO0DYfeCOAAQFPsI/Jg5vMmbQc99aqy5f1yPpQJi', 'CLASS_ADVISOR', 'a6a12dd8-1863-4a21-9d3d-f6d67486788a', 'a1a12dd8-1863-4a21-9d3d-f6d67486788a', 'ITA', 'ita@gmail.com');
-INSERT INTO users (username, password, role, department_id, class_id, full_name, email) VALUES ('itb@gmail.com', '$2b$10$zs9aQ0Fz4ZYfMxK0VFqOGuMGnSYgROvk/rftgino73foXeJe2itd2', 'CLASS_ADVISOR', 'a6a12dd8-1863-4a21-9d3d-f6d67486788a', 'b2b12dd8-1863-4a21-9d3d-f6d67486788a', 'ITB', 'itb@gmail.com');
-INSERT INTO users (username, password, role, department_id, class_id, full_name, email) VALUES ('itc@gmail.com', '$2b$10$KACPB0b9swsk15oH9BQfNObERqM/ETvtdWQG.8pFeyVt3DQG7Q2Di', 'CLASS_ADVISOR', 'a6a12dd8-1863-4a21-9d3d-f6d67486788a', '24d62f4b-871d-44a6-9818-87ee2c943df8', 'ITC', 'itc@gmail.com');
+INSERT INTO users (username, password, role, full_name, email) VALUES ('tharunkumar6083@gmail.com', '$2b$10$eB4kU4Y8NvunBDiC.74/lOwcGTXTO4FTcuDnp5MqdqRagTU1a/FH6', 'SUPREME_ADMIN', 'Supreme Administrator', 'tharunkumar6083@gmail.com') ON CONFLICT (username) DO NOTHING;
+INSERT INTO users (username, password, role, department_id, full_name, email) VALUES ('hodit@gmail.com', '$2b$10$cS2DW0Gd36RgVisSXeBH6eFOQCtUaWc8YZIEGW6qTTwEOk/hTDbBK', 'HOD', 'a6a12dd8-1863-4a21-9d3d-f6d67486788a', 'IT', 'hodit@gmail.com') ON CONFLICT (username) DO NOTHING;
+INSERT INTO users (username, password, role, department_id, class_id, full_name, email) VALUES ('ita@gmail.com', '$2b$10$Cmca6RBMnX42byO0DYfeCOAAQFPsI/Jg5vMmbQc99aqy5f1yPpQJi', 'CLASS_ADVISOR', 'a6a12dd8-1863-4a21-9d3d-f6d67486788a', 'a1a12dd8-1863-4a21-9d3d-f6d67486788a', 'ITA', 'ita@gmail.com') ON CONFLICT (username) DO NOTHING;
+INSERT INTO users (username, password, role, department_id, class_id, full_name, email) VALUES ('itb@gmail.com', '$2b$10$zs9aQ0Fz4ZYfMxK0VFqOGuMGnSYgROvk/rftgino73foXeJe2itd2', 'CLASS_ADVISOR', 'a6a12dd8-1863-4a21-9d3d-f6d67486788a', 'b2b12dd8-1863-4a21-9d3d-f6d67486788a', 'ITB', 'itb@gmail.com') ON CONFLICT (username) DO NOTHING;
+INSERT INTO users (username, password, role, department_id, class_id, full_name, email) VALUES ('itc@gmail.com', '$2b$10$KACPB0b9swsk15oH9BQfNObERqM/ETvtdWQG.8pFeyVt3DQG7Q2Di', 'CLASS_ADVISOR', 'a6a12dd8-1863-4a21-9d3d-f6d67486788a', '24d62f4b-871d-44a6-9818-87ee2c943df8', 'ITC', 'itc@gmail.com') ON CONFLICT (username) DO NOTHING;
 
 INSERT INTO users (username, password, role, department_id, class_id, full_name, register_number, email, is_coordinator) VALUES ('aafrinsahanaas@gmail.com', '$2b$10$fzdz8qLf8kiq/s.aAiayreiQByWRzXECVmfuRa7OQtXyFcArltrpK', 'STUDENT', 'a6a12dd8-1863-4a21-9d3d-f6d67486788a', 'a1a12dd8-1863-4a21-9d3d-f6d67486788a', 'AAFRIN SAHANA A', '922524205001', 'aafrinsahanaas@gmail.com', FALSE);
 INSERT INTO users (username, password, role, department_id, class_id, full_name, register_number, email, is_coordinator) VALUES ('abarna1232007@gmail.com', '$2b$10$u2VMRtdBT3RXlHNKZ3RlQ.jTBrXiqCCWVnmQAgwDJcNVhu4y0TpDi', 'STUDENT', 'a6a12dd8-1863-4a21-9d3d-f6d67486788a', 'a1a12dd8-1863-4a21-9d3d-f6d67486788a', 'ABARNA M', '922524205002', 'abarna1232007@gmail.com', FALSE);
