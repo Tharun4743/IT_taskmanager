@@ -1,10 +1,23 @@
-﻿import pg from 'pg';
+import pg from 'pg';
 import jwt from 'jsonwebtoken';
 import fetch from 'node-fetch';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-const DATABASE_URL = 'postgresql://postgres.pxskmtpswvpcoljkuchx:Tharun%404743@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres';
-const JWT_SECRET = 'super_secret_production_key_123!';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
+
+const DATABASE_URL = process.env.DATABASE_URL;
+const JWT_SECRET = process.env.JWT_SECRET;
 const API_URL = 'http://localhost:3000';
+
+if (!DATABASE_URL || !JWT_SECRET) {
+  console.error("Verification failed: DATABASE_URL or JWT_SECRET is missing in .env");
+  process.exit(1);
+}
 
 const { Pool } = pg;
 const pool = new Pool({

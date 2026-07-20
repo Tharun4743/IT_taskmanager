@@ -6,7 +6,11 @@ import bcrypt from 'bcryptjs';
 
 const { Pool } = pg;
 
-const databaseUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/academic_tasks';
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  console.error("FATAL DATABASE ERROR: DATABASE_URL environment variable is missing!");
+  process.exit(1);
+}
 
 export const pool = new Pool({
   connectionString: databaseUrl,

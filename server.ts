@@ -18,7 +18,22 @@ import { pool, initDB } from './db.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error("FATAL STARTUP ERROR: JWT_SECRET environment variable is missing!");
+  process.exit(1);
+}
+
+const missingCloudinary = [
+  'CLOUDINARY_CLOUD_NAME',
+  'CLOUDINARY_API_KEY',
+  'CLOUDINARY_API_SECRET'
+].filter(key => !process.env[key]);
+
+if (missingCloudinary.length > 0) {
+  console.error(`FATAL STARTUP ERROR: Missing required Cloudinary configuration: ${missingCloudinary.join(', ')}`);
+  process.exit(1);
+}
 
 // ─── Cloudinary Config ────────────────────────────────────────────────────────
 cloudinary.config({
