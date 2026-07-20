@@ -27,6 +27,10 @@ async function verify() {
     try {
         console.log('Connected to PostgreSQL successfully');
 
+        // Cleanup any leftover records from prior aborted runs
+        await client.query("DELETE FROM users WHERE username = 'test_coord_yr3'");
+        await client.query("DELETE FROM departments WHERE name = 'Test Year Coord Dept'");
+
         // 1. Create a test department
         const deptRes = await client.query("INSERT INTO departments (name) VALUES ('Test Year Coord Dept') RETURNING id;");
         const deptId = deptRes.rows[0].id;

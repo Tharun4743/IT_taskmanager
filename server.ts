@@ -80,11 +80,25 @@ async function startServer() {
   });
 
   // Auth Middleware
-  const authenticate = (req: any, res: any, next: any) => {
+  const authenticate = async (req: any, res: any, next: any) => {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
     try {
-      req.user = jwt.verify(token, JWT_SECRET);
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      const dbUserRes = await pool.query('SELECT * FROM users WHERE id = $1 LIMIT 1', [decoded.id]);
+      const dbUser = dbUserRes.rows[0];
+      if (!dbUser) return res.status(401).json({ error: 'Unauthorized: User not found' });
+      
+      req.user = {
+        id: dbUser.id,
+        username: dbUser.username,
+        role: dbUser.role,
+        department_id: dbUser.department_id,
+        class_id: dbUser.class_id,
+        is_coordinator: Boolean(dbUser.is_coordinator),
+        is_year_coordinator: Boolean(dbUser.is_year_coordinator),
+        year_scope: dbUser.year_scope,
+      };
       next();
     } catch (e) {
       res.status(401).json({ error: 'Invalid token' });
@@ -237,8 +251,23 @@ async function startServer() {
         department_id: c.department_id,
         department_name: c.department_name,
       })));
-    } else {
+    } else if (req.user.role === 'HOD') {
       classesRes = await pool.query('SELECT * FROM classes WHERE department_id = $1 ORDER BY year ASC', [req.user.department_id]);
+      return res.json(classesRes.rows.map((c: any) => ({
+        id: c.id, name: c.name, year: c.year, batch: c.batch,
+        department_id: c.department_id,
+      })));
+    } else if (req.user.role === 'CLASS_ADVISOR' && req.user.is_year_coordinator) {
+      classesRes = await pool.query('SELECT * FROM classes WHERE department_id = $1 AND year = $2 ORDER BY name ASC', [req.user.department_id, req.user.year_scope]);
+      return res.json(classesRes.rows.map((c: any) => ({
+        id: c.id, name: c.name, year: c.year, batch: c.batch,
+        department_id: c.department_id,
+      })));
+    } else {
+      if (!req.user.class_id) {
+        return res.json([]);
+      }
+      classesRes = await pool.query('SELECT * FROM classes WHERE id = $1', [req.user.class_id]);
       return res.json(classesRes.rows.map((c: any) => ({
         id: c.id, name: c.name, year: c.year, batch: c.batch,
         department_id: c.department_id,
@@ -248,9 +277,11 @@ async function startServer() {
 
   app.post('/api/classes', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), async (req: any, res) => {
     const { name, department_id, year, batch } = req.body;
-    const validNames = ['III IT A', 'III IT B', 'III IT C'];
-    if (!validNames.includes(name) || Number(year) !== 3 || batch !== '2024-2028') {
-      return res.status(400).json({ error: 'Only III IT A, III IT B, and III IT C (Year 3, Batch 2024-2028) classes are allowed.' });
+    if (!name || !name.trim() || !year || !batch) {
+      return res.status(400).json({ error: 'Name, year, and batch are required.' });
+    }
+    if (req.user.role === 'SUPREME_ADMIN' && !department_id) {
+      return res.status(400).json({ error: 'Department ID is required.' });
     }
     if (req.user.role === 'CLASS_ADVISOR') {
       if (!req.user.class_id) return res.status(400).json({ error: 'No class assigned to advisor' });
@@ -304,7 +335,10 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  app.get('/api/my-class', authenticate, authorize(['CLASS_ADVISOR']), async (req: any, res) => {
+  app.get('/api/my-class', authenticate, authorize(['CLASS_ADVISOR', 'STUDENT']), async (req: any, res) => {
+    if (req.user.role === 'STUDENT' && !req.user.is_coordinator) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
     if (!req.user.class_id) return res.json(null);
     const clsRes = await pool.query('SELECT * FROM classes WHERE id = $1 LIMIT 1', [req.user.class_id]);
     const cls = clsRes.rows[0];
@@ -567,6 +601,15 @@ async function startServer() {
 
   app.patch('/api/users/:id/status', authenticate, authorize(['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN']), async (req: any, res) => {
     const { is_active } = req.body;
+    const targetRes = await pool.query('SELECT * FROM users WHERE id = $1 LIMIT 1', [req.params.id]);
+    const targetUser = targetRes.rows[0];
+    if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+    if (req.user.role === 'HOD' && targetUser.department_id?.toString() !== req.user.department_id?.toString())
+      return res.status(403).json({ error: 'Forbidden' });
+    if (req.user.role === 'CLASS_ADVISOR' && targetUser.class_id?.toString() !== req.user.class_id?.toString())
+      return res.status(403).json({ error: 'Forbidden' });
+
     await pool.query('UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2', [is_active, req.params.id]);
     res.json({ success: true });
   });
@@ -774,6 +817,9 @@ async function startServer() {
       }
     } else if (dbUser.role === 'HOD') {
       deptId = dbUser.department_id;
+      if (!class_ids || class_ids.length === 0) {
+        return res.status(400).json({ error: 'HOD must select at least one target class before posting the task.' });
+      }
     }
 
     if (dbUser.is_year_coordinator && !department_id && (!class_ids || class_ids.length === 0)) {
@@ -1206,6 +1252,25 @@ async function startServer() {
         }
         return res.status(404).json({ error: 'Task not found' });
       }
+
+      const accessibilityRes = await pool.query(`
+        SELECT 1 FROM tasks t
+        LEFT JOIN task_classes tc ON t.id = tc.task_id
+        WHERE t.id = $1
+          AND (
+            (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
+            OR (t.department_id = $2 AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
+            OR tc.class_id = $3
+          )
+        LIMIT 1
+      `, [task.id, req.user.department_id, req.user.class_id]);
+
+      if (accessibilityRes.rowCount === 0) {
+        if (cloudinary_public_id) {
+          try { await cloudinary.uploader.destroy(cloudinary_public_id); } catch (e) {}
+        }
+        return res.status(403).json({ error: 'Forbidden: You do not have access to this task.' });
+      }
       if (task.deadline && new Date() > new Date(task.deadline)) {
         if (cloudinary_public_id) {
           try { await cloudinary.uploader.destroy(cloudinary_public_id); } catch (e) {}
@@ -1432,7 +1497,7 @@ async function startServer() {
           isClassAdvisor = true;
         }
       } else {
-        if (sub.class_id?.toString() !== req.user.class_id?.toString()) {
+        if (sub.class_id?.toString() === req.user.class_id?.toString()) {
           isClassAdvisor = true;
         }
       }

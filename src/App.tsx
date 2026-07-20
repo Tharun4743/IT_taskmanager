@@ -499,7 +499,7 @@ export default function App() {
 
   // Forms
   const [newDept, setNewDept] = useState('');
-  const [newClass, setNewClass] = useState({ name: '', department_id: '', year: '3', batch: '2024-2028' });
+  const [newClass, setNewClass] = useState({ name: '', department_id: '', year: '', batch: '' });
   const [newUser, setNewUser] = useState({
     username: '',
     password: '',
@@ -969,6 +969,21 @@ export default function App() {
     setLoginRole(null);
     setLoginData({ username: '', password: '' });
     setView('dashboard');
+    
+    // Clear all fetched state variables to prevent leakage
+    setDepartments([]);
+    setClasses([]);
+    setUsers([]);
+    setTasks([]);
+    setSubmissions([]);
+    setHodStats(null);
+    setAdvisorStats(null);
+    setStudentStats(null);
+    setCoordinatorStats(null);
+    setYearStats(null);
+    setSupremeStats(null);
+    setMyClass(null);
+    setNotifications([]);
   };
 
   const createDepartment = async (e: React.FormEvent) => {
@@ -1000,7 +1015,7 @@ export default function App() {
       body: JSON.stringify(payload)
     });
     if (res.ok) {
-      setNewClass({ name: '', department_id: '', year: '3', batch: '2024-2028' });
+      setNewClass({ name: '', department_id: '', year: '', batch: '' });
       // Only re-fetch classes and my-class, not everything
       const [classesRes] = await Promise.all([
         fetch(`${API_URL}/api/classes`, { headers: { Authorization: `Bearer ${token}` } })
@@ -1071,10 +1086,18 @@ export default function App() {
 
   const handleTaskPreview = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isHOD && (!newTask.class_ids || newTask.class_ids.length === 0)) {
+      addToast('Please select at least one class for the task.', 'error');
+      return;
+    }
     setShowTaskPreview(true);
   };
 
   const createTask = async () => {
+    if (isHOD && (!newTask.class_ids || newTask.class_ids.length === 0)) {
+      addToast('Please select at least one class for the task.', 'error');
+      return;
+    }
     try {
       const res = await fetch(`${API_URL}/api/tasks`, {
         method: 'POST',
@@ -2566,31 +2589,29 @@ export default function App() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1 md:col-span-2">
                           <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Class Name</label>
-                          <Select
+                          <Input
+                            placeholder="e.g. III IT A"
                             value={newClass.name}
                             onChange={e => setNewClass(prev => ({ ...prev, name: e.target.value }))}
                             required
-                          >
-                            <option value="">Select Class Name</option>
-                            <option value="III IT A">III IT A</option>
-                            <option value="III IT B">III IT B</option>
-                            <option value="III IT C">III IT C</option>
-                          </Select>
+                          />
                         </div>
                         <div className="space-y-1">
                           <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Year</label>
                           <Input
                             type="number"
-                            value={newClass.year || '3'}
-                            disabled
+                            placeholder="e.g. 3"
+                            value={newClass.year}
+                            onChange={e => setNewClass(prev => ({ ...prev, year: e.target.value }))}
                             required
                           />
                         </div>
                         <div className="space-y-1">
                           <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Batch Period</label>
                           <Input
-                            value={newClass.batch || '2024-2028'}
-                            disabled
+                            placeholder="e.g. 2024-2028"
+                            value={newClass.batch}
+                            onChange={e => setNewClass(prev => ({ ...prev, batch: e.target.value }))}
                             required
                           />
                         </div>
@@ -2654,8 +2675,8 @@ export default function App() {
                         <div className="space-y-1">
                           <label className="text-xs font-bold text-zinc-500 uppercase">Class Name</label>
                           <Input
-                            value={newClass.name || myClass?.name || ''}
-                            disabled
+                            value={newClass.name !== undefined && newClass.name !== '' ? newClass.name : (myClass?.name || '')}
+                            onChange={e => setNewClass(prev => ({ ...prev, name: e.target.value }))}
                             required
                           />
                         </div>
@@ -2663,16 +2684,16 @@ export default function App() {
                           <label className="text-xs font-bold text-zinc-500 uppercase">Year</label>
                           <Input
                             type="number"
-                            value={newClass.year || myClass?.year || '3'}
-                            disabled
+                            value={newClass.year !== undefined && newClass.year !== '' ? newClass.year : (myClass?.year || '')}
+                            onChange={e => setNewClass(prev => ({ ...prev, year: e.target.value }))}
                             required
                           />
                         </div>
                         <div className="space-y-1">
                           <label className="text-xs font-bold text-zinc-500 uppercase">Batch</label>
                           <Input
-                            value={newClass.batch || myClass?.batch || '2024-2028'}
-                            disabled
+                            value={newClass.batch !== undefined && newClass.batch !== '' ? newClass.batch : (myClass?.batch || '')}
+                            onChange={e => setNewClass(prev => ({ ...prev, batch: e.target.value }))}
                             required
                           />
                         </div>
