@@ -8,6 +8,21 @@
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05); /* uniform card shadow */
 }
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: #e4e4e7;
+    box-sizing: border-box;
+  }
+  body {
+    background-color: #fafafa;
+    color: #18181b;
+  }
+}
+
 /* Custom scrollbar utility */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
@@ -22,4 +37,18 @@
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #d4d4d8;
+}
+
+/* Global layout fixes */
+.truncate-safe {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.break-safe {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
 }

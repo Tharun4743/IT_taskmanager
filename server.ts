@@ -63,7 +63,15 @@ async function startServer() {
   app.use('/api/', apiLimiter);
   app.use(express.json());
   app.use(cors({
-    origin: process.env.FRONTEND_URL || '*',
+    origin: function (origin, callback) {
+      const allowedOrigins = ['http://localhost:5173', 'http://localhost:3000', 'https://vsbec.unaux.com', 'https://it-taskmanager.onrender.com'];
+      if (!origin || allowedOrigins.includes(origin) || (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL)) {
+        callback(null, true);
+      } else {
+        console.warn(`CORS rejected origin: ${origin}`);
+        callback(null, false); // Fail silently instead of throwing error for unrecognized origins
+      }
+    },
     credentials: true
   }));
 

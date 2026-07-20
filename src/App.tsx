@@ -555,7 +555,7 @@ export default function App() {
     setIsWakingServer(true);
     setHasError(false);
 
-    const delays = [0, 3000, 6000, 12000, 24000, 30000];
+    const delays = [0, 2000, 4000, 8000, 16000, 32000, 30000]; // 7 attempts, up to ~92 seconds total wait
     for (let i = 0; i < delays.length; i++) {
       setWakeAttempt(i + 1);
       if (delays[i] > 0) {
@@ -621,7 +621,24 @@ export default function App() {
         fetch(`${API_URL}/api/notifications`, { headers })
       ]);
 
-      if (!deptsRes.ok || !classesRes.ok || !usersRes.ok || !tasksRes.ok || !submissionsRes.ok || !notificationsRes.ok) {
+      const responses = [deptsRes, classesRes, usersRes, tasksRes, submissionsRes, notificationsRes];
+      
+      const hasAuthError = responses.some(r => r.status === 401 || r.status === 403);
+      if (hasAuthError) {
+        console.error("Auth error detected, clearing token:", responses.map(r => `${r.url}: ${r.status}`).join(', '));
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        setToken(null);
+        setUser(null);
+        setLoginRole(null);
+        setLoginData({ username: '', password: '' });
+        setView('dashboard');
+        setIsLoading(false);
+        return;
+      }
+
+      if (responses.some(r => !r.ok)) {
+        console.error("API Error statuses:", responses.map(r => `${r.url}: ${r.status}`).join(', '));
         throw new Error('API request failed');
       }
 
@@ -677,7 +694,6 @@ export default function App() {
     } catch (e) {
       console.error('Failed to fetch data', e);
       addToast('Failed to load application data. Check your connection.', 'error');
-      setHasError(true);
       setIsLoading(false);
     }
   };
@@ -911,7 +927,7 @@ export default function App() {
       const res = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...loginData, role: loginRole })
+        body: JSON.stringify({ ...loginData })
       });
       const data = await res.json();
       if (res.ok) {
@@ -2683,11 +2699,14 @@ export default function App() {
                   {(() => {
                     // Show create form for Advisors tab (CLASS_ADVISOR), Students tab (STUDENT), and All tab (uses hodCreationRole toggle)
                     // HOD: hide only when isAdmin and not on users view (never hide for HOD)
-                    const effectiveRole = isAdvisor ? 'STUDENT' : (isAdmin ? 'HOD' : (isHOD ? (studentFilter === 'STUDENT' ? 'STUDENT' : (studentFilter === 'CLASS_ADVISOR' ? 'CLASS_ADVISOR' : hodCreationRole)) : 'STUDENT'));
+                    const isAdvisorsTab = studentFilter === 'CLASS_ADVISOR';
+                    const isStudentsTab = studentFilter === 'STUDENT';
+                    const isAllTab = studentFilter === 'ALL';
+                    const effectiveRole = isAdvisor ? 'STUDENT' : (isAdmin ? 'HOD' : (isHOD ? (isStudentsTab ? 'STUDENT' : (isAdvisorsTab ? 'CLASS_ADVISOR' : hodCreationRole)) : 'STUDENT'));
                     return (
                       <ContentCard>
                         <h3 className="text-lg font-semibold mb-4">
-                          {effectiveRole === 'STUDENT' ? 'Create Student Account' : `Create ${isAdmin ? 'HOD' : 'Advisor'} Account`}
+                          {effectiveRole === 'STUDENT' ? 'Create Student Account' : effectiveRole === 'CLASS_ADVISOR' ? 'Create Class Advisor Account' : 'Create HOD Account'}
                         </h3>
                         <form onSubmit={createUser} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {isHOD && studentFilter === 'ALL' && (

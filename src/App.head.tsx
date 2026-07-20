@@ -498,7 +498,7 @@ export default function App() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...loginData, role: loginRole })
+        body: JSON.stringify({ ...loginData })
       });
       const data = await res.json();
       if (res.ok) {
@@ -1763,7 +1763,7 @@ export default function App() {
 
                 <Card>
                   <h3 className="text-lg font-semibold mb-4">
-                    {isAdvisor ? 'Add Student' : `Create ${isAdmin ? 'HOD' : 'Advisor'} Account`}
+                    {isAdvisor ? 'Add Student' : isAdmin ? 'Create HOD Account' : isHOD ? 'Create Class Advisor Account' : 'Create Account'}
                   </h3>
                   <form onSubmit={createUser} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Input
