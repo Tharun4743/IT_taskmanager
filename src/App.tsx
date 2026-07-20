@@ -2044,82 +2044,150 @@ export default function App() {
           )}
         </AnimatePresence>
         <AnimatePresence>
-          {showTaskPreview && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-white rounded-2xl p-8 w-full max-w-2xl shadow-2xl relative"
-              >
-                <button
-                  onClick={() => setShowTaskPreview(false)}
-                  className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-zinc-900 transition-colors"
+          {showTaskPreview && (() => {
+            const previewCatColors: Record<string, string> = {
+              'Competition': 'bg-rose-50 text-rose-600 border-rose-100',
+              'Course': 'bg-indigo-50 text-indigo-600 border-indigo-100',
+              'Workshop': 'bg-amber-50 text-amber-600 border-amber-100',
+              'College Work': 'bg-emerald-50 text-emerald-600 border-emerald-100'
+            };
+            const previewCategoryIcons: Record<string, string> = {
+              'Competition': '🏆',
+              'Course': '📚',
+              'Workshop': '🏫',
+              'College Work': '📋'
+            };
+            const catStyle = previewCatColors[newTask.category] || 'bg-zinc-50 text-zinc-600 border-zinc-200';
+            const catIcon = previewCategoryIcons[newTask.category] || '';
+
+            const previewDeadlinePassed = newTask.deadline && new Date(newTask.deadline) < new Date();
+            const previewWithin24h = newTask.deadline && !previewDeadlinePassed && (new Date(newTask.deadline).getTime() - new Date().getTime()) < 24 * 60 * 60 * 1000;
+
+            return (
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  className="bg-white rounded-2xl p-6 md:p-8 w-full max-w-4xl shadow-2xl relative max-h-[95vh] md:max-h-[90vh] flex flex-col"
                 >
-                  <XCircle size={24} />
-                </button>
-                <h2 className="text-2xl font-bold mb-2">Live Preview</h2>
-                <p className="text-zinc-500 text-sm mb-6">This is exactly what students will see.</p>
+                  <button
+                    onClick={() => setShowTaskPreview(false)}
+                    className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-zinc-900 transition-colors"
+                  >
+                    <XCircle size={24} />
+                  </button>
+                  <h2 className="text-2xl font-bold mb-2">Live Preview</h2>
+                  <p className="text-zinc-500 text-sm mb-6">This is exactly what students will see.</p>
 
-                <ContentCard className="p-0 overflow-hidden mb-6 border-2 border-zinc-100 shadow-none">
-                  <div className="p-6 md:p-8 border-b border-zinc-100 bg-zinc-50/50">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
-                      <div>
-                        <span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-xs font-bold uppercase tracking-wider mb-2 inline-block border border-indigo-100">
-                          {newTask.category || 'CATEGORY'}
-                        </span>
-                        <h3 className="text-xl font-bold text-zinc-900 tracking-tight">{newTask.title || "Untitled Task"}</h3>
+                  <div className="flex-1 overflow-y-auto pr-2 -mr-2 custom-scrollbar">
+                    <Card className="border border-zinc-200 shadow-sm p-4 md:p-6 mb-6">
+                      <div className="flex flex-col md:flex-row justify-between items-start mb-4 gap-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1", catStyle)}>
+                              {catIcon} {newTask.category || 'General'}
+                            </span>
+                            <h4 className="font-bold text-zinc-900 text-lg md:text-xl break-words">{newTask.title || "Untitled Task"}</h4>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                            <span className="font-medium text-zinc-700">{user?.name || "Task Creator"}</span>
+                            <span className="hidden md:inline">•</span>
+                            <span>{new Date().toLocaleDateString()}</span>
+                            <span className="hidden md:inline">•</span>
+                            <span className="px-2 py-0.5 rounded-full border border-transparent whitespace-nowrap bg-blue-50 text-blue-600 border-blue-100">
+                              Class Task
+                            </span>
+                            <span className="hidden md:inline">•</span>
+                            <span className="bg-zinc-100 text-zinc-600 px-2.5 py-0.5 rounded-full flex items-center gap-1.5 whitespace-nowrap border border-zinc-200">
+                              <Users size={12} /> 0 students submitted
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-left md:text-right shrink-0">
+                          <p className="text-[10px] text-zinc-400 uppercase font-bold flex items-center gap-1 md:justify-end">
+                            <Clock size={12} /> Deadline
+                          </p>
+                          <p className={cn(
+                            "text-sm font-bold flex flex-col md:items-end",
+                            previewDeadlinePassed ? "text-red-500" : (previewWithin24h ? "text-orange-500" : "text-zinc-600")
+                          )}>
+                            {newTask.deadline ? new Date(newTask.deadline).toLocaleString() : "No deadline"}
+                            {previewWithin24h && <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded mt-1">Due within 24h!</span>}
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-left md:text-right">
-                        <p className="text-xs text-zinc-400 uppercase font-bold tracking-wider mb-1">Deadline</p>
-                        <p className="text-sm font-bold text-red-500 bg-red-50 px-2 py-1 rounded inline-block border border-red-100">
-                          {newTask.deadline ? new Date(newTask.deadline).toLocaleString() : "No deadline set"}
-                        </p>
-                      </div>
-                    </div>
-                    <p className="text-zinc-600 text-sm whitespace-pre-wrap">{newTask.description || "No description provided."}</p>
 
-                    {newTask.external_link && (
-                      <div className="mt-4">
-                        <a
-                          href={newTask.external_link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-700 text-sm font-bold"
-                        >
-                          <ExternalLink size={16} /> Visit External Link
-                        </a>
+                      <p className="text-zinc-600 text-sm mb-6 whitespace-pre-wrap break-words">{newTask.description || "No description provided."}</p>
+
+                      {newTask.external_link && (
+                        <div className="mb-6">
+                          <a
+                            href={newTask.external_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-blue-600 hover:underline text-sm font-medium"
+                          >
+                            <ExternalLink size={16} /> Visit External Link
+                          </a>
+                        </div>
+                      )}
+
+                      <div className="bg-zinc-50 p-6 rounded-xl border border-zinc-200 mt-6 shadow-sm">
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-sm font-medium text-zinc-700 mb-2 block">
+                              {newTask.custom_field_label || "Custom Field"}
+                            </label>
+                            <Input
+                              placeholder={`Enter ${newTask.custom_field_label || "value"}...`}
+                              disabled
+                            />
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium text-zinc-700 mb-2 block">
+                              {newTask.screenshot_instruction || "Upload Screenshot"}
+                            </label>
+                            <div className="flex flex-col gap-4">
+                              <div className="flex items-center gap-4">
+                                <div className="flex-1 w-full">
+                                  <div
+                                    className="relative w-full border-2 border-dashed rounded-xl p-6 md:p-8 flex flex-col items-center justify-center transition-all cursor-not-allowed border-zinc-200 bg-white text-zinc-400"
+                                  >
+                                    <Upload size={24} className="mb-2" />
+                                    <p className="font-bold text-center text-[10px] md:text-sm uppercase tracking-wide">Upload Screen</p>
+                                    <p className="text-[10px] opacity-60 text-center">Drag or Click</p>
+                                  </div>
+                                </div>
+                                <Button
+                                  disabled
+                                  variant="secondary"
+                                  className="h-auto md:h-full px-8 py-4 shrink-0 transition-all font-black uppercase tracking-wider text-sm opacity-50 cursor-not-allowed"
+                                >
+                                  Submit
+                                </Button>
+                              </div>
+                              <div className="mt-3 flex items-start gap-2 text-zinc-400">
+                                <span className="text-xs shrink-0 mt-0.5">*</span>
+                                <p className="text-xs italic leading-tight">
+                                  {newTask.screenshot_instruction || "Ensure your screenshot clearly shows the completion or registration details before hitting Submit."}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    )}
+                    </Card>
                   </div>
 
-                  <div className="p-6 md:p-8 space-y-6">
-                    <div>
-                      <label className="text-sm font-bold text-zinc-700 mb-2 block tracking-tight">
-                        {newTask.custom_field_label || "Custom Field"}
-                      </label>
-                      <Input placeholder={`Enter ${newTask.custom_field_label || "value"}...`} disabled />
-                    </div>
-                    <div>
-                      <label className="text-sm font-bold text-zinc-700 mb-2 block tracking-tight">
-                        {newTask.screenshot_instruction || "Upload Screenshot"}
-                      </label>
-                      <div className="border-2 border-dashed border-zinc-200 rounded-xl p-8 flex flex-col items-center justify-center text-zinc-400 bg-zinc-50 cursor-not-allowed">
-                        <Upload size={32} className="mb-2 opacity-50" />
-                        <p className="text-sm font-medium">Click or drag to upload screenshot</p>
-                      </div>
-                    </div>
-                    <Button className="w-full" disabled>Submit Task</Button>
+                  <div className="mt-6 pt-4 border-t border-zinc-100 flex gap-4 shrink-0">
+                    <Button variant="secondary" className="flex-1" onClick={() => setShowTaskPreview(false)}>Back to Edit</Button>
+                    <Button className="flex-1" onClick={() => { createTask(); setShowTaskPreview(false); }}>Publish Task</Button>
                   </div>
-                </ContentCard>
-
-                <div className="mt-8 flex gap-4">
-                  <Button variant="secondary" className="flex-1" onClick={() => setShowTaskPreview(false)}>Back to Edit</Button>
-                  <Button className="flex-1" onClick={() => { createTask(); setShowTaskPreview(false); }}>Publish Task</Button>
-                </div>
-              </motion.div>
-            </div>
-          )}
+                </motion.div>
+              </div>
+            );
+          })()}
         </AnimatePresence>
         {/* Reviews Modal */}
         <AnimatePresence>
