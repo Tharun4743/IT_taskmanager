@@ -623,7 +623,7 @@ export default function App() {
 
       const responses = [deptsRes, classesRes, usersRes, tasksRes, submissionsRes, notificationsRes];
       
-      const hasAuthError = responses.some(r => r.status === 401 || r.status === 403);
+      const hasAuthError = responses.some(r => r.status === 401);
       if (hasAuthError) {
         console.error("Auth error detected, clearing token:", responses.map(r => `${r.url}: ${r.status}`).join(', '));
         localStorage.removeItem('token');
@@ -637,19 +637,26 @@ export default function App() {
         return;
       }
 
-      if (responses.some(r => !r.ok)) {
-        console.error("API Error statuses:", responses.map(r => `${r.url}: ${r.status}`).join(', '));
-        throw new Error('API request failed');
-      }
+      // Helper to safely parse JSON or return an empty array if the request failed (e.g., 403 for students)
+      const parseJSON = async (res: Response) => {
+        if (res.ok) {
+          try {
+            return await res.json();
+          } catch (e) {
+            return [];
+          }
+        }
+        return [];
+      };
 
       // Parse JSON in parallel too
       const [depts, classes, users, tasks, submissions, notifications] = await Promise.all([
-        deptsRes.json(),
-        classesRes.json(),
-        usersRes.json(),
-        tasksRes.json(),
-        submissionsRes.json(),
-        notificationsRes.json(),
+        parseJSON(deptsRes),
+        parseJSON(classesRes),
+        parseJSON(usersRes),
+        parseJSON(tasksRes),
+        parseJSON(submissionsRes),
+        parseJSON(notificationsRes),
       ]);
 
       setDepartments(depts);
