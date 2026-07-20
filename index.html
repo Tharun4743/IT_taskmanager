@@ -10,6 +10,16 @@
 
 <body>
   <div id="root"></div>
+  <script>
+    const ENV = Object.freeze({
+        API_URL: "https://it-taskmanager.onrender.com/api",
+        IS_PRODUCTION: true,
+        AUTH_TOKEN_STORAGE_KEY: "vsbec_auth_token",
+        AUTH_HEADER_NAME: "Authorization",
+        AUTH_SCHEME: "Bearer",
+        CONTENT_TYPE: "application/json"
+    });
+  </script>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 
