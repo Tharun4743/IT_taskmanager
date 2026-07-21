@@ -63,17 +63,21 @@ async function startServer() {
 
   const app = express();
 
+  // Enable trust proxy so express-rate-limit correctly identifies individual client IPs behind reverse proxies (Render, Cloudflare, Nginx)
+  app.set('trust proxy', 1);
+
   // ── Security configuration ───────────────────────────────────────────────────
+  const maxRequests = process.env.RATE_LIMIT_MAX ? parseInt(process.env.RATE_LIMIT_MAX, 10) : 3000;
   const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 300, // Limit each IP to 300 requests per window
+    max: maxRequests, // Dynamic request limit (defaults to 3000 requests per 15 minutes)
     standardHeaders: true,
     legacyHeaders: false,
+    skip: () => process.env.DISABLE_RATE_LIMIT === 'true' || process.env.NODE_ENV === 'development',
     handler: (req, res) => {
       res.status(429).json({ error: 'Too many requests from this IP, please try again after 15 minutes' });
     }
   });
-
 
   app.use('/api/', apiLimiter);
   app.use(express.json());
