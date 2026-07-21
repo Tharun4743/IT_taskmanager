@@ -65,13 +65,16 @@ export async function initDB() {
         is_coordinator BOOLEAN DEFAULT FALSE,
         is_year_coordinator BOOLEAN DEFAULT FALSE,
         year_scope INT DEFAULT NULL,
-        is_active BOOLEAN DEFAULT TRUE,
+        gender VARCHAR(20),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT unique_email UNIQUE (email),
         CONSTRAINT unique_register UNIQUE (register_number)
       );
     `);
+
+    // Ensure gender column exists if table was already created
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(20);`);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS tasks (

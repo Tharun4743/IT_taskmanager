@@ -1187,6 +1187,9 @@ async function startServer() {
     }));
 
     const totalStudentsRes = await pool.query("SELECT count(*) FROM users WHERE class_id = $1 AND role = 'STUDENT'", [classId]);
+    const totalBoysRes = await pool.query("SELECT count(*) FROM users WHERE class_id = $1 AND role = 'STUDENT' AND (gender = 'MALE' OR gender = 'BOYS')", [classId]);
+    const totalGirlsRes = await pool.query("SELECT count(*) FROM users WHERE class_id = $1 AND role = 'STUDENT' AND (gender = 'FEMALE' OR gender = 'GIRLS')", [classId]);
+
     const pendingReviewsRes = await pool.query(`
       SELECT count(DISTINCT ts.user_id) FROM task_submissions ts
       JOIN users u ON ts.user_id = u.id
@@ -1203,6 +1206,35 @@ async function startServer() {
       WHERE u.class_id = $1 AND ts.status = 'REJECTED'
     `, [classId]);
 
+    const boysVerifiedRes = await pool.query(`
+      SELECT count(DISTINCT ts.user_id) FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      WHERE u.class_id = $1 AND (u.gender = 'MALE' OR u.gender = 'BOYS') AND ts.status = 'VERIFIED'
+    `, [classId]);
+    const girlsVerifiedRes = await pool.query(`
+      SELECT count(DISTINCT ts.user_id) FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      WHERE u.class_id = $1 AND (u.gender = 'FEMALE' OR u.gender = 'GIRLS') AND ts.status = 'VERIFIED'
+    `, [classId]);
+
+    const boysPendingRes = await pool.query(`
+      SELECT count(DISTINCT ts.user_id) FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      WHERE u.class_id = $1 AND (u.gender = 'MALE' OR u.gender = 'BOYS') AND ts.status = 'SUBMITTED'
+    `, [classId]);
+    const girlsPendingRes = await pool.query(`
+      SELECT count(DISTINCT ts.user_id) FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      WHERE u.class_id = $1 AND (u.gender = 'FEMALE' OR u.gender = 'GIRLS') AND ts.status = 'SUBMITTED'
+    `, [classId]);
+
+    const totalBoys = parseInt(totalBoysRes.rows[0].count);
+    const totalGirls = parseInt(totalGirlsRes.rows[0].count);
+    const boysVerified = parseInt(boysVerifiedRes.rows[0].count);
+    const girlsVerified = parseInt(girlsVerifiedRes.rows[0].count);
+    const boysPending = parseInt(boysPendingRes.rows[0].count);
+    const girlsPending = parseInt(girlsPendingRes.rows[0].count);
+
     res.json({
       taskStats,
       studentStats,
@@ -1210,6 +1242,14 @@ async function startServer() {
       pending_reviews: parseInt(pendingReviewsRes.rows[0].count),
       verified_submissions: parseInt(verifiedSubmissionsRes.rows[0].count),
       rejected_submissions: parseInt(rejectedSubmissionsRes.rows[0].count),
+      total_boys: totalBoys,
+      total_girls: totalGirls,
+      boys_verified: boysVerified,
+      girls_verified: girlsVerified,
+      boys_pending: boysPending,
+      girls_pending: girlsPending,
+      boys_incomplete: Math.max(0, totalBoys - boysVerified),
+      girls_incomplete: Math.max(0, totalGirls - girlsVerified),
     });
   });
 
@@ -1697,6 +1737,9 @@ async function startServer() {
     }));
 
     const totalStudentsRes = await pool.query("SELECT count(*) FROM users WHERE class_id = $1 AND role = 'STUDENT'", [classId]);
+    const totalBoysRes = await pool.query("SELECT count(*) FROM users WHERE class_id = $1 AND role = 'STUDENT' AND (gender = 'MALE' OR gender = 'BOYS')", [classId]);
+    const totalGirlsRes = await pool.query("SELECT count(*) FROM users WHERE class_id = $1 AND role = 'STUDENT' AND (gender = 'FEMALE' OR gender = 'GIRLS')", [classId]);
+
     const submittedCountRes = await pool.query(`
       SELECT count(DISTINCT ts.user_id) FROM task_submissions ts
       JOIN users u ON ts.user_id = u.id
@@ -1713,10 +1756,25 @@ async function startServer() {
       WHERE u.class_id = $1 AND ts.status = 'REJECTED'
     `, [classId]);
 
+    const boysVerifiedRes = await pool.query(`
+      SELECT count(DISTINCT ts.user_id) FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      WHERE u.class_id = $1 AND (u.gender = 'MALE' OR u.gender = 'BOYS') AND ts.status = 'VERIFIED'
+    `, [classId]);
+    const girlsVerifiedRes = await pool.query(`
+      SELECT count(DISTINCT ts.user_id) FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      WHERE u.class_id = $1 AND (u.gender = 'FEMALE' OR u.gender = 'GIRLS') AND ts.status = 'VERIFIED'
+    `, [classId]);
+
     const totalStudents = parseInt(totalStudentsRes.rows[0].count);
+    const totalBoys = parseInt(totalBoysRes.rows[0].count);
+    const totalGirls = parseInt(totalGirlsRes.rows[0].count);
     const submittedCount = parseInt(submittedCountRes.rows[0].count);
     const verifiedCount = parseInt(verifiedCountRes.rows[0].count);
     const rejectedCount = parseInt(rejectedCountRes.rows[0].count);
+    const boysVerified = parseInt(boysVerifiedRes.rows[0].count);
+    const girlsVerified = parseInt(girlsVerifiedRes.rows[0].count);
 
     res.json({
       taskStats,
@@ -1725,7 +1783,13 @@ async function startServer() {
       submitted_tasks_count: submittedCount,
       verified_tasks_count: verifiedCount,
       rejected_tasks_count: rejectedCount,
-      pending_tasks_count: (totalTasks * totalStudents) - submittedCount - verifiedCount
+      pending_tasks_count: (totalTasks * totalStudents) - submittedCount - verifiedCount,
+      total_boys: totalBoys,
+      total_girls: totalGirls,
+      boys_verified: boysVerified,
+      girls_verified: girlsVerified,
+      boys_incomplete: Math.max(0, totalBoys - boysVerified),
+      girls_incomplete: Math.max(0, totalGirls - girlsVerified),
     });
   });
 

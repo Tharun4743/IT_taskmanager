@@ -55,6 +55,7 @@ interface User {
   class_name?: string;
   email?: string;
   register_number?: string;
+  gender?: 'MALE' | 'FEMALE';
   is_coordinator?: boolean;
   is_year_coordinator?: boolean;
   year_scope?: number | null;
@@ -145,6 +146,17 @@ interface HODStats {
 }
 
 interface AdvisorStats {
+  total_students?: number;
+  submitted_tasks_count?: number;
+  verified_tasks_count?: number;
+  rejected_tasks_count?: number;
+  pending_tasks_count?: number;
+  total_boys?: number;
+  total_girls?: number;
+  boys_verified?: number;
+  girls_verified?: number;
+  boys_incomplete?: number;
+  girls_incomplete?: number;
   taskStats: {
     id: number;
     title: string;
@@ -173,6 +185,12 @@ interface CoordinatorStats {
   pending_reviews?: number;
   verified_submissions?: number;
   rejected_submissions?: number;
+  total_boys?: number;
+  total_girls?: number;
+  boys_verified?: number;
+  girls_verified?: number;
+  boys_incomplete?: number;
+  girls_incomplete?: number;
   taskStats: {
     id: number;
     title: string;
@@ -1629,6 +1647,8 @@ export default function App() {
   }
 
   const UnifiedAnalyzer = ({ role, title }: { role: string, title: string }) => {
+    const [analyzerGenderFilter, setAnalyzerGenderFilter] = useState<'ALL' | 'BOYS' | 'GIRLS'>('ALL');
+
     // Determine context
     const isGlobal = role === 'SUPREME_ADMIN';
     const isDept = role === 'HOD';
@@ -1672,14 +1692,12 @@ export default function App() {
       } else {
         const studentSubs = submissions.filter(s => s.user_id?.toString() === student.id?.toString());
         const visibleTasks = tasks.filter(t => {
-          // If we are filtering by a specific class in the analyzer, show tasks for that class OR dept-wide OR global
           if (analyzerClassFilter) {
             if ((t.class_ids || []).some(cid => cid.toString() === analyzerClassFilter)) return true;
             if (t.department_id && t.department_id.toString() === student.department_id?.toString() && (!(t.class_ids || []).length)) return true;
             if (!t.department_id && (!(t.class_ids || []).length)) return true;
             return false;
           }
-          // Default logic for "All Classes" or specific Advisor context
           if (Array.isArray(t.class_ids) && t.class_ids.length > 0 && !t.class_ids.some(cid => cid.toString() === student.class_id?.toString())) return false;
           if (t.department_id && t.department_id.toString() !== student.department_id?.toString() && (!(t.class_ids || []).length)) return false;
           return true;
@@ -1708,7 +1726,18 @@ export default function App() {
       return { ...student, submissionStatus, submissionLabel, clsName, missingTasks };
     });
 
+    const boysEnriched = enriched.filter(s => s.gender === 'MALE' || s.gender === 'BOYS');
+    const girlsEnriched = enriched.filter(s => s.gender === 'FEMALE' || s.gender === 'GIRLS');
+
+    const boysCompleted = boysEnriched.filter(s => s.submissionStatus === 'VERIFIED' || s.submissionStatus === 'SUBMITTED').length;
+    const boysPending = boysEnriched.length - boysCompleted;
+
+    const girlsCompleted = girlsEnriched.filter(s => s.submissionStatus === 'VERIFIED' || s.submissionStatus === 'SUBMITTED').length;
+    const girlsPending = girlsEnriched.length - girlsCompleted;
+
     const filtered = enriched.filter(s => {
+      if (analyzerGenderFilter === 'BOYS' && !(s.gender === 'MALE' || s.gender === 'BOYS')) return false;
+      if (analyzerGenderFilter === 'GIRLS' && !(s.gender === 'FEMALE' || s.gender === 'GIRLS')) return false;
       if (analyzerStatusFilter === 'COMPLETED') return s.submissionStatus === 'VERIFIED' || s.submissionStatus === 'SUBMITTED';
       if (analyzerStatusFilter === 'PENDING') return s.submissionStatus === 'PENDING';
       return true;
@@ -1721,10 +1750,10 @@ export default function App() {
       <ContentCard className="p-0 overflow-hidden mt-10">
         <div className="p-6 border-b border-zinc-200 bg-zinc-50/50">
           <h3 className="text-xl font-bold text-zinc-900 tracking-tight">{title}</h3>
-          <p className="text-xs font-medium text-zinc-500 mt-1">Track student progress and events</p>
+          <p className="text-xs font-medium text-zinc-500 mt-1">Track student progress and events by class and gender</p>
         </div>
 
-        <div className="px-6 py-4 grid grid-cols-1 md:grid-cols-4 gap-4 bg-white border-b border-zinc-200">
+        <div className="px-6 py-4 grid grid-cols-1 md:grid-cols-5 gap-4 bg-white border-b border-zinc-200">
           {isGlobal && (
             <div>
               <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5 block">Departments</label>
@@ -1778,15 +1807,62 @@ export default function App() {
             </Select>
           </div>
           <div>
+            <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5 block">Gender</label>
+            <Select
+              value={analyzerGenderFilter}
+              onChange={e => setAnalyzerGenderFilter(e.target.value as any)}
+            >
+              <option value="ALL">All Students</option>
+              <option value="BOYS">👦 Boys</option>
+              <option value="GIRLS">👧 Girls</option>
+            </Select>
+          </div>
+          <div>
             <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5 block">Status</label>
             <Select
               value={analyzerStatusFilter}
               onChange={e => setAnalyzerStatusFilter(e.target.value as any)}
             >
-              <option value="ALL">All Students</option>
+              <option value="ALL">All Status</option>
               <option value="COMPLETED">Completed</option>
               <option value="PENDING">Not Registered</option>
             </Select>
+          </div>
+        </div>
+
+        {/* Separate Gender Breakdown Cards */}
+        <div className="px-6 py-4 grid grid-cols-1 sm:grid-cols-3 gap-4 bg-zinc-50 border-b border-zinc-200">
+          <div className="bg-white p-4 rounded-2xl border border-zinc-200 flex items-center justify-between shadow-sm">
+            <div>
+              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Total Students</p>
+              <p className="text-2xl font-black text-zinc-900 mt-0.5">{enriched.length}</p>
+            </div>
+            <div className="text-right text-xs font-semibold text-zinc-600 space-y-0.5">
+              <p className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md">👦 Boys: {boysEnriched.length}</p>
+              <p className="bg-pink-50 text-pink-700 px-2 py-0.5 rounded-md">👧 Girls: {girlsEnriched.length}</p>
+            </div>
+          </div>
+
+          <div className="bg-white p-4 rounded-2xl border border-zinc-200 flex items-center justify-between shadow-sm">
+            <div>
+              <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Completed / Done</p>
+              <p className="text-2xl font-black text-emerald-600 mt-0.5">{completedCount}</p>
+            </div>
+            <div className="text-right text-xs font-semibold space-y-0.5">
+              <p className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md">👦 Boys: {boysCompleted}</p>
+              <p className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md">👧 Girls: {girlsCompleted}</p>
+            </div>
+          </div>
+
+          <div className="bg-white p-4 rounded-2xl border border-zinc-200 flex items-center justify-between shadow-sm">
+            <div>
+              <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Not Registered / Pending</p>
+              <p className="text-2xl font-black text-amber-600 mt-0.5">{pendingCount}</p>
+            </div>
+            <div className="text-right text-xs font-semibold space-y-0.5">
+              <p className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md">👦 Boys: {boysPending}</p>
+              <p className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md">👧 Girls: {girlsPending}</p>
+            </div>
           </div>
         </div>
 
@@ -1874,6 +1950,11 @@ export default function App() {
                     <TD className="text-sm text-zinc-900">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-zinc-900">{student.full_name}</span>
+                        {student.gender && (
+                          <span className={cn("px-2 py-0.5 text-[10px] font-bold rounded uppercase border", (student.gender === 'MALE' || student.gender === 'BOYS') ? "bg-blue-50 text-blue-600 border-blue-100" : "bg-pink-50 text-pink-600 border-pink-100")}>
+                            {(student.gender === 'MALE' || student.gender === 'BOYS') ? '👦 Boy' : '👧 Girl'}
+                          </span>
+                        )}
                         {!analyzerClassFilter && (
                           <span className="px-2 py-0.5 bg-indigo-50 text-indigo-500 text-xs font-bold rounded uppercase border border-indigo-100">
                             {student.clsName}
