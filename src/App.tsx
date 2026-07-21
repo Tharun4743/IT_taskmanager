@@ -168,6 +168,11 @@ interface StudentStats {
 }
 
 interface CoordinatorStats {
+  class_student_count?: number;
+  total_students?: number;
+  pending_reviews?: number;
+  verified_submissions?: number;
+  rejected_submissions?: number;
   taskStats: {
     id: number;
     title: string;
@@ -178,6 +183,7 @@ interface CoordinatorStats {
   }[];
   studentStats: {
     full_name: string;
+    register_number?: string;
     completed_tasks: number;
     total_tasks: number;
   }[];
@@ -1976,7 +1982,7 @@ export default function App() {
         </div>
         <div className="flex-1 p-8 flex flex-col gap-6">
           <Skeleton className="h-12 w-48 mb-2" />
-          <div className="grid grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
             <Skeleton className="h-32 w-full rounded-2xl bg-white border border-zinc-200" />
             <Skeleton className="h-32 w-full rounded-2xl bg-white border border-zinc-200" />
             <Skeleton className="h-32 w-full rounded-2xl bg-white border border-zinc-200" />
@@ -2553,6 +2559,18 @@ export default function App() {
                     </div>
                     {isCoordinator && (
                       <div className="space-y-6">
+                        <div className="pt-6 border-t border-zinc-200">
+                          <div className="flex items-center gap-4 mb-4">
+                            <div className="w-1.5 h-6 bg-zinc-900 rounded-full" />
+                            <h3 className="text-lg font-bold text-zinc-900">My Class Summary</h3>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <StatCard title="Class Students" value={coordinatorStats?.class_student_count || coordinatorStats?.total_students || 0} icon={<Users />} color="bg-blue-500" />
+                            <StatCard title="Pending Submissions" value={coordinatorStats?.pending_reviews || 0} icon={<Clock />} color="bg-orange-500" />
+                            <StatCard title="Verified Students" value={coordinatorStats?.verified_submissions || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
+                          </div>
+                        </div>
+
                         <div
                           className="bg-zinc-900 rounded-3xl p-8 text-white flex flex-col md:flex-row items-center justify-between gap-6 cursor-pointer hover:bg-black transition-all group"
                           onClick={() => setView('verifications')}

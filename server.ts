@@ -1188,12 +1188,12 @@ async function startServer() {
 
     const totalStudentsRes = await pool.query("SELECT count(*) FROM users WHERE class_id = $1 AND role = 'STUDENT'", [classId]);
     const pendingReviewsRes = await pool.query(`
-      SELECT count(*) FROM task_submissions ts
+      SELECT count(DISTINCT ts.user_id) FROM task_submissions ts
       JOIN users u ON ts.user_id = u.id
       WHERE u.class_id = $1 AND ts.status = 'SUBMITTED'
     `, [classId]);
     const verifiedSubmissionsRes = await pool.query(`
-      SELECT count(*) FROM task_submissions ts
+      SELECT count(DISTINCT ts.user_id) FROM task_submissions ts
       JOIN users u ON ts.user_id = u.id
       WHERE u.class_id = $1 AND ts.status = 'VERIFIED'
     `, [classId]);
@@ -1698,12 +1698,12 @@ async function startServer() {
 
     const totalStudentsRes = await pool.query("SELECT count(*) FROM users WHERE class_id = $1 AND role = 'STUDENT'", [classId]);
     const submittedCountRes = await pool.query(`
-      SELECT count(*) FROM task_submissions ts
+      SELECT count(DISTINCT ts.user_id) FROM task_submissions ts
       JOIN users u ON ts.user_id = u.id
       WHERE u.class_id = $1 AND ts.status = 'SUBMITTED'
     `, [classId]);
     const verifiedCountRes = await pool.query(`
-      SELECT count(*) FROM task_submissions ts
+      SELECT count(DISTINCT ts.user_id) FROM task_submissions ts
       JOIN users u ON ts.user_id = u.id
       WHERE u.class_id = $1 AND ts.status = 'VERIFIED'
     `, [classId]);
