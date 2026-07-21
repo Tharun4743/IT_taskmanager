@@ -1418,6 +1418,9 @@ export default function App() {
 
     targetStudents.forEach(student => {
       targetTasks.forEach(task => {
+        if (Array.isArray(task.class_ids) && task.class_ids.length > 0 && !task.class_ids.some((cid: any) => cid.toString() === student.class_id?.toString())) {
+          return;
+        }
         const sub = getSub(student.id, student.register_number, task.id);
         const rawStatus = sub ? sub.status : 'NOT_SUBMITTED';
         const statusLabel =
@@ -1476,6 +1479,9 @@ export default function App() {
     const summaryRows: any[] = [];
     targetTasks.forEach(task => {
       classGroups.forEach(({ classId, className }) => {
+        if (Array.isArray(task.class_ids) && task.class_ids.length > 0 && !task.class_ids.some((cid: any) => cid.toString() === classId)) {
+          return;
+        }
         const classStudents = targetStudents.filter(st => st.class_id?.toString() === classId);
         if (classStudents.length === 0) return;
 
@@ -1813,7 +1819,7 @@ export default function App() {
                 data={tasks.filter(t => {
                   const isDeptMatch = !currentDeptId || t.department_id?.toString() === currentDeptId || !t.department_id;
                   if (!isDeptMatch) return false;
-                  if (currentClassId) return (t.class_ids || []).some(cid => cid.toString() === currentClassId);
+                  if (currentClassId) return !(t.class_ids || []).length || (t.class_ids || []).some(cid => cid.toString() === currentClassId);
                   return true;
                 }).slice(0, 10).map(t => {
                   const taskSubmissions = submissions.filter(s => s.task_id?.toString() === t.id.toString());
@@ -2561,7 +2567,7 @@ export default function App() {
                             </div>
                           </div>
                           <div className="flex flex-col items-center md:items-end">
-                            <span className="text-4xl font-black">{submissions.filter(s => s.status === 'SUBMITTED' && s.class_id === user?.class_id).length}</span>
+                            <span className="text-4xl font-black">{submissions.filter(s => s.status === 'SUBMITTED' && String(s.class_id) === String(user?.class_id)).length}</span>
                             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Pending Tasks</span>
                           </div>
                         </div>
@@ -3361,11 +3367,38 @@ export default function App() {
 
                         {(isAdmin || isHOD || user?.is_year_coordinator) && (
                           <div className="w-full bg-white border border-zinc-200 rounded-lg p-3 md:col-span-2 min-w-0">
-                            <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest mb-3 block">
-                              {isAdmin ? 'Select Specific Classes (Optional)' :
-                                user?.is_year_coordinator ? `Classes in Year ${user.year_scope}` :
-                                  'Assign to Classes'}
-                            </label>
+                            <div className="flex items-center justify-between mb-3">
+                              <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest block">
+                                {isAdmin ? 'Select Specific Classes (Optional)' :
+                                  user?.is_year_coordinator ? `Classes in Year ${user.year_scope}` :
+                                    'Assign to Classes'}
+                              </label>
+                              {(() => {
+                                const availClasses = classes.filter(c => {
+                                  if (isAdmin) return !newTask.department_id || c.department_id?.toString() === newTask.department_id?.toString();
+                                  if (user?.is_year_coordinator) return c.year === user.year_scope && c.department_id?.toString() === user.department_id?.toString();
+                                  return c.department_id?.toString() === user?.department_id?.toString();
+                                });
+                                const allSelected = availClasses.length > 0 && availClasses.every(c => (newTask.class_ids || []).map(String).includes(String(c.id)));
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (allSelected) {
+                                          setNewTask(prev => ({ ...prev, class_ids: [] }));
+                                        } else {
+                                          setNewTask(prev => ({ ...prev, class_ids: availClasses.map(c => c.id) }));
+                                        }
+                                      }}
+                                      className="text-[11px] font-bold text-blue-600 hover:text-blue-800 transition-colors"
+                                    >
+                                      {allSelected ? 'Deselect All' : `Select All (${availClasses.length})`}
+                                    </button>
+                                  </div>
+                                );
+                              })()}
+                            </div>
 
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                               {classes
@@ -3379,12 +3412,12 @@ export default function App() {
                                     <input
                                       type="checkbox"
                                       className="w-4 h-4 rounded border-zinc-300 text-black focus:ring-black/20 font-medium text-xs"
-                                      checked={(newTask.class_ids || []).includes(c.id)}
+                                      checked={(newTask.class_ids || []).map(String).includes(String(c.id))}
                                       onChange={(e) => {
                                         if (e.target.checked) {
                                           setNewTask(prev => ({ ...prev, class_ids: [...(prev.class_ids || []), c.id] }));
                                         } else {
-                                          setNewTask(prev => ({ ...prev, class_ids: (prev.class_ids || []).filter(id => id !== c.id) }));
+                                          setNewTask(prev => ({ ...prev, class_ids: (prev.class_ids || []).filter(id => String(id) !== String(c.id)) }));
                                         }
                                       }}
                                     />
@@ -3400,7 +3433,7 @@ export default function App() {
                                 </>
                               ) : (
                                 <>
-                                  🎯 Assigned to: {(newTask.class_ids || []).map(id => classes.find(c => c.id === id)?.name || id).join(', ')}
+                                  🎯 Assigned to: {(newTask.class_ids || []).map(id => classes.find(c => String(c.id) === String(id))?.name || id).join(', ')}
                                 </>
                               )}
                             </p>
@@ -3464,7 +3497,7 @@ export default function App() {
                               <span className="hidden md:inline">•</span>
                               {Array.isArray(task.class_ids) && task.class_ids.length > 0 ? (
                                 <span className="bg-purple-50 text-purple-600 border border-purple-100 flex flex-wrap gap-1 px-2 py-0.5 rounded-full whitespace-nowrap">
-                                  {task.class_ids.map(id => classes.find(c => c.id === id)?.name || id).join(', ')}
+                                  {task.class_ids.map(id => classes.find(c => String(c.id) === String(id))?.name || id).join(', ')}
                                 </span>
                               ) : (
                                 <span className={cn(
@@ -3666,7 +3699,7 @@ export default function App() {
                               })()
                             )}
                           </div>
-                        )}                {(isAdmin || (isHOD && task.department_id === user?.department_id) || task.created_by === user?.id || (isAdvisor && Array.isArray(task.class_ids) && task.class_ids.includes(user?.class_id)) || (isCoordinator && Array.isArray(task.class_ids) && task.class_ids.includes(user?.class_id))) && (
+                        )}                {(isAdmin || (isHOD && task.department_id === user?.department_id) || task.created_by === user?.id || ((isAdvisor || isCoordinator) && Array.isArray(task.class_ids) && (!task.class_ids.length || task.class_ids.some(cid => String(cid) === String(user?.class_id))))) && (
                           <div className="mt-6 flex gap-4 border-t border-zinc-100 pt-4">
                             <Button
                               variant="ghost"

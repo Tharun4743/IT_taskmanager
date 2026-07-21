@@ -896,6 +896,16 @@ async function startServer() {
         await client.query('INSERT INTO task_classes (task_id, class_id) VALUES ($1, $2)', [t.id, cid]);
       }
 
+      if (clsIds.length > 0) {
+        const targetStudentsRes = await client.query("SELECT id FROM users WHERE class_id = ANY($1) AND role = 'STUDENT'", [clsIds]);
+        for (const s of targetStudentsRes.rows) {
+          await client.query(
+            'INSERT INTO notifications (user_id, message, type) VALUES ($1, $2, $3)',
+            [s.id, `New task posted by ${dbUser.full_name || 'HOD'}: "${t.title}"`, 'NEW_TASK']
+          );
+        }
+      }
+
       await client.query('COMMIT');
       res.json({
         id: t.id,
@@ -1065,7 +1075,10 @@ async function startServer() {
         };
       });
 
-      const studentStatuses = subs.filter(s => s.user_id && deptStudentIds.includes(s.user_id.toString()));
+      const targetStudentIds = taskClassIds.length > 0
+        ? deptStudents.filter(s => taskClassIds.includes(s.class_id?.toString())).map(s => s.id.toString())
+        : deptStudentIds.map(s => s.id.toString());
+      const studentStatuses = subs.filter(s => s.user_id && targetStudentIds.includes(s.user_id.toString()));
       const sMap = new Map();
       studentStatuses.forEach(s => sMap.set(s.user_id.toString(), s.status));
       const statuses = Array.from(sMap.values());
@@ -1074,7 +1087,7 @@ async function startServer() {
         id: t.id, title: t.title,
         submitted: statuses.filter(s => s === 'SUBMITTED').length,
         verified: statuses.filter(s => s === 'VERIFIED').length,
-        pending: deptStudentIds.length - statuses.length,
+        pending: targetStudentIds.length - statuses.length,
         rejected: statuses.filter(s => s === 'REJECTED').length,
         class_breakdown
       };
@@ -1745,7 +1758,7 @@ async function startServer() {
     const taskStats = await Promise.all(tasks.map(async (t) => {
       let subs: any[] = [];
       if (studentIds.length > 0) {
-        const subsRes = await pool.query('SELECT status FROM task_submissions WHERE task_id = $1 AND user_id = ANY($2)', [t.id, studentIds]);
+        const subsRes = await pool.query('SELECT user_id, status FROM task_submissions WHERE task_id = $1 AND user_id = ANY($2)', [t.id, studentIds]);
         subs = subsRes.rows;
       }
       const sMap = new Map();
