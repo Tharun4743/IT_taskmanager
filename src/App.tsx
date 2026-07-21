@@ -489,7 +489,7 @@ export default function App() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showExportModal, setShowExportModal] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [reportFilters, setReportFilters] = useState({ classId: '', year: '', category: '', taskId: '', status: '' });
+  const [reportFilters, setReportFilters] = useState<{ classIds: string[]; taskId: string; status: string }>({ classIds: [], taskId: '', status: 'ALL' });
   const [expandedClass, setExpandedClass] = useState<number | null>(null);
   const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
 
@@ -1271,170 +1271,249 @@ export default function App() {
     }
   };
 
-  const exportToExcel = async (filters?: { classId?: string; year?: string; category?: string; taskId?: string; status?: string; }) => {
-    if (!hodStats) return;
+  const exportToExcel = async (filters?: { classIds?: string[]; taskId?: string; status?: string; }) => {
+    const isAdminRole = user?.role === 'SUPREME_ADMIN';
+    const isHODRole   = user?.role === 'HOD';
+    const isYearCoordRole = user?.is_year_coordinator;
+    const isClsRole = user?.role === 'CLASS_ADVISOR' || (user?.role === 'STUDENT' && user?.is_coordinator);
+    const selectedClassIds = filters?.classIds || [];
 
-    // Get all dept students
-    const deptStudents = users.filter(u => {
+    // ── Small helpers ──────────────────────────────────────────────────────────
+    const ACADEMIC_YEAR = '2024-2028';
+    const romanYearMap: Record<number, string> = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
+    const toRomanYear  = (yr: number) => romanYearMap[yr] ? `${romanYearMap[yr]} YEAR` : `YEAR ${yr}`;
+    const getDeptAbbr  = (name: string) => {
+      const words = (name || '').toUpperCase().split(/\s+/).filter(w => w.length > 2);
+      return words.length ? words.map(w => w[0]).join('') : (name || 'DEPT').slice(0, 4).toUpperCase();
+    };
+    const getSection   = (cn: string) => { const m = cn.trim().match(/([A-Za-z])$/); return m ? m[1].toUpperCase() : ''; };
+
+    // Build "III YEAR IT SECTION A" style string from a Class object
+    const buildClassInfo = (cls: Class): string => {
+      const yr   = cls.year ? toRomanYear(Number(cls.year)) : '';
+      const dept = getDeptAbbr(cls.department_name || user?.department_name || 'IT');
+      const sec  = getSection(cls.name);
+      return [yr, dept, sec ? `SECTION ${sec}` : ''].filter(Boolean).join(' ');
+    };
+
+    // Build a worksheet that starts with the VSB college header block
+    const buildSheetWithHeader = (cols: string[], dataRows: any[], line5: string): XLSX.WorkSheet => {
+      const numCols = cols.length;
+      const deptFull = (user?.department_name || 'INFORMATION TECHNOLOGY').toUpperCase();
+
+      const aoaRows: any[][] = [
+        ['VSB ENGINEERING COLLEGE, KARUR',  ...Array(numCols - 1).fill(null)],
+        ['(AN AUTONOMOUS INSTITUTION)',      ...Array(numCols - 1).fill(null)],
+        [`DEPARTMENT OF ${deptFull}`,        ...Array(numCols - 1).fill(null)],
+        [`ACADEMIC YEAR ${ACADEMIC_YEAR}`,   ...Array(numCols - 1).fill(null)],
+        [line5,                              ...Array(numCols - 1).fill(null)],
+        Array(numCols).fill(null),           // blank separator
+        [...cols],                           // column header row (index 6)
+        ...dataRows.map(r => cols.map(c => r[c] ?? '')),
+      ];
+
+      const ws: XLSX.WorkSheet = XLSX.utils.aoa_to_sheet(aoaRows);
+      // Merge the 5 info rows across all columns
+      ws['!merges'] = [0, 1, 2, 3, 4].map(r => ({ s: { r, c: 0 }, e: { r, c: numCols - 1 } }));
+      return ws;
+    };
+
+    // 1. Scope students by role and optional classIds filter
+    const targetStudents = users.filter(u => {
       if (u.role !== 'STUDENT') return false;
-      if (filters?.classId) return u.class_id?.toString() === filters.classId;
-      return hodStats.classStats.some((c: any) => c.id.toString() === u.class_id?.toString());
+      if (selectedClassIds.length > 0) return selectedClassIds.includes(u.class_id?.toString() || '');
+      if (isClsRole && !isAdminRole && !isHODRole && !isYearCoordRole) {
+        const cid = user?.class_id || myClass?.id;
+        return cid && u.class_id?.toString() === cid.toString();
+      }
+      if (isYearCoordRole && !isAdminRole && !isHODRole) {
+        const sc = classes.find(c => c.id.toString() === u.class_id?.toString());
+        return u.department_id?.toString() === user?.department_id?.toString() && Number(sc?.year) === Number(user?.year_scope);
+      }
+      if (isHODRole && !isAdminRole) {
+        return u.department_id?.toString() === user?.department_id?.toString();
+      }
+      return true;
     });
 
-    // Handle the "Not Submitted" case specially
-    if (filters?.status === 'NOT_SUBMITTED') {
-      // Find students with no submission for the given task (or no submissions at all)
-      const rowsNotSubmitted = deptStudents.flatMap(student => {
-        const taskList = filters?.taskId
-          ? tasks.filter(t => t.id?.toString() === filters.taskId)
-          : tasks.filter(t => {
-            const isDept = t.department_id === user?.department_id;
-            const isGlobal = t.department_id === null && (!(t.class_ids || []).length);
-            return isDept || isGlobal;
+    if (targetStudents.length === 0) {
+      addToast('No student records found for the selected filters.', 'error');
+      return;
+    }
+
+    // 2. Scope tasks
+    let targetTasks = tasks;
+    if (filters?.taskId) {
+      targetTasks = tasks.filter(t => t.id?.toString() === filters.taskId);
+    } else {
+      targetTasks = tasks.filter(t => {
+        if (isAdminRole) return true;
+        if (isHODRole || isYearCoordRole) {
+          return t.department_id?.toString() === user?.department_id?.toString() || (!t.department_id && (!t.class_ids || !t.class_ids.length));
+        }
+        const userClassId = (user?.class_id || myClass?.id)?.toString();
+        if (Array.isArray(t.class_ids) && t.class_ids.length > 0) {
+          return t.class_ids.some((cid: any) => cid.toString() === userClassId);
+        }
+        return t.department_id?.toString() === user?.department_id?.toString() || (!t.department_id);
+      });
+    }
+
+    const selectedStatus = filters?.status || 'ALL';
+
+    // Helper: get submission for a student+task pair
+    const getSub = (studentId: number, regNo: string | undefined, taskId: number) =>
+      submissions.find(s =>
+        (s.user_id?.toString() === studentId.toString() || (regNo && s.register_number === regNo)) &&
+        s.task_id?.toString() === taskId.toString()
+      );
+
+    // ── Resolve class info string for header line 5 ────────────────────────────
+    const resolveClassInfoStr = (): string => {
+      const cids = selectedClassIds.length > 0
+        ? selectedClassIds
+        : isClsRole
+          ? [(user?.class_id || myClass?.id)?.toString() || '']
+          : [];
+
+      if (cids.length > 0) {
+        const parts = cids
+          .map(cid => { const cls = classes.find(c => c.id.toString() === cid); return cls ? buildClassInfo(cls) : cid; })
+          .filter(Boolean);
+        return parts.join(' & ');
+      }
+
+      // HOD/Admin with no specific class selected — gather from scoped students
+      const seen  = new Set<string>();
+      const parts: string[] = [];
+      targetStudents.forEach(st => {
+        const cid = st.class_id?.toString() || '';
+        if (!seen.has(cid)) {
+          seen.add(cid);
+          const cls  = classes.find(c => c.id.toString() === cid);
+          const info = cls ? buildClassInfo(cls) : (st.class_name || cid);
+          if (info) parts.push(info);
+        }
+      });
+      return parts.length > 0 && parts.length <= 4 ? parts.join(' & ') : 'ALL CLASSES';
+    };
+
+    const classInfoStr      = resolveClassInfoStr();
+    const selectedTaskTitle = filters?.taskId
+      ? (tasks.find(t => t.id?.toString() === filters.taskId)?.title || 'TASK REPORT')
+      : 'ALL TASKS';
+
+    const sheet1Line5 = `${selectedTaskTitle} - ${classInfoStr}`;
+    const sheet2Line5 = `TASK COMPLETION SUMMARY - ${classInfoStr}`;
+
+    // ── SHEET 1: Detailed rows ─────────────────────────────────────────────────
+    const detailedRows: any[] = [];
+    let sno = 1;
+
+    targetStudents.forEach(student => {
+      targetTasks.forEach(task => {
+        const sub = getSub(student.id, student.register_number, task.id);
+        const rawStatus = sub ? sub.status : 'NOT_SUBMITTED';
+        const statusLabel =
+          rawStatus === 'VERIFIED'  ? 'Verified'     :
+          rawStatus === 'SUBMITTED' ? 'Submitted'    :
+          rawStatus === 'REJECTED'  ? 'Rejected'     : 'Not Submitted';
+
+        let include = false;
+        if (selectedStatus === 'ALL')                include = true;
+        else if (selectedStatus === 'VERIFIED')      include = rawStatus === 'VERIFIED';
+        else if (selectedStatus === 'SUBMITTED')     include = rawStatus === 'SUBMITTED';
+        else if (selectedStatus === 'REJECTED')      include = rawStatus === 'REJECTED';
+        else if (selectedStatus === 'NOT_SUBMITTED') include = rawStatus === 'NOT_SUBMITTED';
+
+        if (include) {
+          detailedRows.push({
+            'S.No':        sno++,
+            'Name':        student.full_name || '—',
+            'Reg No':      student.register_number || '—',
+            'Mail ID':     student.email || '—',
+            'Task Name':   task.title,
+            'Task Status': statusLabel,
           });
-        return taskList.flatMap(task => {
-          const hasSub = submissions.some(s =>
-            s.student_name === student.full_name && s.task_id?.toString() === task.id?.toString()
-          );
-          if (!hasSub) {
-            const cls = hodStats.classStats.find((c: any) => c.id.toString() === student.class_id?.toString());
-            return [{
-              'Student Name': student.full_name,
-              'Register Number': student.register_number,
-              'Class': cls?.name || '—',
-              'Task Title': task.title,
-              'Category': task.category || '—',
-              'Status': 'NOT SUBMITTED',
-              'Submitted At': '—',
-            }];
-          }
-          return [];
+        }
+      });
+    });
+
+    if (detailedRows.length === 0) {
+      addToast('No records matched the selected filters.', 'error');
+      return;
+    }
+
+    // ── SHEET 2: Summary per task per class ────────────────────────────────────
+    const classGroups: { classId: string; className: string }[] = [];
+    if (selectedClassIds.length > 0) {
+      selectedClassIds.forEach(cid => {
+        const cls = classes.find(c => c.id.toString() === cid);
+        classGroups.push({ classId: cid, className: cls?.name || cid });
+      });
+    } else if (isClsRole) {
+      const cid = (user?.class_id || myClass?.id)?.toString() || '';
+      const cls  = classes.find(c => c.id.toString() === cid);
+      classGroups.push({ classId: cid, className: cls?.name || cid });
+    } else {
+      const seen = new Set<string>();
+      targetStudents.forEach(st => {
+        const cid = st.class_id?.toString() || '';
+        if (!seen.has(cid)) {
+          seen.add(cid);
+          const cls = classes.find(c => c.id.toString() === cid);
+          classGroups.push({ classId: cid, className: cls?.name || st.class_name || cid });
+        }
+      });
+    }
+
+    const summaryRows: any[] = [];
+    targetTasks.forEach(task => {
+      classGroups.forEach(({ classId, className }) => {
+        const classStudents = targetStudents.filter(st => st.class_id?.toString() === classId);
+        if (classStudents.length === 0) return;
+
+        let verifiedCount = 0, submittedCount = 0, rejectedCount = 0, notSubmittedCount = 0;
+        classStudents.forEach(st => {
+          const sub = getSub(st.id, st.register_number, task.id);
+          const rs  = sub ? sub.status : 'NOT_SUBMITTED';
+          if (rs === 'VERIFIED')       verifiedCount++;
+          else if (rs === 'SUBMITTED') submittedCount++;
+          else if (rs === 'REJECTED')  rejectedCount++;
+          else                         notSubmittedCount++;
+        });
+
+        summaryRows.push({
+          'Task Name':      task.title,
+          'Class':          className,
+          'Total Students': classStudents.length,
+          'Verified':       verifiedCount,
+          'Submitted':      submittedCount,
+          'Rejected':       rejectedCount,
+          'Not Submitted':  notSubmittedCount,
         });
       });
-
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsNotSubmitted.length ? rowsNotSubmitted : [{ 'Info': 'No pending students found.' }]), 'Not Submitted Students');
-      XLSX.writeFile(wb, `HOD_Report_NotSubmitted_${new Date().toISOString().slice(0, 10)}.xlsx`);
-      return;
-    }
-
-    let filteredSubmissions = submissions.filter(s => {
-      const task = tasks.find(t => t.id === s.task_id);
-      if (!task) return false;
-      const isDeptTask = task.department_id === user?.department_id;
-      const isGlobalTask = task.department_id === null && (!(task.class_ids || []).length);
-      if (!isDeptTask && !isGlobalTask) return false;
-      if (filters?.classId && s.class_id?.toString() !== filters.classId) return false;
-      if (filters?.taskId && s.task_id?.toString() !== filters.taskId) return false;
-      if (filters?.year && s.class_year?.toString() !== filters.year) return false;
-      if (filters?.category && s.task_category !== filters.category) return false;
-      if (filters?.status && s.status !== filters.status) return false;
-      return true;
     });
 
-    const detailedData = filteredSubmissions.map(s => ({
-      'Student Name': s.student_name,
-      'Register Number': s.register_number,
-      'Class': s.class_name,
-      'Year': s.class_year,
-      'Task Title': s.task_title,
-      'Category': s.task_category,
-      'Status': s.status,
-      'Submitted At': s.submitted_at ? new Date(s.submitted_at).toLocaleDateString() : 'N/A'
-    }));
+    // ── Build Workbook ─────────────────────────────────────────────────────────
+    const sheet1Cols = ['S.No', 'Name', 'Reg No', 'Mail ID', 'Task Name', 'Task Status'];
+    const sheet2Cols = ['Task Name', 'Class', 'Total Students', 'Verified', 'Submitted', 'Rejected', 'Not Submitted'];
 
-    const taskData = hodStats.taskStats.map(t => ({
-      'Task Title': t.title,
-      'Submitted': t.submitted,
-      'Verified': t.verified,
-      'Pending': t.pending,
-      'Rejected': t.rejected
-    }));
-
-    const classData = hodStats.classStats.map(c => ({
-      'Class Name': c.name,
-      'Total Students': c.total_students,
-      'Participating Students': c.participating_students,
-      'Participation Rate': c.total_students > 0 ? `${((c.participating_students / c.total_students) * 100).toFixed(1)}%` : '0%'
-    }));
+    const ws1 = buildSheetWithHeader(sheet1Cols, detailedRows, sheet1Line5);
+    const ws2 = buildSheetWithHeader(
+      sheet2Cols,
+      summaryRows.length ? summaryRows : [{ 'Task Name': 'No summary data.' }],
+      sheet2Line5
+    );
 
     const wb = XLSX.utils.book_new();
-    const wsDetailed = XLSX.utils.json_to_sheet(detailedData);
-    const wsTasks = XLSX.utils.json_to_sheet(taskData);
-    const wsClasses = XLSX.utils.json_to_sheet(classData);
+    XLSX.utils.book_append_sheet(wb, ws1, 'Detailed Report');
+    XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
 
-    XLSX.utils.book_append_sheet(wb, wsDetailed, "Detailed Report");
-    XLSX.utils.book_append_sheet(wb, wsTasks, "Task Summary");
-    XLSX.utils.book_append_sheet(wb, wsClasses, "Class Summary");
-
-    const fileName = filters ? `Filtered_Report_${new Date().toISOString().split('T')[0]}.xlsx` : `Class_Report_${new Date().toISOString().split('T')[0]}.xlsx`;
-    XLSX.writeFile(wb, fileName);
-    setShowExportModal(false);
-  };
-
-  // Class-scoped export for Class Advisors and Coordinators
-  const exportToExcelForClass = async (filters?: { taskId?: string; status?: string; category?: string; }) => {
-    const classId = user?.class_id;
-    if (!classId) return;
-
-    const classStudents = users.filter(u => u.role === 'STUDENT' && u.class_id?.toString() === classId.toString());
-    const className = classStudents[0]?.class_name || user?.class_name || `Class_${classId}`;
-
-    // Handle NOT_SUBMITTED case
-    if (filters?.status === 'NOT_SUBMITTED') {
-      const taskList = filters?.taskId
-        ? tasks.filter(t => t.id?.toString() === filters.taskId)
-        : tasks;
-      const rows = classStudents.flatMap(student =>
-        taskList.flatMap(task => {
-          const hasSub = submissions.some(s =>
-            s.student_name === student.full_name && s.task_id?.toString() === task.id?.toString()
-          );
-          if (!hasSub) {
-            return [{ 'Student Name': student.full_name, 'Register Number': student.register_number, 'Class': className, 'Task Title': task.title, 'Category': task.category || '—', 'Status': 'NOT SUBMITTED', 'Submitted At': '—' }];
-          }
-          return [];
-        })
-      );
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ Info: 'No pending students found.' }]), 'Not Submitted');
-      XLSX.writeFile(wb, `${className}_NotSubmitted_${new Date().toISOString().slice(0, 10)}.xlsx`);
-      setShowExportModal(false);
-      return;
-    }
-
-    let filteredSubs = submissions.filter(s => {
-      if (s.class_id?.toString() !== classId.toString()) return false;
-      if (filters?.taskId && s.task_id?.toString() !== filters.taskId) return false;
-      if (filters?.status && s.status !== filters.status) return false;
-      if (filters?.category && (s as any).task_category !== filters.category) return false;
-      return true;
-    });
-
-    const detailed = filteredSubs.map(s => ({
-      'Student Name': s.student_name,
-      'Register Number': s.register_number,
-      'Class': s.class_name || className,
-      'Task Title': s.task_title,
-      'Status': s.status,
-      'Submitted At': s.submitted_at ? new Date(s.submitted_at).toLocaleDateString() : 'N/A',
-    }));
-
-    const taskSummary = tasks.map(t => {
-      const taskSubs = filteredSubs.filter(s => s.task_id === t.id);
-      return {
-        'Task Title': t.title,
-        'Category': t.category || '—',
-        'Submitted': taskSubs.filter(s => s.status === 'SUBMITTED').length,
-        'Verified': taskSubs.filter(s => s.status === 'VERIFIED').length,
-        'Rejected': taskSubs.filter(s => s.status === 'REJECTED').length,
-      };
-    }).filter(r => r.Submitted + r.Verified + r.Rejected > 0);
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailed.length ? detailed : [{ Info: 'No submissions found.' }]), 'Detailed Report');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(taskSummary.length ? taskSummary : [{ Info: 'No tasks found.' }]), 'Task Summary');
-    XLSX.writeFile(wb, `${className}_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+    const dateTag   = new Date().toISOString().split('T')[0];
+    const roleTag   = isAdminRole ? 'SuperAdmin' : isHODRole ? 'HOD' : isYearCoordRole ? `Year${user?.year_scope}_Coord` : 'Class';
+    const statusTag = selectedStatus === 'ALL' ? 'All' : selectedStatus.charAt(0) + selectedStatus.slice(1).toLowerCase();
+    XLSX.writeFile(wb, `${roleTag}_Report_${statusTag}_${dateTag}.xlsx`);
     setShowExportModal(false);
   };
 
@@ -2314,14 +2393,9 @@ export default function App() {
               </div>
             </div>
             <div className="flex items-center gap-4 shrink-0">
-              {isHOD && (
+              {(isAdmin || isHOD || isAdvisor || isCoordinator || user?.is_year_coordinator) && (
                 <Button variant="success" className="flex items-center gap-2" onClick={() => setShowExportModal(true)}>
-                  <FileDown size={18} /> Export Custom Report
-                </Button>
-              )}
-              {(isAdvisor || isCoordinator) && (
-                <Button variant="success" className="flex items-center gap-2" onClick={() => setShowExportModal(true)}>
-                  <FileDown size={18} /> Export Class Report
+                  <FileDown size={18} /> {isAdmin || isHOD ? 'Export Custom Report' : 'Export Class Report'}
                 </Button>
               )}
               <div className="flex-1" />
@@ -4045,88 +4119,130 @@ export default function App() {
 
                 <h3 className="text-3xl font-black text-zinc-900 tracking-tight">Report Studio</h3>
                 <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest mt-2 mb-8">
-                  {isHOD ? 'Configure your class report' : `Exporting report for ${user?.class_name || 'your class'}`}
+                  {isAdmin ? 'System-Wide Report' : isHOD ? 'Department Report' : user?.is_year_coordinator ? `Year ${user?.year_scope} Report` : `Class Report — ${user?.class_name || 'My Class'}`}
                 </p>
 
-                <div className="space-y-6">
-                  {isHOD && (
+                <div className="space-y-5">
+
+                  {/* HOD / Admin: multi-class checkbox picker */}
+                  {(isAdmin || isHOD) && (() => {
+                    const availableClasses = isAdmin
+                      ? classes
+                      : (hodStats?.classStats || classes.filter(c => c.department_id?.toString() === user?.department_id?.toString()));
+                    return (
+                      <div>
+                        <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 block">
+                          Select Classes <span className="normal-case text-zinc-300 font-medium">(pick multiple)</span>
+                        </label>
+                        <div className="max-h-40 overflow-y-auto border border-zinc-100 rounded-2xl bg-zinc-50 p-3 flex flex-col gap-2">
+                          {(availableClasses as any[]).map((c: any) => {
+                            const cid = c.id.toString();
+                            const checked = reportFilters.classIds.includes(cid);
+                            return (
+                              <label key={cid} className="flex items-center gap-3 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => setReportFilters(prev => ({
+                                    ...prev,
+                                    classIds: checked
+                                      ? prev.classIds.filter(id => id !== cid)
+                                      : [...prev.classIds, cid]
+                                  }))}
+                                  className="w-4 h-4 rounded accent-blue-600 cursor-pointer"
+                                />
+                                <span className={`text-sm font-bold transition-colors ${checked ? 'text-blue-700' : 'text-zinc-700 group-hover:text-zinc-900'}`}>{c.name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        {reportFilters.classIds.length > 0 && (
+                          <p className="text-[10px] font-bold text-blue-600 mt-1.5">
+                            {reportFilters.classIds.length} class{reportFilters.classIds.length > 1 ? 'es' : ''} selected — report will combine all selected classes
+                          </p>
+                        )}
+                        {reportFilters.classIds.length === 0 && (
+                          <p className="text-[10px] font-medium text-zinc-400 mt-1.5">No class selected — will include all classes</p>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Year Coordinator: single class dropdown */}
+                  {user?.is_year_coordinator && !isAdmin && !isHOD && (
                     <div>
                       <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 block">Target Class</label>
                       <select
                         className="w-full p-4 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                        value={reportFilters.classId}
-                        onChange={(e) => setReportFilters(prev => ({ ...prev, classId: e.target.value }))}
+                        value={reportFilters.classIds[0] || ''}
+                        onChange={(e) => setReportFilters(prev => ({ ...prev, classIds: e.target.value ? [e.target.value] : [] }))}
                       >
-                        <option value="">All Classes</option>
-                        {hodStats?.classStats.map(c => (
-                          <option key={c.id} value={c.id.toString()}>{c.name}</option>
-                        ))}
+                        <option value="">All Year Classes</option>
+                        {classes
+                          .filter(c => Number(c.year) === Number(user?.year_scope) && c.department_id?.toString() === user?.department_id?.toString())
+                          .map(c => (
+                            <option key={c.id} value={c.id.toString()}>{c.name}</option>
+                          ))}
                       </select>
                     </div>
                   )}
 
+                  {/* Task selector */}
                   <div>
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 block">Target Event (Task)</label>
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 block">Task</label>
                     <select
                       className="w-full p-4 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                       value={reportFilters.taskId}
                       onChange={(e) => setReportFilters(prev => ({ ...prev, taskId: e.target.value }))}
                     >
-                      <option value="">{isHOD ? 'All Class Tasks' : 'All Class Events'}</option>
-                      {(isHOD ? (hodStats?.taskStats || []) : tasks).map((t: any) => (
+                      <option value="">All Tasks</option>
+                      {tasks.map((t: any) => (
                         <option key={t.id} value={t.id.toString()}>{t.title}</option>
                       ))}
                     </select>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4">
-                    <div>
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 block">Task Category</label>
-                      <select
-                        className="w-full p-4 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                        value={reportFilters.category}
-                        onChange={(e) => setReportFilters(prev => ({ ...prev, category: e.target.value }))}
-                      >
-                        <option value="">All Categories</option>
-                        {['Competition', 'Course', 'Workshop', 'College Work', 'Project', 'Form'].map(cat => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
+                  {/* Submission Status */}
                   <div>
                     <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 block">Submission Status</label>
                     <select
                       className="w-full p-4 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                      value={reportFilters.status}
+                      value={reportFilters.status || 'ALL'}
                       onChange={(e) => setReportFilters(prev => ({ ...prev, status: e.target.value }))}
                     >
-                      <option value="">All Statuses</option>
+                      <option value="ALL">All</option>
                       <option value="VERIFIED">✅ Verified</option>
-                      <option value="SUBMITTED">🔵 Submitted (Pending)</option>
+                      <option value="SUBMITTED">🔵 Submitted</option>
                       <option value="REJECTED">🟠 Rejected</option>
-                      <option value="NOT_SUBMITTED">🔴 Not Submitted</option>
+                      <option value="NOT_SUBMITTED">⚪ Not Submitted</option>
                     </select>
                   </div>
 
-                  <div className="bg-blue-50 p-6 rounded-3xl border border-blue-100 mt-4">
-                    <div className="flex gap-4">
-                      <div className="p-3 bg-blue-600 rounded-2xl text-white">
-                        <ShieldCheck size={20} />
+                  {/* Sheets preview */}
+                  <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-4 space-y-3">
+                    <div>
+                      <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.15em] mb-1.5">Sheet 1 — Detailed Report</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {['S.No', 'Name', 'Reg No', 'Mail ID', 'Task Name', 'Task Status'].map(col => (
+                          <span key={col} className="px-2.5 py-1 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-zinc-700">{col}</span>
+                        ))}
                       </div>
-                      <div>
-                        <p className="text-sm font-black text-blue-900 leading-tight">Detailed Report Mode</p>
-                        <p className="text-[11px] font-bold text-blue-600 mt-1">Downloading detailed student names, register numbers, and verification statuses.</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.15em] mb-1.5">Sheet 2 — Summary</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {['Task Name', 'Class', 'Total Students', 'Verified', 'Submitted', 'Rejected', 'Not Submitted'].map(col => (
+                          <span key={col} className="px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-bold text-emerald-700">{col}</span>
+                        ))}
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex gap-4 pt-4">
-                    <Button variant="ghost" onClick={() => setShowExportModal(false)} className="flex-1 rounded-2xl">Cancel</Button>
+                  <div className="flex gap-4 pt-2">
+                    <Button variant="ghost" onClick={() => { setShowExportModal(false); setReportFilters({ classIds: [], taskId: '', status: 'ALL' }); }} className="flex-1 rounded-2xl">Cancel</Button>
                     <Button
-                      onClick={() => isHOD ? exportToExcel(reportFilters) : exportToExcelForClass(reportFilters)}
-                      className="flex-2 rounded-2xl bg-black hover:bg-zinc-800 text-white flex items-center justify-center gap-2"
+                      onClick={() => exportToExcel(reportFilters)}
+                      className="flex-1 rounded-2xl bg-black hover:bg-zinc-800 text-white flex items-center justify-center gap-2"
                     >
                       <FileDown size={18} /> Download Excel
                     </Button>
