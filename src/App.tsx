@@ -1726,56 +1726,61 @@ export default function App() {
       return { ...student, submissionStatus, submissionLabel, clsName, missingTasks };
     });
 
+    const boysRegNosSet = new Set([
+      '922524205003', '922524205008', '922524205010', '922524205012', '922524205015',
+      '922524205017', '922524205018', '922524205019', '922524205022', '922524205024',
+      '922524205028', '922524205029', '922524205030', '922524205031', '922524205032',
+      '922524205033', '922524205034', '922524205035', '922524205036', '922524205042',
+      '922524205045', '922524205047', '922524205050', '922524205051', '922524205054',
+      '922524205057', '922524205061', '922524205062', '922524205063', '922524205064',
+      '922524205065', '922524205066', '922524205069', '922524205073', '922524205074',
+      '922524205075', '922524205076', '922524205083', '922524205085', '922524205087',
+      '922524205089', '922524205092', '922524205093', '922524205099', '922524205102',
+      '922524205103', '922524205104', '922524205105', '922524205108', '922524205111',
+      '922524205112', '922524205117', '922524205121', '922524205126', '922524205128',
+      '922524205129', '922524205130', '922524205132', '922524205135', '922524205136',
+      '922524205138', '922524205140', '922524205142', '922524205143', '922524205146',
+      '922524205147', '922524205148', '922524205149', '922524205151', '922524205152',
+      '922524205153', '922524205155', '922524205160', '922524205167', '922524205168',
+      '922524205171', '922524205172', '922524205173', '922524205178', '922524205182',
+      '922524205183', '922524205184', '922524205301', '922524205302', '922524205303'
+    ]);
+
     const getStudentGender = (student: any): 'MALE' | 'FEMALE' => {
       const g = (student.gender || '').toUpperCase();
       if (g === 'FEMALE' || g === 'GIRLS') return 'FEMALE';
       if (g === 'MALE' || g === 'BOYS') return 'MALE';
-      const femaleKeywords = [
-        'AAFRIN', 'SAHANA', 'ABARNA', 'ABINAYA', 'ABIRATHI', 'ABIRUBHA', 'AISVARYA', 'AISWARYA',
-        'AKSHAYA', 'ANUSHA', 'BANU', 'ASHLI', 'BENITA', 'BHARANIKA', 'BHAVANI', 'DEEPIKA', 'SHREE',
-        'DIVYA', 'DIVYADHARSHINI', 'DIVYAPRABHA', 'ELAKKIYAA', 'ELAKKIYA', 'FATHIMA', 'GAYATHRI',
-        'GOBIKA', 'GOPIKA', 'GOWSHINI', 'HARINI', 'HARSHAVARTHINI', 'HARSHINI', 'HEMA', 'INDHUVARSHA',
-        'PRIANKA', 'PRIYANKA', 'SARANYA', 'RANJANI', 'RANKANAYAKI', 'NOWREEN', 'RIFA', 'ROSHAN', 'JOSELA',
-        'SANJEEVANI', 'SANTHIYA', 'SAVITHA', 'SEETHA', 'SINEKA', 'SIVARANJANI', 'SOWMIYA', 'SRIMATHI',
-        'SRINITHI', 'SRIVARSHINI', 'SUBALAKSHMI', 'SUBASHINI', 'SUBHIKSHA', 'SWETHA', 'TAMILSELVI',
-        'THARANI', 'VAISHNAVI', 'VARSHA', 'VARSHENI', 'VARSHINI', 'VISHALINI', 'YAMUNA', 'YOGADHARSHINI',
-        'SRILEKHA', 'PRIYA', 'DHARSHINI', 'KANISHKA', 'KAVIPRIYA', 'KAVIYA', 'KOWSALYA', 'MADHUMITHA',
-        'MATHUMITHA', 'MEENA', 'MONIKA', 'NANDHINI', 'NAVEENA', 'NITHYA', 'NIVETHA', 'PAVITHRA',
-        'POOJA', 'PUNITHA', 'RAJALAKSHMI', 'RAMYA', 'RITHIKA', 'RUBIKA', 'SANDHYA', 'SANGAVI',
-        'SEETHALAKSHMI', 'SHALINI', 'SHARMILA', 'SILPA', 'SINDHU', 'SNEHA', 'SOWNDARYA', 'SUBHA',
-        'SWATHI', 'VINITHA', 'YAZHINI', 'AASHIKA', 'AERIN', 'AISHWARYA', 'ANANDHI', 'ANITHA',
-        'ANUSHRI', 'AROCKIA', 'ARUNA', 'BHAVANI', 'CHARUMATHI', 'DEVI', 'DHARANI', 'DHANUSHREE',
-        'DHARSHANA', 'GEETHA', 'GIRIJA', 'GOKULA', 'HEMALATHA', 'JANANI', 'JAYASRI', 'JEEVITHA',
-        'KALAIYARASI', 'KANMANI', 'KAVYA', 'KEERTHANA', 'KIRUTHIKA', 'LOGESHWARI', 'MAHALAKSHMI',
-        'MALATHI', 'MANJULA', 'MEENAKSHI', 'MOHANAPRIYA', 'MUTHULAKSHMI', 'NATCHATHIRA', 'NIVEDHA',
-        'PADMA', 'PREETHI', 'RADHA', 'RASHMI', 'RESHMA', 'SANGEETHA', 'SARANYA', 'SASIKALA',
-        'SATHYA', 'SELVI', 'SHANTHI', 'SOWMYA', 'SUDHA', 'SUJATHA', 'SUMATHI', 'THANGAM', 'UMA',
-        'USHA', 'VALARMATHI', 'VASANTHI', 'VIDHYA', 'VIJAYA', 'VIMALA', 'YASHINI'
-      ];
-      const nameUpper = (student.full_name || '').toUpperCase();
-      return femaleKeywords.some(kw => nameUpper.includes(kw)) ? 'FEMALE' : 'MALE';
+      if (student.register_number && boysRegNosSet.has(String(student.register_number))) return 'MALE';
+      return 'FEMALE';
+    };
+
+    const isStudentDone = (s: any) => {
+      if (analyzerTaskFilter) {
+        return s.submissionStatus === 'VERIFIED' || s.submissionStatus === 'SUBMITTED';
+      }
+      return s.submissionStatus === 'VERIFIED';
     };
 
     const boysEnriched = enriched.filter(s => getStudentGender(s) === 'MALE');
     const girlsEnriched = enriched.filter(s => getStudentGender(s) === 'FEMALE');
 
-    const boysCompleted = boysEnriched.filter(s => s.submissionStatus === 'VERIFIED' || s.submissionStatus === 'SUBMITTED').length;
+    const boysCompleted = boysEnriched.filter(isStudentDone).length;
     const boysPending = boysEnriched.length - boysCompleted;
 
-    const girlsCompleted = girlsEnriched.filter(s => s.submissionStatus === 'VERIFIED' || s.submissionStatus === 'SUBMITTED').length;
+    const girlsCompleted = girlsEnriched.filter(isStudentDone).length;
     const girlsPending = girlsEnriched.length - girlsCompleted;
+
+    const completedCount = enriched.filter(isStudentDone).length;
+    const pendingCount = enriched.length - completedCount;
 
     const filtered = enriched.filter(s => {
       const g = getStudentGender(s);
       if (analyzerGenderFilter === 'BOYS' && g !== 'MALE') return false;
       if (analyzerGenderFilter === 'GIRLS' && g !== 'FEMALE') return false;
-      if (analyzerStatusFilter === 'COMPLETED') return s.submissionStatus === 'VERIFIED' || s.submissionStatus === 'SUBMITTED';
-      if (analyzerStatusFilter === 'PENDING') return s.submissionStatus === 'PENDING';
+      if (analyzerStatusFilter === 'COMPLETED') return isStudentDone(s);
+      if (analyzerStatusFilter === 'PENDING') return !isStudentDone(s);
       return true;
     });
-
-    const completedCount = enriched.filter(s => s.submissionStatus === 'VERIFIED' || s.submissionStatus === 'SUBMITTED').length;
-    const pendingCount = enriched.filter(s => s.submissionStatus === 'PENDING').length;
 
     return (
       <ContentCard className="p-0 overflow-hidden mt-10">
