@@ -248,8 +248,8 @@ const Footer = ({ onShowModal }: { onShowModal: (type: 'PRIVACY' | 'TERMS' | 'SU
           <button onClick={() => onShowModal('SUPPORT')} className="hover:text-zinc-900 transition-colors font-medium">Support</button>
         </div>
         <p className="text-[10px] text-zinc-400 font-medium text-center md:text-right leading-relaxed mt-1">
-          Developed and maintained by the Department of Information Technology, VSB Engineering College.<br />
-          Developed and maintained by <a href="https://tharunkumark4743.netlify.app/" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-900 transition-colors font-bold underline decoration-zinc-300 underline-offset-2">Tharunkumar K</a>
+          Department of Information Technology, VSB Engineering College.<br />
+          Developed & Maintained by <a href="https://tharunkumark4743.netlify.app/" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-900 transition-colors font-bold underline decoration-zinc-300 underline-offset-2">Tharunkumar K</a>
         </p>
       </div>
     </div>
