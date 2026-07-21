@@ -1726,8 +1726,38 @@ export default function App() {
       return { ...student, submissionStatus, submissionLabel, clsName, missingTasks };
     });
 
-    const boysEnriched = enriched.filter(s => s.gender === 'MALE' || s.gender === 'BOYS');
-    const girlsEnriched = enriched.filter(s => s.gender === 'FEMALE' || s.gender === 'GIRLS');
+    const getStudentGender = (student: any): 'MALE' | 'FEMALE' => {
+      const g = (student.gender || '').toUpperCase();
+      if (g === 'FEMALE' || g === 'GIRLS') return 'FEMALE';
+      if (g === 'MALE' || g === 'BOYS') return 'MALE';
+      const femaleKeywords = [
+        'AAFRIN', 'SAHANA', 'ABARNA', 'ABINAYA', 'ABIRATHI', 'ABIRUBHA', 'AISVARYA', 'AISWARYA',
+        'AKSHAYA', 'ANUSHA', 'BANU', 'ASHLI', 'BENITA', 'BHARANIKA', 'BHAVANI', 'DEEPIKA', 'SHREE',
+        'DIVYA', 'DIVYADHARSHINI', 'DIVYAPRABHA', 'ELAKKIYAA', 'ELAKKIYA', 'FATHIMA', 'GAYATHRI',
+        'GOBIKA', 'GOPIKA', 'GOWSHINI', 'HARINI', 'HARSHAVARTHINI', 'HARSHINI', 'HEMA', 'INDHUVARSHA',
+        'PRIANKA', 'PRIYANKA', 'SARANYA', 'RANJANI', 'RANKANAYAKI', 'NOWREEN', 'RIFA', 'ROSHAN', 'JOSELA',
+        'SANJEEVANI', 'SANTHIYA', 'SAVITHA', 'SEETHA', 'SINEKA', 'SIVARANJANI', 'SOWMIYA', 'SRIMATHI',
+        'SRINITHI', 'SRIVARSHINI', 'SUBALAKSHMI', 'SUBASHINI', 'SUBHIKSHA', 'SWETHA', 'TAMILSELVI',
+        'THARANI', 'VAISHNAVI', 'VARSHA', 'VARSHENI', 'VARSHINI', 'VISHALINI', 'YAMUNA', 'YOGADHARSHINI',
+        'SRILEKHA', 'PRIYA', 'DHARSHINI', 'KANISHKA', 'KAVIPRIYA', 'KAVIYA', 'KOWSALYA', 'MADHUMITHA',
+        'MATHUMITHA', 'MEENA', 'MONIKA', 'NANDHINI', 'NAVEENA', 'NITHYA', 'NIVETHA', 'PAVITHRA',
+        'POOJA', 'PUNITHA', 'RAJALAKSHMI', 'RAMYA', 'RITHIKA', 'RUBIKA', 'SANDHYA', 'SANGAVI',
+        'SEETHALAKSHMI', 'SHALINI', 'SHARMILA', 'SILPA', 'SINDHU', 'SNEHA', 'SOWNDARYA', 'SUBHA',
+        'SWATHI', 'VINITHA', 'YAZHINI', 'AASHIKA', 'AERIN', 'AISHWARYA', 'ANANDHI', 'ANITHA',
+        'ANUSHRI', 'AROCKIA', 'ARUNA', 'BHAVANI', 'CHARUMATHI', 'DEVI', 'DHARANI', 'DHANUSHREE',
+        'DHARSHANA', 'GEETHA', 'GIRIJA', 'GOKULA', 'HEMALATHA', 'JANANI', 'JAYASRI', 'JEEVITHA',
+        'KALAIYARASI', 'KANMANI', 'KAVYA', 'KEERTHANA', 'KIRUTHIKA', 'LOGESHWARI', 'MAHALAKSHMI',
+        'MALATHI', 'MANJULA', 'MEENAKSHI', 'MOHANAPRIYA', 'MUTHULAKSHMI', 'NATCHATHIRA', 'NIVEDHA',
+        'PADMA', 'PREETHI', 'RADHA', 'RASHMI', 'RESHMA', 'SANGEETHA', 'SARANYA', 'SASIKALA',
+        'SATHYA', 'SELVI', 'SHANTHI', 'SOWMYA', 'SUDHA', 'SUJATHA', 'SUMATHI', 'THANGAM', 'UMA',
+        'USHA', 'VALARMATHI', 'VASANTHI', 'VIDHYA', 'VIJAYA', 'VIMALA', 'YASHINI'
+      ];
+      const nameUpper = (student.full_name || '').toUpperCase();
+      return femaleKeywords.some(kw => nameUpper.includes(kw)) ? 'FEMALE' : 'MALE';
+    };
+
+    const boysEnriched = enriched.filter(s => getStudentGender(s) === 'MALE');
+    const girlsEnriched = enriched.filter(s => getStudentGender(s) === 'FEMALE');
 
     const boysCompleted = boysEnriched.filter(s => s.submissionStatus === 'VERIFIED' || s.submissionStatus === 'SUBMITTED').length;
     const boysPending = boysEnriched.length - boysCompleted;
@@ -1736,8 +1766,9 @@ export default function App() {
     const girlsPending = girlsEnriched.length - girlsCompleted;
 
     const filtered = enriched.filter(s => {
-      if (analyzerGenderFilter === 'BOYS' && !(s.gender === 'MALE' || s.gender === 'BOYS')) return false;
-      if (analyzerGenderFilter === 'GIRLS' && !(s.gender === 'FEMALE' || s.gender === 'GIRLS')) return false;
+      const g = getStudentGender(s);
+      if (analyzerGenderFilter === 'BOYS' && g !== 'MALE') return false;
+      if (analyzerGenderFilter === 'GIRLS' && g !== 'FEMALE') return false;
       if (analyzerStatusFilter === 'COMPLETED') return s.submissionStatus === 'VERIFIED' || s.submissionStatus === 'SUBMITTED';
       if (analyzerStatusFilter === 'PENDING') return s.submissionStatus === 'PENDING';
       return true;

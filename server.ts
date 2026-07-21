@@ -404,6 +404,7 @@ async function startServer() {
       full_name: u.full_name,
       email: u.email,
       register_number: u.register_number,
+      gender: u.gender,
       is_coordinator: u.is_coordinator,
       is_active: u.is_active,
       department_id: u.department_id,
