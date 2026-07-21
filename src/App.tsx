@@ -3507,10 +3507,14 @@ export default function App() {
                                   {task.department_name ? 'Class Task' : 'Global Task'}
                                 </span>
                               )}
-                              <span className="hidden md:inline">•</span>
-                              <span className="bg-zinc-100 text-zinc-600 px-2.5 py-0.5 rounded-full flex items-center gap-1.5 whitespace-nowrap border border-zinc-200">
-                                <Users size={12} /> {task.submission_count || 0} students submitted
-                              </span>
+                              {(!isStudent || isCoordinator) && (
+                                <>
+                                  <span className="hidden md:inline">•</span>
+                                  <span className="bg-zinc-100 text-zinc-600 px-2.5 py-0.5 rounded-full flex items-center gap-1.5 whitespace-nowrap border border-zinc-200">
+                                    <Users size={12} /> {task.submission_count || 0} students submitted
+                                  </span>
+                                </>
+                              )}
                             </div>
                           </div>
                           <div className="text-left md:text-right shrink-0">
