@@ -2545,25 +2545,29 @@ export default function App() {
                   <div className="flex flex-col gap-10">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <StatCard title="Class Students" value={advisorStats?.total_students || 0} icon={<Users />} color="bg-blue-500" />
-                      <StatCard title="Submitted" value={advisorStats?.submitted_tasks_count || 0} icon={<Clock />} color="bg-orange-500" />
-                      <StatCard title="Verified" value={advisorStats?.verified_tasks_count || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
+                      <StatCard title="Pending Submissions" value={advisorStats?.submitted_tasks_count || 0} icon={<Clock />} color="bg-orange-500" />
+                      <StatCard title="Verified Students" value={advisorStats?.verified_tasks_count || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
                     </div>
                     <UnifiedAnalyzer role="CLASS_ADVISOR" title="Class Performance Analyzer" />
                   </div>
                 ) : (
-                    <div className="flex flex-col gap-6">
-                      <div>
-                        <h3 className="text-lg font-bold text-zinc-900 mb-4">My Personal Tasks</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                          <StatCard title="Total Assigned Tasks" value={studentStats?.total_tasks || 0} icon={<ClipboardList />} color="bg-blue-500" />
-                          <StatCard title="My Submissions" value={studentStats?.submitted_tasks || 0} icon={<Clock />} color="bg-orange-500" />
-                          <StatCard title="My Verified" value={studentStats?.verified_tasks || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
-                        </div>
-                      </div>
-                      {isCoordinator && (
-                        <div className="space-y-6 pt-4 border-t border-zinc-200">
+                    <div className="flex flex-col gap-8">
+                      {isCoordinator ? (
+                        <>
+                          <div>
+                            <div className="flex items-center gap-3 mb-4">
+                              <div className="w-1.5 h-6 bg-zinc-900 rounded-full" />
+                              <h3 className="text-xl font-bold text-zinc-900 tracking-tight">My Class Summary</h3>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                              <StatCard title="Class Students" value={coordinatorStats?.class_student_count || coordinatorStats?.total_students || 0} icon={<Users />} color="bg-blue-500" />
+                              <StatCard title="Pending Submissions" value={coordinatorStats?.pending_reviews || 0} icon={<Clock />} color="bg-orange-500" />
+                              <StatCard title="Verified Students" value={coordinatorStats?.verified_submissions || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
+                            </div>
+                          </div>
+
                           <div
-                            className="bg-zinc-900 rounded-3xl p-8 text-white flex flex-col md:flex-row items-center justify-between gap-6 cursor-pointer hover:bg-black transition-all group"
+                            className="bg-zinc-900 rounded-3xl p-8 text-white flex flex-col md:flex-row items-center justify-between gap-6 cursor-pointer hover:bg-black transition-all group shadow-md"
                             onClick={() => setView('verifications')}
                           >
                             <div className="flex items-center gap-6 text-center md:text-left">
@@ -2580,7 +2584,25 @@ export default function App() {
                               <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Pending Tasks</span>
                             </div>
                           </div>
+
                           <UnifiedAnalyzer role="COORDINATOR" title="Class Achievement Analyzer" />
+
+                          <div className="pt-6 border-t border-zinc-200">
+                            <h4 className="text-base font-bold text-zinc-700 mb-4">My Personal Tasks</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                              <StatCard title="Total Assigned Tasks" value={studentStats?.total_tasks || 0} icon={<ClipboardList />} color="bg-blue-500" />
+                              <StatCard title="My Submissions" value={studentStats?.submitted_tasks || 0} icon={<Clock />} color="bg-orange-500" />
+                              <StatCard title="My Verified" value={studentStats?.verified_tasks || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <StatCard title="Total Assigned Tasks" value={studentStats?.total_tasks || 0} icon={<ClipboardList />} color="bg-blue-500" />
+                            <StatCard title="Submitted" value={studentStats?.submitted_tasks || 0} icon={<Clock />} color="bg-orange-500" />
+                            <StatCard title="Verified" value={studentStats?.verified_tasks || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
+                          </div>
                         </div>
                       )}
                     </div>
