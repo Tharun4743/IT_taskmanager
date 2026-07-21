@@ -2545,7 +2545,12 @@ export default function App() {
                   <div className="flex flex-col gap-10">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <StatCard title="Class Students" value={advisorStats?.total_students || 0} icon={<Users />} color="bg-blue-500" />
-                      <StatCard title="Pending Submissions" value={advisorStats?.submitted_tasks_count || 0} icon={<Clock />} color="bg-orange-500" />
+                      <StatCard
+                        title="Students Pending Verification"
+                        value={new Set(submissions.filter(s => s.status === 'SUBMITTED' && String(s.class_id || user?.class_id) === String(user?.class_id)).map(s => s.user_id)).size || advisorStats?.submitted_tasks_count || 0}
+                        icon={<Clock />}
+                        color="bg-orange-500"
+                      />
                       <StatCard title="Verified Students" value={advisorStats?.verified_tasks_count || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
                     </div>
                     <UnifiedAnalyzer role="CLASS_ADVISOR" title="Class Performance Analyzer" />
@@ -2561,7 +2566,12 @@ export default function App() {
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                               <StatCard title="Class Students" value={coordinatorStats?.class_student_count || coordinatorStats?.total_students || 0} icon={<Users />} color="bg-blue-500" />
-                              <StatCard title="Pending Submissions" value={coordinatorStats?.pending_reviews || 0} icon={<Clock />} color="bg-orange-500" />
+                              <StatCard
+                                title="Students Pending Verification"
+                                value={new Set(submissions.filter(s => s.status === 'SUBMITTED' && String(s.class_id || user?.class_id) === String(user?.class_id)).map(s => s.user_id)).size || coordinatorStats?.pending_reviews || 0}
+                                icon={<Clock />}
+                                color="bg-orange-500"
+                              />
                               <StatCard title="Verified Students" value={coordinatorStats?.verified_submissions || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
                             </div>
                           </div>
