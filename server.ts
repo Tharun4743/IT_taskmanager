@@ -582,14 +582,28 @@ async function startServer() {
     res.json({ success, failed });
   });
 
-  app.patch('/api/users/:id/coordinator', authenticate, authorize(['CLASS_ADVISOR']), async (req: any, res) => {
+  app.patch('/api/users/:id/coordinator', authenticate, authorize(['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN']), async (req: any, res) => {
     const { is_coordinator } = req.body;
-    const classId = req.user.class_id;
-    if (is_coordinator) {
-      const countRes = await pool.query('SELECT count(*) FROM users WHERE class_id = $1 AND is_coordinator = TRUE', [classId]);
+    const targetRes = await pool.query('SELECT * FROM users WHERE id = $1 LIMIT 1', [req.params.id]);
+    const target = targetRes.rows[0];
+    if (!target) return res.status(404).json({ error: 'User not found' });
+
+    if (req.user.role === 'CLASS_ADVISOR') {
+      if (target.class_id?.toString() !== req.user.class_id?.toString()) {
+        return res.status(403).json({ error: 'Forbidden: Student does not belong to your class' });
+      }
+    } else if (req.user.role === 'HOD') {
+      if (target.department_id?.toString() !== req.user.department_id?.toString()) {
+        return res.status(403).json({ error: 'Forbidden: Student does not belong to your department' });
+      }
+    }
+
+    if (is_coordinator && target.class_id) {
+      const countRes = await pool.query('SELECT count(*) FROM users WHERE class_id = $1 AND is_coordinator = TRUE AND id != $2', [target.class_id, req.params.id]);
       if (parseInt(countRes.rows[0].count) >= 2) return res.status(400).json({ error: 'Maximum 2 coordinators allowed per class' });
     }
-    await pool.query('UPDATE users SET is_coordinator = $1, updated_at = NOW() WHERE id = $2 AND class_id = $3', [is_coordinator, req.params.id, classId]);
+
+    await pool.query('UPDATE users SET is_coordinator = $1, updated_at = NOW() WHERE id = $2', [is_coordinator, req.params.id]);
     res.json({ success: true });
   });
 

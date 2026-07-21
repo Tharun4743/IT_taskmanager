@@ -248,7 +248,7 @@ const Footer = ({ onShowModal }: { onShowModal: (type: 'PRIVACY' | 'TERMS' | 'SU
           <button onClick={() => onShowModal('SUPPORT')} className="hover:text-zinc-900 transition-colors font-medium">Support</button>
         </div>
         <p className="text-[10px] text-zinc-400 font-medium text-center md:text-right leading-relaxed mt-1">
-          Developed and maintained by the Department of Information Technology, VSB Engineering College. ✨<br />
+          Developed and maintained by the Department of Information Technology, VSB Engineering College.<br />
           Developed and maintained by <a href="https://tharunkumark4743.netlify.app/" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-900 transition-colors font-bold underline decoration-zinc-300 underline-offset-2">Tharunkumar K</a>
         </p>
       </div>
@@ -551,6 +551,12 @@ export default function App() {
   const [userRoleFilter, setUserRoleFilter] = useState('');
   const [userDeptFilter, setUserDeptFilter] = useState('');
 
+  // Role Helpers
+  const isAdmin = user?.role === 'SUPREME_ADMIN';
+  const isHOD = user?.role === 'HOD';
+  const isAdvisor = user?.role === 'CLASS_ADVISOR';
+  const isStudent = user?.role === 'STUDENT';
+  const isCoordinator = Boolean(user?.role === 'STUDENT' && user?.is_coordinator);
   const runHealthCheckWithRetries = async () => {
     setIsWakingServer(true);
     setHasError(false);
@@ -1610,9 +1616,6 @@ export default function App() {
     );
   }
 
-  const isAdmin = user?.role === 'SUPREME_ADMIN';
-  const isHOD = user?.role === 'HOD';
-
   const UnifiedAnalyzer = ({ role, title }: { role: string, title: string }) => {
     // Determine context
     const isGlobal = role === 'SUPREME_ADMIN';
@@ -1906,10 +1909,6 @@ export default function App() {
       </ContentCard>
     );
   };
-
-  const isAdvisor = user?.role === 'CLASS_ADVISOR';
-  const isStudent = user?.role === 'STUDENT';
-  const isCoordinator = user?.role === 'STUDENT' && user?.is_coordinator;
 
   if (isWakingServer) {
     return (
@@ -3140,7 +3139,7 @@ export default function App() {
                                 </TD>
                                 <TD className="text-right">
                                   <div className="flex justify-end gap-2">
-                                    {isAdvisor && (
+                                    {(isAdvisor || isHOD || isAdmin) && u.role === 'STUDENT' && (
                                       <Button
                                         variant="ghost"
                                         className={cn("p-2", u.is_coordinator ? "text-amber-600" : "text-zinc-400")}
