@@ -2050,15 +2050,56 @@ export default function App() {
         </div>
 
         <div className="overflow-x-auto custom-scrollbar">
-          <div className="px-6 py-3 flex flex-wrap gap-3 border-b border-zinc-200 bg-zinc-50/30">
-            <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-full border border-zinc-200">
-              <span className="text-xs font-bold text-zinc-700">{enriched.length} Students</span>
+          <div className="px-6 py-3 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50/30">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-full border border-zinc-200">
+                <span className="text-xs font-bold text-zinc-700">{filtered.length} Students</span>
+              </div>
+              <div className="flex items-center gap-1.5 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
+                <span className="text-xs font-bold text-emerald-700">{filtered.filter(isStudentDone).length} Done</span>
+              </div>
+              <div className="flex items-center gap-1.5 bg-red-50 px-3 py-1.5 rounded-full border border-red-100">
+                <span className="text-xs font-bold text-red-700">{filtered.length - filtered.filter(isStudentDone).length} Not Registered</span>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
-              <span className="text-xs font-bold text-emerald-700">{completedCount} Done</span>
-            </div>
-            <div className="flex items-center gap-1.5 bg-red-50 px-3 py-1.5 rounded-full border border-red-100">
-              <span className="text-xs font-bold text-red-700">{pendingCount} Not Registered</span>
+
+            <div className="flex items-center gap-1 bg-zinc-200/60 p-1 rounded-full border border-zinc-200">
+              <button
+                type="button"
+                onClick={() => setAnalyzerGenderFilter('ALL')}
+                className={cn(
+                  "px-3.5 py-1 rounded-full text-xs font-bold transition-all",
+                  analyzerGenderFilter === 'ALL'
+                    ? "bg-black text-white shadow-sm"
+                    : "text-zinc-600 hover:text-black hover:bg-zinc-100"
+                )}
+              >
+                All ({enriched.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setAnalyzerGenderFilter('BOYS')}
+                className={cn(
+                  "px-3.5 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1",
+                  analyzerGenderFilter === 'BOYS'
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "text-blue-700 hover:bg-blue-50"
+                )}
+              >
+                👦 Boys ({boysEnriched.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setAnalyzerGenderFilter('GIRLS')}
+                className={cn(
+                  "px-3.5 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1",
+                  analyzerGenderFilter === 'GIRLS'
+                    ? "bg-pink-600 text-white shadow-sm"
+                    : "text-pink-700 hover:bg-pink-50"
+                )}
+              >
+                👧 Girls ({girlsEnriched.length})
+              </button>
             </div>
           </div>
 
