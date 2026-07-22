@@ -799,8 +799,19 @@ async function startServer() {
       class_ids: t.class_ids,
       status: t.status,
       created_at: t.created_at,
+      poster_url: t.poster_url || null,
+      poster_cloudinary_public_id: t.poster_cloudinary_public_id || null,
       submission_count: countsMap[t.id] || 0
     })));
+  });
+
+  // Dedicated Poster Image Upload Endpoint
+  app.post('/api/upload/poster', authenticate, upload.single('poster'), (req: any, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No poster image file provided' });
+    res.json({
+      poster_url: req.file.path,
+      poster_cloudinary_public_id: req.file.filename
+    });
   });
 
   const taskSchemaValidator = z.object({
@@ -813,11 +824,52 @@ async function startServer() {
     custom_field_label: z.string().optional().nullable(),
     department_id: z.union([z.string(), z.number(), z.null()]).optional(),
     class_ids: z.array(z.any()).optional().nullable(),
+    poster_url: z.string().optional().nullable(),
+    poster_cloudinary_public_id: z.string().optional().nullable(),
   });
 
   const submissionSchemaValidator = z.object({
     task_id: z.string().min(1, 'Task ID is required'),
     custom_field_value: z.string().optional()
+  });
+
+  app.get('/api/tasks/:id', authenticate, async (req: any, res) => {
+    const taskId = req.params.id;
+    const taskRes = await pool.query(`
+      SELECT t.*, u.full_name as creator_name, d.name as department_name,
+             (SELECT array_remove(array_agg(class_id), NULL) FROM task_classes WHERE task_id = t.id) as class_ids
+      FROM tasks t
+      LEFT JOIN users u ON t.created_by = u.id
+      LEFT JOIN departments d ON t.department_id = d.id
+      WHERE t.id = $1 LIMIT 1
+    `, [taskId]);
+    const t = taskRes.rows[0];
+    if (!t) return res.status(404).json({ error: 'Task not found' });
+    
+    const countsRes = await pool.query(`
+      SELECT count(*) as count FROM task_submissions WHERE task_id = $1 AND status IN ('SUBMITTED', 'VERIFIED')
+    `, [taskId]);
+    const submission_count = parseInt(countsRes.rows[0].count);
+
+    res.json({
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      category: t.category,
+      external_link: t.external_link,
+      deadline: t.deadline,
+      screenshot_instruction: t.screenshot_instruction,
+      custom_field_label: t.custom_field_label,
+      creator_name: t.creator_name || 'Admin',
+      department_id: t.department_id,
+      department_name: t.department_name || null,
+      class_ids: t.class_ids,
+      status: t.status,
+      created_at: t.created_at,
+      poster_url: t.poster_url || null,
+      poster_cloudinary_public_id: t.poster_cloudinary_public_id || null,
+      submission_count
+    });
   });
 
   app.post('/api/tasks', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR', 'STUDENT']), async (req: any, res) => {
@@ -832,7 +884,7 @@ async function startServer() {
       }
       return res.status(400).json({ error: errorMessage });
     }
-    const { title, description, category, external_link, deadline, screenshot_instruction, custom_field_label, department_id, class_ids } = req.body;
+    const { title, description, category, external_link, deadline, screenshot_instruction, custom_field_label, department_id, class_ids, poster_url, poster_cloudinary_public_id } = req.body;
 
     if (req.user.role === 'STUDENT' && !req.user.is_coordinator)
       return res.status(403).json({ error: 'Only coordinators can post tasks' });
@@ -888,12 +940,14 @@ async function startServer() {
       const taskInsertRes = await client.query(`
         INSERT INTO tasks (
           title, description, category, external_link, deadline,
-          screenshot_instruction, custom_field_label, created_by, department_id, status
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'OPEN')
+          screenshot_instruction, custom_field_label, created_by, department_id, status,
+          poster_url, poster_cloudinary_public_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'OPEN', $10, $11)
         RETURNING *
       `, [
         title, description, category, external_link, deadline ? new Date(deadline) : null,
-        screenshot_instruction, custom_field_label, dbUser.id, deptId
+        screenshot_instruction, custom_field_label, dbUser.id, deptId,
+        poster_url || null, poster_cloudinary_public_id || null
       ]);
       const t = taskInsertRes.rows[0];
 
@@ -925,7 +979,9 @@ async function startServer() {
         department_id: t.department_id,
         class_ids: clsIds,
         status: t.status,
-        created_at: t.created_at
+        created_at: t.created_at,
+        poster_url: t.poster_url || null,
+        poster_cloudinary_public_id: t.poster_cloudinary_public_id || null,
       });
     } catch (err: any) {
       await client.query('ROLLBACK');
@@ -966,7 +1022,15 @@ async function startServer() {
     if (!isOwner && !isAdmin && !isDeptHOD && !isClassAdvisor && !isCoordinator)
       return res.status(403).json({ error: 'Forbidden' });
 
-    // Clean up Cloudinary assets first
+    // Clean up Cloudinary assets first (both submissions and poster image)
+    if (task.poster_cloudinary_public_id) {
+      try {
+        await cloudinary.uploader.destroy(task.poster_cloudinary_public_id);
+      } catch (err) {
+        console.error('Failed to delete task poster image from Cloudinary:', err);
+      }
+    }
+
     try {
       const subsRes = await pool.query('SELECT cloudinary_public_id FROM task_submissions WHERE task_id = $1', [task.id]);
       for (const r of subsRes.rows) {

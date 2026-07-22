@@ -30,7 +30,11 @@ import {
   Info,
   AlertTriangle,
   Loader2,
-  CalendarRange
+  CalendarRange,
+  Share2,
+  Copy,
+  Maximize2,
+  FileImage
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
@@ -77,7 +81,7 @@ interface Class {
 }
 
 interface Task {
-  id: number;
+  id: number | string;
   title: string;
   description: string;
   category?: string;
@@ -92,6 +96,8 @@ interface Task {
   created_at: string;
   submission_status?: string;
   submission_count?: number;
+  poster_url?: string | null;
+  poster_cloudinary_public_id?: string | null;
 }
 
 interface Submission {
@@ -417,7 +423,7 @@ const SimpleBarChart = ({ data, label, color = "bg-indigo-500" }: { data: { labe
 };
 
 // --- UI Polish Components ---
-export type ToastType = 'success' | 'error' | 'info';
+export type ToastType = 'success' | 'error' | 'info' | 'warning';
 export interface ToastMessage {
   id: string;
   message: string;
@@ -438,13 +444,15 @@ const ToastContainer = ({ toasts, removeToast }: { toasts: ToastMessage[], remov
               "p-4 rounded-xl shadow-lg border flex items-start gap-3 w-80 pointer-events-auto backdrop-blur-md",
               toast.type === 'success' ? "bg-emerald-50/90 border-emerald-200 text-emerald-800" :
                 toast.type === 'error' ? "bg-red-50/90 border-red-200 text-red-800" :
-                  "bg-blue-50/90 border-blue-200 text-blue-800"
+                  toast.type === 'warning' ? "bg-amber-50/90 border-amber-200 text-amber-800" :
+                    "bg-blue-50/90 border-blue-200 text-blue-800"
             )}
           >
             <div className="shrink-0 mt-0.5">
               {toast.type === 'success' ? <CheckCircle2 size={18} className="text-emerald-500" /> :
                 toast.type === 'error' ? <XCircle size={18} className="text-red-500" /> :
-                  <Info size={18} className="text-blue-500" />}
+                  toast.type === 'warning' ? <AlertTriangle size={18} className="text-amber-500" /> :
+                    <Info size={18} className="text-blue-500" />}
             </div>
             <p className="text-sm font-medium flex-1">{toast.message}</p>
             <button onClick={() => removeToast(toast.id)} className="shrink-0 text-zinc-400 hover:text-black transition-colors">
@@ -575,12 +583,45 @@ export default function App() {
   const [userRoleFilter, setUserRoleFilter] = useState('');
   const [userDeptFilter, setUserDeptFilter] = useState('');
 
+  // Task Poster & Share Link State
+  const [posterFile, setPosterFile] = useState<File | null>(null);
+  const [posterPreview, setPosterPreview] = useState<string | null>(null);
+  const [isUploadingPoster, setIsUploadingPoster] = useState(false);
+  const [selectedPosterModal, setSelectedPosterModal] = useState<string | null>(null);
+  const [sharedTaskModal, setSharedTaskModal] = useState<Task | null>(null);
+  const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
+
   // Role Helpers
   const isAdmin = user?.role === 'SUPREME_ADMIN';
   const isHOD = user?.role === 'HOD';
   const isAdvisor = user?.role === 'CLASS_ADVISOR';
   const isStudent = user?.role === 'STUDENT';
   const isCoordinator = Boolean(user?.role === 'STUDENT' && user?.is_coordinator);
+
+  // Deep Link Handling for Shared Tasks (?taskId=... or ?task=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const taskIdParam = params.get('taskId') || params.get('task');
+    if (taskIdParam) {
+      sessionStorage.setItem('pendingTaskId', taskIdParam);
+      setHighlightedTaskId(taskIdParam);
+      if (token) {
+        setView('tasks');
+      }
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (highlightedTaskId && tasks.length > 0) {
+      setTimeout(() => {
+        const el = document.getElementById(`task-${highlightedTaskId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 400);
+    }
+  }, [highlightedTaskId, tasks, view]);
+
   const runHealthCheckWithRetries = async () => {
     setIsWakingServer(true);
     setHasError(false);
@@ -982,7 +1023,16 @@ export default function App() {
         localStorage.setItem('user', JSON.stringify(data.user));
         setToken(data.token);
         setUser(data.user);
-        setView('dashboard');
+
+        const pendingTaskId = sessionStorage.getItem('pendingTaskId');
+        if (pendingTaskId) {
+          setView('tasks');
+          setHighlightedTaskId(pendingTaskId);
+          sessionStorage.removeItem('pendingTaskId');
+          addToast('Redirected to shared task page!', 'info');
+        } else {
+          setView('dashboard');
+        }
       } else {
         setError(data.error || 'Failed to login');
       }
@@ -1114,6 +1164,37 @@ export default function App() {
     }
   };
 
+  const handlePosterSelect = (file: File | null) => {
+    if (!file) {
+      setPosterFile(null);
+      setPosterPreview(null);
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      addToast('Please select a valid image file for the poster.', 'error');
+      return;
+    }
+    setPosterFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPosterPreview(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const copyTaskShareLink = (taskId: string | number) => {
+    const shareUrl = `${window.location.origin}${window.location.pathname}?taskId=${taskId}`;
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        addToast('Task share link copied to clipboard!', 'success');
+      }).catch(() => {
+        prompt('Copy Task Share Link:', shareUrl);
+      });
+    } else {
+      prompt('Copy Task Share Link:', shareUrl);
+    }
+  };
+
   const handleTaskPreview = (e: React.FormEvent) => {
     e.preventDefault();
     if (isHOD && (!newTask.class_ids || newTask.class_ids.length === 0)) {
@@ -1128,17 +1209,48 @@ export default function App() {
       addToast('Please select at least one class for the task.', 'error');
       return;
     }
+
+    setIsUploadingPoster(true);
+    let poster_url: string | null = null;
+    let poster_cloudinary_public_id: string | null = null;
+
     try {
+      if (posterFile) {
+        const formData = new FormData();
+        formData.append('poster', posterFile);
+        const uploadRes = await fetch(`${API_URL}/api/upload/poster`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData
+        });
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          poster_url = uploadData.poster_url;
+          poster_cloudinary_public_id = uploadData.poster_cloudinary_public_id;
+        } else {
+          addToast('Poster image upload failed. Posting task without poster image.', 'warning');
+        }
+      }
+
       const res = await fetch(`${API_URL}/api/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(newTask)
+        body: JSON.stringify({
+          ...newTask,
+          poster_url,
+          poster_cloudinary_public_id
+        })
       });
+
       if (res.ok) {
+        const createdTask = await res.json();
         setNewTask({ title: '', description: '', category: 'Competition', external_link: '', deadline: '', screenshot_instruction: '', custom_field_label: '', department_id: '', class_ids: [] });
+        setPosterFile(null);
+        setPosterPreview(null);
         setShowTaskPreview(false);
         addToast('Task created successfully!', 'success');
         fetchTasks();
+        setSharedTaskModal(createdTask);
       } else {
         const data = await res.json();
         addToast(`Failed to create task: ${data.error}`, 'error');
@@ -1147,6 +1259,8 @@ export default function App() {
     } catch (e) {
       addToast('Network error while creating task. Please try again.', 'error');
       setShowTaskPreview(false);
+    } finally {
+      setIsUploadingPoster(false);
     }
   };
 
@@ -3566,6 +3680,37 @@ export default function App() {
                             </p>
                           </div>
                         )}
+
+                        <div className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-4 md:col-span-2 min-w-0">
+                          <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest block mb-2">
+                            🎨 Hackathon / Event Poster Image (Optional)
+                          </label>
+                          {posterPreview ? (
+                            <div className="relative rounded-lg overflow-hidden border border-zinc-200 bg-white p-2 flex items-center justify-center max-h-56 group">
+                              <img src={posterPreview} alt="Poster preview" className="max-h-48 rounded object-contain" />
+                              <button
+                                type="button"
+                                onClick={() => handlePosterSelect(null)}
+                                className="absolute top-3 right-3 p-1.5 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors shadow"
+                                title="Remove poster"
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          ) : (
+                            <label className="border-2 border-dashed border-zinc-200 hover:border-black rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-all bg-white hover:bg-zinc-50">
+                              <Upload size={24} className="text-zinc-400 mb-1" />
+                              <span className="text-xs font-bold text-zinc-700">Click or Drag & Drop poster image here (Optional)</span>
+                              <span className="text-[10px] text-zinc-400 font-medium">Upload poster banner (e.g. Hackathon, Workshop, Event Poster)</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={e => handlePosterSelect(e.target.files?.[0] || null)}
+                              />
+                            </label>
+                          )}
+                        </div>
                       </div>
                       <Textarea
                         placeholder="Task Description..."
@@ -3577,8 +3722,8 @@ export default function App() {
                         <Button type="submit" variant="secondary" className="flex-1">
                           <ImageIcon size={18} /> Live Preview
                         </Button>
-                        <Button type="button" onClick={createTask} className="flex-1">
-                          <ClipboardList size={18} /> Post Task
+                        <Button type="button" onClick={createTask} disabled={isUploadingPoster} className="flex-1">
+                          {isUploadingPoster ? <Loader2 size={18} className="animate-spin" /> : <ClipboardList size={18} />} Post Task
                         </Button>
                       </div>
                     </form>
@@ -3604,11 +3749,38 @@ export default function App() {
                       'College Work': '📋'
                     };
 
-                    const catStyle = categoryColors[task.category] || 'bg-zinc-50 text-zinc-600 border-zinc-200';
-                    const catIcon = categoryIcons[task.category] || '';
+                    const catStyle = categoryColors[task.category || ''] || 'bg-zinc-50 text-zinc-600 border-zinc-200';
+                    const catIcon = categoryIcons[task.category || ''] || '';
+                    const isHighlighted = String(highlightedTaskId) === String(task.id);
 
                     return (
-                      <Card key={task.id} className="group hover:shadow-md transition-all duration-300">
+                      <Card
+                        key={task.id}
+                        id={`task-${task.id}`}
+                        className={cn(
+                          "group hover:shadow-md transition-all duration-300",
+                          isHighlighted ? "ring-2 ring-indigo-500 bg-indigo-50/15 shadow-xl" : ""
+                        )}
+                      >
+                        {task.poster_url && (
+                          <div className="relative mb-5 rounded-xl overflow-hidden bg-zinc-950 border border-zinc-200 group/poster max-h-80 flex items-center justify-center">
+                            <img
+                              src={task.poster_url}
+                              alt={`${task.title} Poster`}
+                              className="w-full h-full max-h-80 object-cover object-center group-hover/poster:scale-105 transition-transform duration-500 cursor-pointer"
+                              onClick={() => setSelectedPosterModal(task.poster_url || null)}
+                            />
+                            <div
+                              className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover/poster:opacity-100 transition-opacity flex items-end justify-between p-4 cursor-pointer"
+                              onClick={() => setSelectedPosterModal(task.poster_url || null)}
+                            >
+                              <span className="text-white text-xs font-bold flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20">
+                                <Maximize2 size={14} /> Click to View Full Poster
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
                         <div className="flex flex-col md:flex-row justify-between items-start mb-4 gap-4">
                           <div className="space-y-1">
                             <div className="flex items-center gap-2">
@@ -3644,34 +3816,45 @@ export default function App() {
                               )}
                             </div>
                           </div>
-                          <div className="text-left md:text-right shrink-0">
-                            <p className="text-[10px] text-zinc-400 uppercase font-bold flex items-center gap-1 md:justify-end">
-                              <Clock size={12} /> Deadline
-                            </p>
-                            <p className={cn(
-                              "text-sm font-bold flex flex-col md:items-end",
-                              isDeadlinePassed ? "text-red-500" : (isWithin24h ? "text-orange-500" : "text-zinc-600")
-                            )}>
-                              {task.deadline ? new Date(task.deadline).toLocaleString() : "No deadline"}
-                              {isWithin24h && <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded mt-1">Due within 24h!</span>}
-                            </p>
+                          <div className="text-left md:text-right shrink-0 flex flex-col items-start md:items-end gap-2">
+                            <div>
+                              <p className="text-[10px] text-zinc-400 uppercase font-bold flex items-center gap-1 md:justify-end">
+                                <Clock size={12} /> Deadline
+                              </p>
+                              <p className={cn(
+                                "text-sm font-bold flex flex-col md:items-end",
+                                isDeadlinePassed ? "text-red-500" : (isWithin24h ? "text-orange-500" : "text-zinc-600")
+                              )}>
+                                {task.deadline ? new Date(task.deadline).toLocaleString() : "No deadline"}
+                                {isWithin24h && <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded mt-1">Due within 24h!</span>}
+                              </p>
+                            </div>
                           </div>
                         </div>
 
                         <p className="text-zinc-600 text-sm mb-6 whitespace-pre-wrap break-words">{task.description}</p>
 
-                        {task.external_link && (
-                          <div className="mb-6">
+                        <div className="flex flex-wrap items-center gap-3 mb-6">
+                          <button
+                            type="button"
+                            onClick={() => copyTaskShareLink(task.id)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-colors"
+                            title="Share Task Link"
+                          >
+                            <Share2 size={14} /> Share Task Link
+                          </button>
+
+                          {task.external_link && (
                             <a
                               href={task.external_link}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 text-blue-600 hover:underline text-sm font-medium"
+                              className="inline-flex items-center gap-1.5 text-blue-600 hover:underline text-xs font-semibold bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100"
                             >
-                              <ExternalLink size={16} /> Visit External Link
+                              <ExternalLink size={14} /> External Link
                             </a>
-                          </div>
-                        )}
+                          )}
+                        </div>
 
                         {isStudent && task.status === 'OPEN' && (
                           <div className="bg-zinc-50 p-6 rounded-xl border border-zinc-200 mt-6 shadow-sm">
@@ -4466,6 +4649,92 @@ export default function App() {
                 )}
 
                 <Button onClick={() => setShowFooterModal(null)} className="w-full mt-8">Close</Button>
+              </motion.div>
+            </div>
+          )}
+
+          {selectedPosterModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center justify-center p-2"
+              >
+                <button
+                  onClick={() => setSelectedPosterModal(null)}
+                  className="absolute top-4 right-4 p-2.5 bg-black/70 text-white rounded-full hover:bg-black/90 transition-colors z-10 border border-white/20"
+                  title="Close Poster View"
+                >
+                  <X size={20} />
+                </button>
+                <img
+                  src={selectedPosterModal}
+                  alt="Full Poster View"
+                  className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl border border-zinc-700"
+                />
+              </motion.div>
+            </div>
+          )}
+
+          {sharedTaskModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl relative space-y-6"
+              >
+                <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold text-lg">
+                      ✓
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-zinc-900">Task Posted Successfully!</h3>
+                      <p className="text-xs text-zinc-500 font-medium">Ready to share with students and advisors</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setSharedTaskModal(null)} className="p-1 hover:bg-zinc-100 rounded-full">
+                    <X size={20} className="text-zinc-400" />
+                  </button>
+                </div>
+
+                {sharedTaskModal.poster_url && (
+                  <div className="rounded-xl overflow-hidden max-h-44 bg-zinc-950 border border-zinc-200 flex items-center justify-center">
+                    <img src={sharedTaskModal.poster_url} alt="Poster" className="max-h-44 object-contain" />
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Task Title</p>
+                  <p className="text-base font-bold text-zinc-900">{sharedTaskModal.title}</p>
+                </div>
+
+                <div className="space-y-2 bg-zinc-50 p-4 rounded-xl border border-zinc-200">
+                  <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest block">Direct Share Link</label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      readOnly
+                      value={`${window.location.origin}${window.location.pathname}?taskId=${sharedTaskModal.id}`}
+                      className="text-xs font-mono bg-white"
+                    />
+                    <Button
+                      type="button"
+                      onClick={() => copyTaskShareLink(sharedTaskModal.id)}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white shrink-0 font-bold"
+                    >
+                      <Copy size={16} /> Copy
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 font-medium mt-1">
+                    Directly opens this task after user logs in (or instantly if already logged in).
+                  </p>
+                </div>
+
+                <Button onClick={() => setSharedTaskModal(null)} className="w-full">
+                  Done
+                </Button>
               </motion.div>
             </div>
           )}

@@ -89,6 +89,8 @@ export async function initDB() {
         created_by UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
         department_id UUID REFERENCES departments(id) ON DELETE SET NULL,
         status VARCHAR(50) DEFAULT 'OPEN',
+        poster_url VARCHAR(1000),
+        poster_cloudinary_public_id VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -149,6 +151,12 @@ export async function initDB() {
     // Schema Migrations
     await client.query(`
       ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS cloudinary_public_id VARCHAR(255);
+    `);
+    await client.query(`
+      ALTER TABLE tasks ADD COLUMN IF NOT EXISTS poster_url VARCHAR(1000);
+    `);
+    await client.query(`
+      ALTER TABLE tasks ADD COLUMN IF NOT EXISTS poster_cloudinary_public_id VARCHAR(255);
     `);
 
     // Create indexes
