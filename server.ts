@@ -992,14 +992,36 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/tasks/:id/status', authenticate, authorize(['SUPREME_ADMIN', 'HOD']), async (req: any, res) => {
+  app.patch('/api/tasks/:id/status', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), async (req: any, res) => {
     const { status } = req.body;
-    if (req.user.role === 'HOD') {
-      const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [req.params.id]);
-      const task = taskRes.rows[0];
-      if (!task || task.department_id?.toString() !== req.user.department_id?.toString())
-        return res.status(403).json({ error: 'Forbidden' });
+    const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [req.params.id]);
+    const task = taskRes.rows[0];
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+
+    const tcRes = await pool.query('SELECT class_id FROM task_classes WHERE task_id = $1', [task.id]);
+    const taskClassIds = tcRes.rows.map(r => r.class_id.toString());
+
+    let isAuthorized = false;
+    if (req.user.role === 'SUPREME_ADMIN') isAuthorized = true;
+    else if (task.created_by.toString() === req.user.id.toString()) isAuthorized = true;
+    else if (req.user.role === 'HOD') {
+      if (task.department_id?.toString() === req.user.department_id?.toString()) {
+        isAuthorized = true;
+      } else if (taskClassIds.length > 0) {
+        const hodClassRes = await pool.query(
+          'SELECT 1 FROM classes WHERE id = ANY($1::int[]) AND department_id = $2 LIMIT 1',
+          [taskClassIds.map(Number), req.user.department_id]
+        );
+        if (hodClassRes.rowCount && hodClassRes.rowCount > 0) {
+          isAuthorized = true;
+        }
+      }
+    } else if (req.user.role === 'CLASS_ADVISOR' && taskClassIds.includes(req.user.class_id?.toString())) {
+      isAuthorized = true;
     }
+
+    if (!isAuthorized) return res.status(403).json({ error: 'Forbidden' });
+
     await pool.query('UPDATE tasks SET status = $1, updated_at = NOW() WHERE id = $2', [status, req.params.id]);
     res.json({ success: true });
   });
@@ -1011,10 +1033,23 @@ async function startServer() {
 
     const isOwner = task.created_by.toString() === req.user.id.toString();
     const isAdmin = req.user.role === 'SUPREME_ADMIN';
-    const isDeptHOD = req.user.role === 'HOD' && task.department_id?.toString() === req.user.department_id?.toString();
 
     const tcRes = await pool.query('SELECT class_id FROM task_classes WHERE task_id = $1', [task.id]);
     const taskClassIds = tcRes.rows.map(r => r.class_id.toString());
+
+    let isDeptHOD = req.user.role === 'HOD' && (
+      task.department_id?.toString() === req.user.department_id?.toString()
+    );
+
+    if (!isDeptHOD && req.user.role === 'HOD' && taskClassIds.length > 0) {
+      const hodClassRes = await pool.query(
+        'SELECT 1 FROM classes WHERE id = ANY($1::int[]) AND department_id = $2 LIMIT 1',
+        [taskClassIds.map(Number), req.user.department_id]
+      );
+      if (hodClassRes.rowCount && hodClassRes.rowCount > 0) {
+        isDeptHOD = true;
+      }
+    }
 
     const isClassAdvisor = req.user.role === 'CLASS_ADVISOR' && taskClassIds.includes(req.user.class_id?.toString());
     const isCoordinator = req.user.role === 'STUDENT' && req.user.is_coordinator && taskClassIds.includes(req.user.class_id?.toString());
@@ -1679,6 +1714,22 @@ async function startServer() {
     })));
   });
 
+
+
+  // ── Notifications ─────────────────────────────────────────────────────────
+  app.get('/api/notifications', authenticate, async (req: any, res) => {
+    const notifsRes = await pool.query('SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50', [req.user.id]);
+    res.json(notifsRes.rows.map(n => ({
+      id: n.id, message: n.message, type: n.type,
+      is_read: n.is_read, created_at: n.created_at,
+    })));
+  });
+
+  app.patch('/api/notifications/read', authenticate, async (req: any, res) => {
+    await pool.query('UPDATE notifications SET is_read = TRUE, updated_at = NOW() WHERE user_id = $1', [req.user.id]);
+    res.json({ success: true });
+  });
+
   app.patch('/api/submissions/:id/unlock', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), async (req: any, res) => {
     const subId = req.params.id;
     const subRes = await pool.query(`
@@ -1734,20 +1785,6 @@ async function startServer() {
     } finally {
       client.release();
     }
-  });
-
-  // ── Notifications ─────────────────────────────────────────────────────────
-  app.get('/api/notifications', authenticate, async (req: any, res) => {
-    const notifsRes = await pool.query('SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50', [req.user.id]);
-    res.json(notifsRes.rows.map(n => ({
-      id: n.id, message: n.message, type: n.type,
-      is_read: n.is_read, created_at: n.created_at,
-    })));
-  });
-
-  app.patch('/api/notifications/read', authenticate, async (req: any, res) => {
-    await pool.query('UPDATE notifications SET is_read = TRUE, updated_at = NOW() WHERE user_id = $1', [req.user.id]);
-    res.json({ success: true });
   });
 
   // ── Stats: Advisor ────────────────────────────────────────────────────────

@@ -28,6 +28,7 @@ import {
   UserPlus,
   X,
   Info,
+  RotateCcw,
   AlertTriangle,
   Loader2,
   CalendarRange,
@@ -574,6 +575,7 @@ export default function App() {
   const [analyzerClassFilter, setAnalyzerClassFilter] = useState('');
   const [analyzerTaskFilter, setAnalyzerTaskFilter] = useState('');
   const [analyzerStatusFilter, setAnalyzerStatusFilter] = useState<'ALL' | 'COMPLETED' | 'PENDING'>('ALL');
+  const [analyzerGenderFilter, setAnalyzerGenderFilter] = useState<'ALL' | 'BOYS' | 'GIRLS'>('ALL');
   const [adminDeptFilter, setAdminDeptFilter] = useState('');
   const [customFieldValue, setCustomFieldValue] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<Record<number, File>>({});
@@ -1373,6 +1375,20 @@ export default function App() {
     fetchSubmissions();
   };
 
+  const unlockSubmission = async (id: number) => {
+    const res = await fetch(`${API_URL}/api/submissions/${id}/unlock`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (res.ok) {
+      addToast('Submission unlocked for student resubmission', 'success');
+      fetchSubmissions();
+    } else {
+      const data = await res.json();
+      addToast(data.error || 'Failed to unlock submission', 'error');
+    }
+  };
+
   const handleFileUpload = (taskId: number, file: File | null) => {
     if (file) {
       // Add a 5MB size limit restriction as requested
@@ -1761,8 +1777,6 @@ export default function App() {
   }
 
   const UnifiedAnalyzer = ({ role, title }: { role: string, title: string }) => {
-    const [analyzerGenderFilter, setAnalyzerGenderFilter] = useState<'ALL' | 'BOYS' | 'GIRLS'>('ALL');
-
     // Determine context
     const isGlobal = role === 'SUPREME_ADMIN';
     const isDept = role === 'HOD';
@@ -2649,7 +2663,7 @@ export default function App() {
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
               </button>
               <div className="min-w-0">
-                <h2 className="text-xl font-bold text-zinc-900 tracking-tight capitalize truncate">{view === 'departments' ? 'Classes' : view}</h2>
+                <h2 className="text-xl font-bold text-zinc-900 tracking-tight capitalize truncate">{view === 'departments' ? 'Departments' : view === 'my-class' ? 'My Class' : view}</h2>
                 <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider truncate">Academic Management System</p>
               </div>
             </div>
@@ -4054,7 +4068,7 @@ export default function App() {
                               })()
                             )}
                           </div>
-                        )}                {(isAdmin || (isHOD && task.department_id === user?.department_id) || task.created_by === user?.id || ((isAdvisor || isCoordinator) && Array.isArray(task.class_ids) && (!task.class_ids.length || task.class_ids.some(cid => String(cid) === String(user?.class_id))))) && (
+                        )}                {(isAdmin || (isHOD && (String(task.department_id) === String(user?.department_id) || (Array.isArray(task.class_ids) && task.class_ids.some(cid => classes.find(c => String(c.id) === String(cid))?.department_id?.toString() === user?.department_id?.toString())))) || String(task.created_by) === String(user?.id) || ((isAdvisor || isCoordinator) && Array.isArray(task.class_ids) && (!task.class_ids.length || task.class_ids.some(cid => String(cid) === String(user?.class_id))))) && (
                           <div className="mt-6 flex gap-4 border-t border-zinc-100 pt-4">
                             <Button
                               variant="ghost"
