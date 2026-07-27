@@ -4570,7 +4570,8 @@ export default function App() {
                       : (hodStats?.classStats || classes.filter(c => c.department_id?.toString() === user?.department_id?.toString()));
                     return (
                       <div>
-                        <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 block">
+                        <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5">
+                          <Users size={11} />
                           Select Classes <span className="normal-case text-zinc-300 font-medium">(pick multiple)</span>
                         </label>
                         <div className="max-h-40 overflow-y-auto border border-zinc-100 rounded-2xl bg-zinc-50 p-3 flex flex-col gap-2">
@@ -4628,7 +4629,7 @@ export default function App() {
 
                   {/* Task selector */}
                   <div>
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 block">Task</label>
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5"><ClipboardList size={11} /> Task</label>
                     <select
                       className="w-full p-4 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                       value={reportFilters.taskId}
@@ -4643,7 +4644,7 @@ export default function App() {
 
                   {/* Submission Status */}
                   <div>
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 block">Submission Status</label>
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5"><ShieldCheck size={11} /> Submission Status</label>
                     <select
                       className="w-full p-4 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                       value={reportFilters.status || 'ALL'}
@@ -4657,25 +4658,7 @@ export default function App() {
                     </select>
                   </div>
 
-                  {/* Sheets preview */}
-                  <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-4 space-y-3">
-                    <div>
-                      <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.15em] mb-1.5">Sheet 1 — Detailed Report</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {['S.No', 'Name', 'Reg No', 'Mail ID', 'Task Name', 'Task Status'].map(col => (
-                          <span key={col} className="px-2.5 py-1 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-zinc-700">{col}</span>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.15em] mb-1.5">Sheet 2 — Summary</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {['Task Name', 'Class', 'Total Students', 'Verified', 'Submitted', 'Rejected', 'Not Submitted'].map(col => (
-                          <span key={col} className="px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-bold text-emerald-700">{col}</span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+
 
                   <div className="flex gap-4 pt-2">
                     <Button variant="ghost" onClick={() => { setShowExportModal(false); setReportFilters({ classIds: [], taskId: '', status: 'ALL' }); }} className="flex-1 rounded-2xl">Cancel</Button>
