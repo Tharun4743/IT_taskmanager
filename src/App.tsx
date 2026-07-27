@@ -351,6 +351,80 @@ function CategoryDropdown({ value, onChange }: { value: string; onChange: (val: 
   );
 }
 
+const STATUS_OPTIONS = [
+  { value: 'ALL',           label: 'All',           icon: LayoutDashboard,  color: 'text-zinc-500' },
+  { value: 'VERIFIED',      label: 'Verified',      icon: CheckCircle2,     color: 'text-emerald-600' },
+  { value: 'SUBMITTED',     label: 'Submitted',     icon: Upload,           color: 'text-blue-600' },
+  { value: 'REJECTED',      label: 'Rejected',      icon: XCircle,          color: 'text-red-500' },
+  { value: 'NOT_SUBMITTED', label: 'Not Submitted', icon: Clock,            color: 'text-amber-500' },
+];
+
+function StatusDropdown({ value, onChange }: { value: string; onChange: (val: string) => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const selected = STATUS_OPTIONS.find(o => o.value === value) || STATUS_OPTIONS[0];
+  const SelIcon = selected.icon;
+
+  return (
+    <div className="relative w-full" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full h-11 px-3.5 rounded-xl border border-zinc-100 bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm font-bold flex items-center justify-between hover:border-zinc-300"
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <SelIcon size={16} className={cn('shrink-0', selected.color)} />
+          <span className="truncate text-zinc-900">{selected.label}</span>
+        </div>
+        <ChevronRight size={15} className={cn('text-zinc-400 transition-transform duration-200 shrink-0', isOpen ? 'rotate-90' : '')} />
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -4, scale: 0.98 }}
+            animate={{ opacity: 1, y: 4, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+            transition={{ duration: 0.15 }}
+            className="absolute z-50 w-full bg-white border border-zinc-200 rounded-xl shadow-xl overflow-hidden"
+          >
+            {STATUS_OPTIONS.map(opt => {
+              const OptIcon = opt.icon;
+              const isSel = opt.value === value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => { onChange(opt.value); setIsOpen(false); }}
+                  className={cn(
+                    'w-full px-3.5 py-2.5 flex items-center justify-between gap-2 text-sm font-semibold transition-colors',
+                    isSel ? 'bg-zinc-900 text-white' : 'hover:bg-zinc-50 text-zinc-700'
+                  )}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <OptIcon size={15} className={isSel ? 'text-white' : opt.color} />
+                    <span>{opt.label}</span>
+                  </div>
+                  {isSel && <CheckCircle2 size={15} className="text-white shrink-0" />}
+                </button>
+              );
+            })}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 const Textarea = ({ className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
   <textarea
     className={cn('w-full px-4 py-2.5 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm min-h-[100px] resize-y bg-white', className)}
@@ -4547,21 +4621,21 @@ export default function App() {
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="bg-white rounded-[2.5rem] p-10 max-w-xl w-full shadow-2xl relative border border-zinc-100"
+                className="bg-white rounded-[2rem] p-6 md:p-8 max-w-xl w-full shadow-2xl relative border border-zinc-100 max-h-[90vh] overflow-y-auto"
               >
                 <button
                   onClick={() => setShowExportModal(false)}
-                  className="absolute top-8 right-8 p-2 hover:bg-zinc-100 rounded-full transition-colors"
+                  className="absolute top-5 right-5 p-2 hover:bg-zinc-100 rounded-full transition-colors"
                 >
-                  <X size={24} className="text-zinc-400" />
+                  <X size={20} className="text-zinc-400" />
                 </button>
 
-                <h3 className="text-3xl font-black text-zinc-900 tracking-tight">Report Studio</h3>
-                <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest mt-2 mb-8">
+                <h3 className="text-2xl font-black text-zinc-900 tracking-tight pr-8">Report Studio</h3>
+                <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mt-1.5 mb-6">
                   {isAdmin ? 'System-Wide Report' : isHOD ? 'Department Report' : user?.is_year_coordinator ? `Year ${user?.year_scope} Report` : `Class Report — ${user?.class_name || 'My Class'}`}
                 </p>
 
-                <div className="space-y-5">
+                <div className="space-y-4">
 
                   {/* HOD / Admin: multi-class checkbox picker */}
                   {(isAdmin || isHOD) && (() => {
@@ -4613,7 +4687,7 @@ export default function App() {
                     <div>
                       <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 block">Target Class</label>
                       <select
-                        className="w-full p-4 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                        className="w-full p-3 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                         value={reportFilters.classIds[0] || ''}
                         onChange={(e) => setReportFilters(prev => ({ ...prev, classIds: e.target.value ? [e.target.value] : [] }))}
                       >
@@ -4631,7 +4705,7 @@ export default function App() {
                   <div>
                     <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5"><ClipboardList size={11} /> Task</label>
                     <select
-                      className="w-full p-4 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      className="w-full p-3 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                       value={reportFilters.taskId}
                       onChange={(e) => setReportFilters(prev => ({ ...prev, taskId: e.target.value }))}
                     >
@@ -4645,18 +4719,12 @@ export default function App() {
                   {/* Submission Status */}
                   <div>
                     <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5"><ShieldCheck size={11} /> Submission Status</label>
-                    <select
-                      className="w-full p-4 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    <StatusDropdown
                       value={reportFilters.status || 'ALL'}
-                      onChange={(e) => setReportFilters(prev => ({ ...prev, status: e.target.value }))}
-                    >
-                      <option value="ALL">All</option>
-                      <option value="VERIFIED">Verified</option>
-                      <option value="SUBMITTED">Submitted</option>
-                      <option value="REJECTED">Rejected</option>
-                      <option value="NOT_SUBMITTED">Not Submitted</option>
-                    </select>
+                      onChange={(val) => setReportFilters(prev => ({ ...prev, status: val }))}
+                    />
                   </div>
+
 
 
 
