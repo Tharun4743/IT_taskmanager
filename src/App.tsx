@@ -2652,7 +2652,7 @@ export default function App() {
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl"
+                className="bg-white rounded-2xl p-6 md:p-8 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto"
               >
                 <h2 className="text-xl font-bold mb-4">Reject Submission</h2>
                 <Textarea
@@ -2825,7 +2825,7 @@ export default function App() {
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl relative"
+                className="bg-white rounded-3xl p-6 md:p-8 w-full max-w-lg shadow-2xl relative max-h-[90vh] overflow-y-auto"
               >
                 <button
                   onClick={() => setShowReviewsModal(false)}
@@ -2834,7 +2834,7 @@ export default function App() {
                   <XCircle size={24} className="text-zinc-400" />
                 </button>
                 <h3 className="text-xl font-bold text-zinc-900 mb-6">Review & Feedback History</h3>
-                <div className="space-y-6 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+                <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
                   {selectedSubReviews.length === 0 ? (
                     <p className="text-sm text-zinc-500 text-center py-4">No review history available.</p>
                   ) : (
@@ -4748,7 +4748,7 @@ export default function App() {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white rounded-3xl p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-2xl relative"
+                className="bg-white rounded-3xl p-6 md:p-8 max-w-2xl w-full max-h-[85vh] overflow-y-auto shadow-2xl relative"
               >
                 <button
                   onClick={() => setShowFooterModal(null)}
@@ -4845,7 +4845,7 @@ export default function App() {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl relative space-y-6"
+                className="bg-white rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl relative space-y-6 max-h-[95vh] overflow-y-auto"
               >
                 <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
                   <div className="flex items-center gap-3">
