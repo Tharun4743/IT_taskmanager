@@ -470,7 +470,7 @@ const Footer = ({ onShowModal }: { onShowModal: (type: 'PRIVACY' | 'TERMS' | 'SU
       </div>
 
       {/* Right: Developed & Maintained By */}
-      <div className="text-center lg:text-right text-zinc-500 text-[11px] font-medium leading-tight min-w-0">
+      <div className="text-center lg:text-right text-zinc-600 text-xs font-medium leading-tight shrink-0">
         <span>Developed and maintained by </span>
         <a
           href="https://tharunkumark4743.netlify.app/"
@@ -480,7 +480,9 @@ const Footer = ({ onShowModal }: { onShowModal: (type: 'PRIVACY' | 'TERMS' | 'SU
         >
           Tharunkumar K
         </a>
-        <div className="text-[10px] text-zinc-400 truncate max-w-[260px] mx-auto lg:mx-0 lg:ml-auto">Department of Information Technology, VSB Engineering College</div>
+        <div className="text-[11px] text-zinc-500 font-medium mt-0.5">
+          Department of Information Technology, VSB Engineering College
+        </div>
       </div>
     </div>
   </footer>
