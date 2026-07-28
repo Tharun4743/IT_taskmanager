@@ -790,6 +790,7 @@ export default function App() {
   const [isDraggingScreenshot, setIsDraggingScreenshot] = useState<number | null>(null);
   const [notParticipating, setNotParticipating] = useState<Record<number, boolean>>({});
   const [notParticipatingReason, setNotParticipatingReason] = useState<Record<number, string>>({});
+  const [isEditingOptOut, setIsEditingOptOut] = useState<Record<number, boolean>>({});
   const [showPassword, setShowPassword] = useState(false);
   const [userRoleFilter, setUserRoleFilter] = useState('');
   const [userDeptFilter, setUserDeptFilter] = useState('');
@@ -1585,6 +1586,7 @@ export default function App() {
       if (res.ok) {
         setNotParticipating(prev => ({ ...prev, [taskId]: false }));
         setNotParticipatingReason(prev => ({ ...prev, [taskId]: '' }));
+        setIsEditingOptOut(prev => ({ ...prev, [taskId]: false }));
         addToast('Recorded: Not participating in this task.', 'info');
         fetchSubmissions();
       } else {
@@ -4100,17 +4102,30 @@ export default function App() {
                               (() => {
                                 const isLocked = submission?.status === 'REJECTED' && (submission.resubmission_count || 0) >= 2;
 
-                                // Already opted out
-                                if (submission?.status === 'NOT_PARTICIPATING') {
+                                // Already opted out (show reason banner with option to edit)
+                                if (submission?.status === 'NOT_PARTICIPATING' && !isEditingOptOut[task.id]) {
                                   return (
-                                    <div className="p-4 bg-orange-50/90 border border-orange-200 rounded-xl space-y-2">
-                                      <div className="flex items-center gap-2 text-orange-800 font-bold text-sm">
-                                        <AlertTriangle size={18} className="text-orange-500 shrink-0" />
-                                        <span>Status: Skip / Not Interested</span>
+                                    <div className="p-4 bg-orange-50/90 border border-orange-200 rounded-xl space-y-3 shadow-sm">
+                                      <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div className="flex items-center gap-2 text-orange-800 font-bold text-sm">
+                                          <AlertTriangle size={18} className="text-orange-500 shrink-0" />
+                                          <span>Status: Skip / Not Interested</span>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setNotParticipating(prev => ({ ...prev, [task.id]: true }));
+                                            setNotParticipatingReason(prev => ({ ...prev, [task.id]: submission.not_participating_reason || '' }));
+                                            setIsEditingOptOut(prev => ({ ...prev, [task.id]: true }));
+                                          }}
+                                          className="text-xs font-bold text-orange-700 hover:text-orange-950 bg-orange-100 hover:bg-orange-200 px-3 py-1.5 rounded-lg border border-orange-300 transition-colors"
+                                        >
+                                          Edit Reason / Change Option
+                                        </button>
                                       </div>
-                                      <div className="pl-6 border-l-2 border-orange-300 py-0.5">
-                                        <p className="text-[11px] font-bold text-orange-600 uppercase tracking-wider">Submitted Reason:</p>
-                                        <p className="text-sm text-orange-950 mt-0.5 font-semibold break-words leading-relaxed">
+                                      <div className="pl-4 border-l-3 border-orange-400 bg-white/70 p-3 rounded-r-lg border border-zinc-200/60">
+                                        <p className="text-[11px] font-bold text-orange-600 uppercase tracking-wider mb-0.5">Submitted Reason:</p>
+                                        <p className="text-sm text-zinc-900 font-semibold break-words leading-relaxed">
                                           "{submission.not_participating_reason || 'No specific reason provided'}"
                                         </p>
                                       </div>
