@@ -153,8 +153,10 @@ async function startServer() {
     const loginId = (email || username || '').trim();
     if (!loginId) return res.status(401).json({ error: 'Invalid credentials' });
 
+    const cleanPassword = (password || '').trim();
+
     const userRes = await pool.query(
-      'SELECT * FROM users WHERE LOWER(username) = LOWER($1) OR LOWER(register_number) = LOWER($1) OR LOWER(email) = LOWER($1) LIMIT 1',
+      'SELECT * FROM users WHERE LOWER(TRIM(username)) = LOWER($1) OR LOWER(TRIM(register_number)) = LOWER($1) OR LOWER(TRIM(email)) = LOWER($1) LIMIT 1',
       [loginId]
     );
     const user = userRes.rows[0];
@@ -164,15 +166,15 @@ async function startServer() {
     let isPasswordValid = false;
     try {
       if (user.password && (user.password.startsWith('$2a$') || user.password.startsWith('$2b$') || user.password.startsWith('$2y$'))) {
-        isPasswordValid = await bcrypt.compare(password, user.password);
+        isPasswordValid = await bcrypt.compare(cleanPassword, user.password) || (password && await bcrypt.compare(password, user.password));
       } else {
-        isPasswordValid = (password === user.password);
+        isPasswordValid = (cleanPassword === user.password) || (password === user.password);
       }
     } catch {
       isPasswordValid = false;
     }
 
-    if (!isPasswordValid && (password === user.register_number || password === user.username)) {
+    if (!isPasswordValid && (cleanPassword === user.register_number || cleanPassword === user.username || password === user.register_number || password === user.username)) {
       isPasswordValid = true;
     }
 
@@ -198,6 +200,9 @@ async function startServer() {
         username: user.username,
         role: user.role,
         full_name: user.full_name,
+        email: user.email,
+        register_number: user.register_number,
+        gender: user.gender,
         department_id: user.department_id,
         class_id: user.class_id,
         is_coordinator: Boolean(user.is_coordinator),
@@ -216,6 +221,9 @@ async function startServer() {
       username: user.username,
       role: user.role,
       full_name: user.full_name,
+      email: user.email,
+      register_number: user.register_number,
+      gender: user.gender,
       department_id: user.department_id,
       class_id: user.class_id,
       is_coordinator: Boolean(user.is_coordinator),
