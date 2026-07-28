@@ -2142,6 +2142,22 @@ export default function App() {
       return s.submissionStatus === 'VERIFIED';
     };
 
+    const isStudentResponded = (s: any) => {
+      const studentSubs = submissions.filter(sub => sub.user_id?.toString() === s.id?.toString());
+      if (analyzerTaskFilter) {
+        return studentSubs.some(sub => sub.task_id?.toString() === analyzerTaskFilter);
+      }
+      return studentSubs.length > 0;
+    };
+
+    const isStudentSkipped = (s: any) => {
+      const studentSubs = submissions.filter(sub => sub.user_id?.toString() === s.id?.toString());
+      if (analyzerTaskFilter) {
+        return studentSubs.some(sub => sub.task_id?.toString() === analyzerTaskFilter && sub.status === 'NOT_PARTICIPATING');
+      }
+      return studentSubs.some(sub => sub.status === 'NOT_PARTICIPATING');
+    };
+
     const boysEnriched = enriched.filter(s => getStudentGender(s) === 'MALE');
     const girlsEnriched = enriched.filter(s => getStudentGender(s) === 'FEMALE');
 
@@ -2153,6 +2169,14 @@ export default function App() {
 
     const completedCount = enriched.filter(isStudentDone).length;
     const pendingCount = enriched.length - completedCount;
+
+    const respondedCount = enriched.filter(isStudentResponded).length;
+    const boysResponded = boysEnriched.filter(isStudentResponded).length;
+    const girlsResponded = girlsEnriched.filter(isStudentResponded).length;
+
+    const skippedCount = enriched.filter(isStudentSkipped).length;
+    const boysSkipped = boysEnriched.filter(isStudentSkipped).length;
+    const girlsSkipped = girlsEnriched.filter(isStudentSkipped).length;
 
     const filtered = enriched.filter(s => {
       const g = getStudentGender(s);
@@ -2276,7 +2300,7 @@ export default function App() {
         </div>
 
         {/* Separate Gender Breakdown Cards */}
-        <div className="px-6 py-4 grid grid-cols-1 sm:grid-cols-3 gap-4 bg-zinc-50 border-b border-zinc-200">
+        <div className="px-6 py-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-zinc-50 border-b border-zinc-200">
           <div className="bg-white p-4 rounded-2xl border border-zinc-200 flex items-center justify-between shadow-sm">
             <div>
               <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Total Students</p>
@@ -2288,9 +2312,21 @@ export default function App() {
             </div>
           </div>
 
+          <div className="bg-white p-4 rounded-2xl border border-indigo-200 flex items-center justify-between shadow-sm bg-gradient-to-br from-indigo-50/30 to-white">
+            <div>
+              <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Responded Students</p>
+              <p className="text-2xl font-black text-indigo-700 mt-0.5">{respondedCount}</p>
+              <span className="text-[9px] font-semibold text-indigo-500">Interested or Skipped</span>
+            </div>
+            <div className="text-right text-xs font-semibold space-y-0.5">
+              <p className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md flex items-center justify-end gap-1"><User size={12} /> Boys: {boysResponded}</p>
+              <p className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md flex items-center justify-end gap-1"><User size={12} /> Girls: {girlsResponded}</p>
+            </div>
+          </div>
+
           <div className="bg-white p-4 rounded-2xl border border-zinc-200 flex items-center justify-between shadow-sm">
             <div>
-              <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Completed / Done</p>
+              <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Completed / Verified</p>
               <p className="text-2xl font-black text-emerald-600 mt-0.5">{completedCount}</p>
             </div>
             <div className="text-right text-xs font-semibold space-y-0.5">
@@ -2301,12 +2337,12 @@ export default function App() {
 
           <div className="bg-white p-4 rounded-2xl border border-zinc-200 flex items-center justify-between shadow-sm">
             <div>
-              <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Not Registered / Pending</p>
-              <p className="text-2xl font-black text-amber-600 mt-0.5">{pendingCount}</p>
+              <p className="text-[10px] font-bold text-orange-500 uppercase tracking-wider">Skipped / Not Interested</p>
+              <p className="text-2xl font-black text-orange-600 mt-0.5">{skippedCount}</p>
             </div>
             <div className="text-right text-xs font-semibold space-y-0.5">
-              <p className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md flex items-center justify-end gap-1"><User size={12} /> Boys: {boysPending}</p>
-              <p className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md flex items-center justify-end gap-1"><User size={12} /> Girls: {girlsPending}</p>
+              <p className="bg-orange-50 text-orange-700 px-2 py-0.5 rounded-md flex items-center justify-end gap-1"><User size={12} /> Boys: {boysSkipped}</p>
+              <p className="bg-orange-50 text-orange-700 px-2 py-0.5 rounded-md flex items-center justify-end gap-1"><User size={12} /> Girls: {girlsSkipped}</p>
             </div>
           </div>
         </div>
@@ -3069,10 +3105,16 @@ export default function App() {
                   </div>
                 ) : isAdvisor ? (
                   <div className="flex flex-col gap-10">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                       <StatCard title="Class Students" value={advisorStats?.total_students || 0} icon={<Users />} color="bg-blue-500" />
                       <StatCard
-                        title="Students Pending Verification"
+                        title="Responded Students"
+                        value={new Set(submissions.filter(s => String(s.class_id || user?.class_id) === String(user?.class_id)).map(s => s.user_id)).size}
+                        icon={<CheckCircle2 />}
+                        color="bg-indigo-500"
+                      />
+                      <StatCard
+                        title="Pending Verification"
                         value={new Set(submissions.filter(s => s.status === 'SUBMITTED' && String(s.class_id || user?.class_id) === String(user?.class_id)).map(s => s.user_id)).size || advisorStats?.submitted_tasks_count || 0}
                         icon={<Clock />}
                         color="bg-orange-500"
@@ -3090,10 +3132,16 @@ export default function App() {
                               <div className="w-1.5 h-6 bg-zinc-900 rounded-full" />
                               <h3 className="text-xl font-bold text-zinc-900 tracking-tight">My Class Summary</h3>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                               <StatCard title="Class Students" value={coordinatorStats?.class_student_count || coordinatorStats?.total_students || 0} icon={<Users />} color="bg-blue-500" />
                               <StatCard
-                                title="Students Pending Verification"
+                                title="Responded Students"
+                                value={new Set(submissions.filter(s => String(s.class_id || user?.class_id) === String(user?.class_id)).map(s => s.user_id)).size}
+                                icon={<CheckCircle2 />}
+                                color="bg-indigo-500"
+                              />
+                              <StatCard
+                                title="Pending Verification"
                                 value={new Set(submissions.filter(s => s.status === 'SUBMITTED' && String(s.class_id || user?.class_id) === String(user?.class_id)).map(s => s.user_id)).size || coordinatorStats?.pending_reviews || 0}
                                 icon={<Clock />}
                                 color="bg-orange-500"
