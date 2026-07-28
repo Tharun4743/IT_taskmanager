@@ -3994,9 +3994,20 @@ export default function App() {
                               <span>{new Date(task.created_at).toLocaleDateString()}</span>
                               <span className="hidden md:inline">•</span>
                               {Array.isArray(task.class_ids) && task.class_ids.length > 0 ? (
-                                <span className="bg-purple-50 text-purple-600 border border-purple-100 flex flex-wrap gap-1 px-2 py-0.5 rounded-full whitespace-nowrap">
-                                  {task.class_ids.map(id => classes.find(c => String(c.id) === String(id))?.name || id).join(', ')}
-                                </span>
+                                (() => {
+                                  const names = task.class_ids
+                                    .map(id => classes.find(c => String(c.id) === String(id))?.name)
+                                    .filter((name): name is string => Boolean(name));
+                                  const displayText = names.length > 0 ? names.join(', ') : 'Assigned Section';
+                                  return (
+                                    <span
+                                      className="bg-purple-50 text-purple-600 border border-purple-100 px-2.5 py-0.5 rounded-full text-xs font-semibold max-w-[240px] md:max-w-md truncate inline-block align-middle"
+                                      title={displayText}
+                                    >
+                                      {displayText}
+                                    </span>
+                                  );
+                                })()
                               ) : (
                                 <span className={cn(
                                   "px-2 py-0.5 rounded-full border border-transparent whitespace-nowrap",
@@ -4324,13 +4335,13 @@ export default function App() {
               >
                 <PageLayout>
                   <div className="flex justify-between items-center">
-                    <div className="flex gap-2">
-                      {['PENDING', 'VERIFIED', 'REJECTED', 'ALL'].map(f => (
+                    <div className="flex gap-2 flex-wrap">
+                      {['PENDING', 'VERIFIED', 'REJECTED', 'NOT INTERESTED', 'ALL'].map(f => (
                         <button
                           key={f}
                           onClick={() => setVerificationFilter(f as any)}
                           className={cn(
-                            "px-4 py-2 rounded-full text-xs font-bold transition-all",
+                            "px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap",
                             verificationFilter === f ? "bg-black text-white" : "bg-white text-zinc-400 border border-zinc-200 hover:border-zinc-300"
                           )}
                         >
@@ -4431,7 +4442,12 @@ export default function App() {
                     <TBody>
                       {(() => {
                         const filtered = submissions
-                          .filter(s => verificationFilter === 'ALL' ? true : (verificationFilter === 'PENDING' ? s.status === 'SUBMITTED' : s.status === verificationFilter))
+                          .filter(s => {
+                            if (verificationFilter === 'ALL') return true;
+                            if (verificationFilter === 'PENDING') return s.status === 'SUBMITTED';
+                            if (verificationFilter === 'NOT INTERESTED') return s.status === 'NOT_PARTICIPATING';
+                            return s.status === verificationFilter;
+                          })
                           .filter(s => {
                             if (verificationClassFilter) {
                               const std = users.find(u => u.id === s.user_id);
@@ -4443,7 +4459,7 @@ export default function App() {
                           .filter(s => {
                             if (!submissionSearchTerm) return true;
                             const query = submissionSearchTerm.toLowerCase();
-                            return s.student_name?.toLowerCase().includes(query) || s.register_number?.toLowerCase().includes(query) || s.task_title?.toLowerCase().includes(query);
+                            return s.student_name?.toLowerCase().includes(query) || s.register_number?.toLowerCase().includes(query) || s.task_title?.toLowerCase().includes(query) || s.not_participating_reason?.toLowerCase().includes(query);
                           });
 
                         if (filtered.length === 0) {
@@ -4466,7 +4482,7 @@ export default function App() {
                         return (
                           <>
                             {paginated.map(s => (
-                              <TR key={s.id} className={cn("border-l-4", s.status === 'VERIFIED' ? "border-emerald-500" : s.status === 'REJECTED' ? "border-red-500" : "border-orange-500")}>
+                              <TR key={s.id} className={cn("border-l-4", s.status === 'VERIFIED' ? "border-emerald-500" : s.status === 'REJECTED' ? "border-red-500" : s.status === 'NOT_PARTICIPATING' ? "border-orange-400" : "border-amber-500")}>
                                 <TD>
                                   {s.status === 'SUBMITTED' && (
                                     <input
@@ -4502,25 +4518,41 @@ export default function App() {
                                 </TD>
                                 <TD>
                                   <p className="text-xs text-zinc-400 uppercase font-bold mb-1 tracking-widest">Field Data</p>
-                                  <p className="text-sm font-mono text-zinc-900 bg-zinc-100 px-2 py-1 rounded inline-block break-all">{s.custom_field_value}</p>
+                                  <p className="text-sm font-mono text-zinc-900 bg-zinc-100 px-2 py-1 rounded inline-block break-all">
+                                    {s.status === 'NOT_PARTICIPATING' ? '—' : (s.custom_field_value || '—')}
+                                  </p>
                                 </TD>
                                 <TD>
-                                  <div className="relative group/img">
-                                    <img
-                                      src={s.screenshot_url}
-                                      className="w-12 h-12 object-cover rounded-lg border-2 border-zinc-200 hover:border-black transition-all cursor-zoom-in"
-                                      onClick={() => window.open(s.screenshot_url, '_blank')}
-                                      alt="Thumbnail"
-                                    />
-                                    <div className="absolute top-0 left-0 w-full h-full bg-black/5 rounded-lg pointer-events-none group-hover/img:bg-transparent transition-colors" />
-                                  </div>
+                                  {s.status === 'NOT_PARTICIPATING' ? (
+                                    <div className="p-2.5 bg-orange-50 border border-orange-200 rounded-xl max-w-[240px]">
+                                      <p className="text-[10px] font-bold text-orange-700 uppercase flex items-center gap-1">
+                                        <AlertTriangle size={12} className="text-orange-500 shrink-0" />
+                                        <span>Not Participating</span>
+                                      </p>
+                                      <p className="text-xs text-orange-800 mt-1 break-words font-medium leading-snug">
+                                        "{s.not_participating_reason || 'No reason provided'}"
+                                      </p>
+                                    </div>
+                                  ) : s.screenshot_url ? (
+                                    <div className="relative group/img">
+                                      <img
+                                        src={s.screenshot_url}
+                                        className="w-12 h-12 object-cover rounded-lg border-2 border-zinc-200 hover:border-black transition-all cursor-zoom-in"
+                                        onClick={() => window.open(s.screenshot_url, '_blank')}
+                                        alt="Thumbnail"
+                                      />
+                                      <div className="absolute top-0 left-0 w-full h-full bg-black/5 rounded-lg pointer-events-none group-hover/img:bg-transparent transition-colors" />
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-zinc-400 font-mono italic">No File</span>
+                                  )}
                                 </TD>
                                 <TD className="text-center">
                                   <Badge variant={
                                     s.status === 'VERIFIED' ? 'success' :
                                     s.status === 'REJECTED' ? 'danger' : 'warning'
-                                  }>
-                                    {s.status === 'SUBMITTED' ? 'PENDING' : s.status}
+                                  } className={s.status === 'NOT_PARTICIPATING' ? 'bg-orange-100 text-orange-700 border-orange-200' : ''}>
+                                    {s.status === 'SUBMITTED' ? 'PENDING' : s.status === 'NOT_PARTICIPATING' ? 'NOT INTERESTED' : s.status}
                                   </Badge>
                                 </TD>
                                 <TD className="text-right">
@@ -4654,68 +4686,82 @@ export default function App() {
                         submissions
                           .filter(s => s.user_id?.toString() === user?.id?.toString())
                           .map(sub => (
-                          <Card key={sub.id} className="flex flex-col md:flex-row gap-6">
-                            <div className="w-full md:w-48 h-48 bg-zinc-100 rounded-xl overflow-hidden border border-zinc-200 flex-shrink-0">
-                              <img
-                                src={sub.screenshot_url}
-                                alt="Submission"
-                                className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
-                                onClick={() => window.open(sub.screenshot_url, '_blank')}
-                                referrerPolicy="no-referrer"
-                              />
-                            </div>
-                            <div className="flex-1 flex flex-col justify-between">
-                              <div>
-                                <div className="flex justify-between items-start">
-                                  <div>
-                                    <h4 className="font-bold text-zinc-900 text-lg">{sub.task_title}</h4>
-                                    <p className="text-sm text-zinc-500">
-                                      {isAdvisor ? `Student: ${sub.student_name}` : `Submitted on ${new Date(sub.submitted_at).toLocaleString()}`}
-                                    </p>
-                                  </div>
-                                  <Badge variant={
-                                    sub.status === 'VERIFIED' ? 'success' :
-                                    sub.status === 'REJECTED' ? 'danger' : 'warning'
-                                  }>
-                                    {sub.status}
-                                  </Badge>
+                            <Card key={sub.id} className="flex flex-col md:flex-row gap-6">
+                              {sub.status === 'NOT_PARTICIPATING' ? (
+                                <div className="w-full md:w-48 h-48 bg-orange-50 rounded-xl border border-orange-200 p-4 flex flex-col items-center justify-center text-center shrink-0">
+                                  <AlertTriangle size={32} className="text-orange-500 mb-2" />
+                                  <p className="text-xs font-bold text-orange-700 uppercase">Not Participating</p>
+                                  <p className="text-xs text-orange-800 mt-1 line-clamp-4 font-medium">"{sub.not_participating_reason || 'No reason provided'}"</p>
                                 </div>
-                                {sub.verified_at && (
-                                  <p className="text-xs text-zinc-400 mt-2 uppercase font-bold">
-                                    Verified on {new Date(sub.verified_at).toLocaleString()}
-                                  </p>
-                                )}
-                              </div>
-
-                              {(isHOD || isAdmin) && sub.status === 'SUBMITTED' && (
-                                <div className="flex gap-2 mt-4">
-                                  <Button
-                                    variant="success"
-                                    className="flex-1 flex items-center justify-center gap-2"
-                                    onClick={() => verifySubmission(sub.id, 'VERIFIED')}
-                                  >
-                                    <CheckCircle2 size={18} /> Verify
-                                  </Button>
-                                  <Button
-                                    variant="danger"
-                                    className="flex-1 flex items-center justify-center gap-2"
-                                    onClick={() => verifySubmission(sub.id, 'REJECTED')}
-                                  >
-                                    <XCircle size={18} /> Reject
-                                  </Button>
+                              ) : (
+                                <div className="w-full md:w-48 h-48 bg-zinc-100 rounded-xl overflow-hidden border border-zinc-200 shrink-0">
+                                  {sub.screenshot_url ? (
+                                    <img
+                                      src={sub.screenshot_url}
+                                      alt="Submission"
+                                      className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
+                                      onClick={() => window.open(sub.screenshot_url, '_blank')}
+                                      referrerPolicy="no-referrer"
+                                    />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-zinc-400 text-xs">No image uploaded</div>
+                                  )}
                                 </div>
                               )}
+                              <div className="flex-1 flex flex-col justify-between">
+                                <div>
+                                  <div className="flex justify-between items-start">
+                                    <div>
+                                      <h4 className="font-bold text-zinc-900 text-lg">{sub.task_title}</h4>
+                                      <p className="text-sm text-zinc-500">
+                                        {isAdvisor ? `Student: ${sub.student_name}` : `Submitted on ${new Date(sub.submitted_at).toLocaleString()}`}
+                                      </p>
+                                    </div>
+                                    <Badge variant={
+                                      sub.status === 'VERIFIED' ? 'success' :
+                                      sub.status === 'REJECTED' ? 'danger' : 'warning'
+                                    } className={sub.status === 'NOT_PARTICIPATING' ? 'bg-orange-100 text-orange-700 border-orange-200' : ''}>
+                                      {sub.status === 'NOT_PARTICIPATING' ? 'NOT INTERESTED' : sub.status}
+                                    </Badge>
+                                  </div>
+                                  {sub.verified_at && (
+                                    <p className="text-xs text-zinc-400 mt-2 uppercase font-bold">
+                                      Verified on {new Date(sub.verified_at).toLocaleString()}
+                                    </p>
+                                  )}
+                                </div>
 
-                              <Button
-                                variant="ghost"
-                                className="mt-4 text-xs flex items-center gap-2 w-fit"
-                                onClick={() => window.open(sub.screenshot_url, '_blank')}
-                              >
-                                <ExternalLink size={14} /> View Full Screenshot
-                              </Button>
-                            </div>
-                          </Card>
-                        ))
+                                {(isHOD || isAdmin) && sub.status === 'SUBMITTED' && (
+                                  <div className="flex gap-2 mt-4">
+                                    <Button
+                                      variant="success"
+                                      className="flex-1 flex items-center justify-center gap-2"
+                                      onClick={() => verifySubmission(sub.id, 'VERIFIED')}
+                                    >
+                                      <CheckCircle2 size={18} /> Verify
+                                    </Button>
+                                    <Button
+                                      variant="danger"
+                                      className="flex-1 flex items-center justify-center gap-2"
+                                      onClick={() => verifySubmission(sub.id, 'REJECTED')}
+                                    >
+                                      <XCircle size={18} /> Reject
+                                    </Button>
+                                  </div>
+                                )}
+
+                                {sub.screenshot_url && (
+                                  <Button
+                                    variant="ghost"
+                                    className="mt-4 text-xs flex items-center gap-2 w-fit"
+                                    onClick={() => window.open(sub.screenshot_url, '_blank')}
+                                  >
+                                    <ExternalLink size={14} /> View Full Screenshot
+                                  </Button>
+                                )}
+                              </div>
+                            </Card>
+                          ))
                       )}
                     </div>
                   </PageLayout>
