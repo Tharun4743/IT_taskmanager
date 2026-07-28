@@ -1823,11 +1823,14 @@ export default function App() {
         }
         const sub = getSub(student.id, student.register_number, task.id);
         const rawStatus = sub ? sub.status : 'NOT_SUBMITTED';
+        const isNotParticipating = rawStatus === 'NOT_PARTICIPATING';
+        const isParticipating = rawStatus === 'SUBMITTED' || rawStatus === 'VERIFIED' || rawStatus === 'REJECTED';
+
         const statusLabel =
           rawStatus === 'VERIFIED'          ? 'Verified'         :
           rawStatus === 'SUBMITTED'         ? 'Submitted'        :
           rawStatus === 'REJECTED'          ? 'Rejected'         :
-          rawStatus === 'NOT_PARTICIPATING' ? 'Not Participating' : 'Not Submitted';
+          rawStatus === 'NOT_PARTICIPATING' ? 'Not Interested'   : 'Not Submitted';
 
         let include = false;
         if (selectedStatus === 'ALL')                include = true;
@@ -1839,14 +1842,15 @@ export default function App() {
 
         if (include) {
           detailedRows.push({
-            'S.No':             sno++,
-            'Name':             student.full_name || '—',
-            'Reg No':           student.register_number || '—',
-            'Mail ID':          student.email || '—',
-            'Task Name':        task.title,
-            'Task Status':      statusLabel,
-            'Custom Field':     sub?.custom_field_value || '—',
-            'Not Participating Reason': rawStatus === 'NOT_PARTICIPATING' ? (sub?.not_participating_reason || '—') : '—',
+            'S.No':                         sno++,
+            'Name':                         student.full_name || '—',
+            'Reg No':                       student.register_number || '—',
+            'Mail ID':                      student.email || '—',
+            'Task Name':                    task.title,
+            'Participating / Interested':   isParticipating ? 'Yes' : isNotParticipating ? 'No' : '—',
+            'Task Status':                  statusLabel,
+            'Custom Field':                 isParticipating ? (sub?.custom_field_value || '—') : '—',
+            'Reason (If Not Participating)': isNotParticipating ? (sub?.not_participating_reason || '—') : '—',
           });
         }
       });
@@ -1914,7 +1918,17 @@ export default function App() {
     });
 
     // ── Build Workbook ─────────────────────────────────────────────────────────
-    const sheet1Cols = ['S.No', 'Name', 'Reg No', 'Mail ID', 'Task Name', 'Task Status', 'Custom Field', 'Not Participating Reason'];
+    const sheet1Cols = [
+      'S.No',
+      'Name',
+      'Reg No',
+      'Mail ID',
+      'Task Name',
+      'Participating / Interested',
+      'Task Status',
+      'Custom Field',
+      'Reason (If Not Participating)'
+    ];
     const sheet2Cols = ['Task Name', 'Class', 'Total Students', 'Verified', 'Submitted', 'Rejected', 'Not Participating', 'Not Submitted'];
 
     const ws1 = buildSheetWithHeader(sheet1Cols, detailedRows, sheet1Line5);
