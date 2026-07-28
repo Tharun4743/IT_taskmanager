@@ -442,32 +442,32 @@ const FooterContext = React.createContext<((type: 'PRIVACY' | 'TERMS' | 'SUPPORT
 
 const Footer = ({ onShowModal }: { onShowModal: (type: 'PRIVACY' | 'TERMS' | 'SUPPORT') => void }) => (
   <footer className="mt-8 pt-4 pb-4 border-t border-zinc-200/80 shrink-0 w-full bg-white/60 backdrop-blur-md px-4 md:px-8">
-    <div className="w-full flex flex-col lg:flex-row items-center justify-between gap-4 text-xs">
+    <div className="w-full flex flex-col lg:flex-row items-center justify-between gap-3 text-xs min-w-0">
       {/* Brand Logo & Name */}
-      <div className="flex items-center gap-2.5 shrink-0">
+      <div className="flex items-center gap-2.5 shrink-0 min-w-0">
         <div className="w-7 h-7 rounded-full overflow-hidden shrink-0 border border-zinc-200 shadow-sm">
           <img src="/logo.png" alt="VSBEC Logo" className="w-full h-full object-cover" />
         </div>
-        <span className="font-extrabold text-zinc-900 text-xs tracking-tight">VSBEC IT Task Manager</span>
+        <span className="font-extrabold text-zinc-900 text-xs tracking-tight whitespace-nowrap">VSBEC IT Task Manager</span>
       </div>
 
       {/* Center: Legal Links */}
-      <div className="flex items-center gap-4 text-xs font-medium text-zinc-600">
-        <button onClick={() => onShowModal('PRIVACY')} className="hover:text-indigo-600 transition-colors">
+      <div className="flex items-center gap-3 text-xs font-medium text-zinc-600 flex-wrap justify-center">
+        <button onClick={() => onShowModal('PRIVACY')} className="hover:text-indigo-600 transition-colors whitespace-nowrap">
           Privacy Policy
         </button>
         <span className="text-zinc-300">•</span>
-        <button onClick={() => onShowModal('TERMS')} className="hover:text-indigo-600 transition-colors">
+        <button onClick={() => onShowModal('TERMS')} className="hover:text-indigo-600 transition-colors whitespace-nowrap">
           Terms of Service
         </button>
         <span className="text-zinc-300">•</span>
-        <button onClick={() => onShowModal('SUPPORT')} className="hover:text-indigo-600 transition-colors">
+        <button onClick={() => onShowModal('SUPPORT')} className="hover:text-indigo-600 transition-colors whitespace-nowrap">
           Help & Support
         </button>
       </div>
 
       {/* Right: Developed & Maintained By */}
-      <div className="text-center lg:text-right text-zinc-500 text-[11px] font-medium leading-tight">
+      <div className="text-center lg:text-right text-zinc-500 text-[11px] font-medium leading-tight min-w-0">
         <span>Developed and maintained by </span>
         <a
           href="https://tharunkumark4743.netlify.app/"
@@ -477,7 +477,7 @@ const Footer = ({ onShowModal }: { onShowModal: (type: 'PRIVACY' | 'TERMS' | 'SU
         >
           Tharunkumar K
         </a>
-        <div className="text-[10px] text-zinc-400">Department of Information Technology, VSB Engineering College</div>
+        <div className="text-[10px] text-zinc-400 truncate max-w-[260px] mx-auto lg:mx-0 lg:ml-auto">Department of Information Technology, VSB Engineering College</div>
       </div>
     </div>
   </footer>
@@ -486,7 +486,7 @@ const Footer = ({ onShowModal }: { onShowModal: (type: 'PRIVACY' | 'TERMS' | 'SU
 const PageLayout = ({ children, className, ...props }: React.HTMLAttributes<HTMLDivElement>) => {
   const onShowModal = React.useContext(FooterContext);
   return (
-    <div className="absolute inset-0 overflow-y-auto p-4 md:p-8 bg-[#F5F5F4] flex flex-col min-h-0">
+    <div className="absolute inset-0 overflow-y-auto overflow-x-hidden p-4 md:p-8 bg-[#F5F5F4] flex flex-col min-h-0">
       <div className="w-full flex flex-col min-h-full">
         <div className={cn("flex-1 flex flex-col space-y-6 w-full", className)} {...props}>
           {children}
