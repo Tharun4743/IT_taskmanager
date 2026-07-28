@@ -4469,8 +4469,14 @@ export default function App() {
                         </TH>
                         <TH>Student</TH>
                         <TH>Task</TH>
-                        <TH>Custom Field</TH>
-                        <TH>Screenshot</TH>
+                        {verificationFilter === 'NOT INTERESTED' ? (
+                          <TH colSpan={2}>Reason for Not Interested</TH>
+                        ) : (
+                          <>
+                            <TH>Custom Field</TH>
+                            <TH>Screenshot</TH>
+                          </>
+                        )}
                         <TH className="text-center">Status</TH>
                         <TH className="text-right">Actions</TH>
                       </TR>
@@ -4552,37 +4558,43 @@ export default function App() {
                                   <p className="text-sm font-medium text-zinc-900 break-words">{s.task_title}</p>
                                   <p className="text-xs text-zinc-400 capitalize">{new Date(s.submitted_at).toLocaleDateString()}</p>
                                 </TD>
-                                <TD>
-                                  <p className="text-xs text-zinc-400 uppercase font-bold mb-1 tracking-widest">Field Data</p>
-                                  <p className="text-sm font-mono text-zinc-900 bg-zinc-100 px-2 py-1 rounded inline-block break-all">
-                                    {s.status === 'NOT_PARTICIPATING' ? '—' : (s.custom_field_value || '—')}
-                                  </p>
-                                </TD>
-                                <TD>
-                                  {s.status === 'NOT_PARTICIPATING' ? (
-                                    <div className="p-2.5 bg-orange-50 border border-orange-200 rounded-xl max-w-[240px]">
-                                      <p className="text-[10px] font-bold text-orange-700 uppercase flex items-center gap-1">
+                                {s.status === 'NOT_PARTICIPATING' ? (
+                                  <TD colSpan={2}>
+                                    <div className="p-3 bg-orange-50/90 border border-orange-200 rounded-xl max-w-md shadow-xs">
+                                      <p className="text-[10px] font-bold text-orange-600 uppercase tracking-wider mb-0.5 flex items-center gap-1">
                                         <AlertTriangle size={12} className="text-orange-500 shrink-0" />
-                                        <span>Not Participating</span>
+                                        <span>Reason for Not Interested</span>
                                       </p>
-                                      <p className="text-xs text-orange-800 mt-1 break-words font-medium leading-snug">
-                                        "{s.not_participating_reason || 'No reason provided'}"
+                                      <p className="text-xs text-orange-950 font-semibold break-words leading-relaxed">
+                                        "{s.not_participating_reason || 'No specific reason provided'}"
                                       </p>
                                     </div>
-                                  ) : s.screenshot_url ? (
-                                    <div className="relative group/img">
-                                      <img
-                                        src={s.screenshot_url}
-                                        className="w-12 h-12 object-cover rounded-lg border-2 border-zinc-200 hover:border-black transition-all cursor-zoom-in"
-                                        onClick={() => window.open(s.screenshot_url, '_blank')}
-                                        alt="Thumbnail"
-                                      />
-                                      <div className="absolute top-0 left-0 w-full h-full bg-black/5 rounded-lg pointer-events-none group-hover/img:bg-transparent transition-colors" />
-                                    </div>
-                                  ) : (
-                                    <span className="text-xs text-zinc-400 font-mono italic">No File</span>
-                                  )}
-                                </TD>
+                                  </TD>
+                                ) : (
+                                  <>
+                                    <TD>
+                                      <p className="text-xs text-zinc-400 uppercase font-bold mb-1 tracking-widest">Field Data</p>
+                                      <p className="text-sm font-mono text-zinc-900 bg-zinc-100 px-2 py-1 rounded inline-block break-all">
+                                        {s.custom_field_value || '—'}
+                                      </p>
+                                    </TD>
+                                    <TD>
+                                      {s.screenshot_url ? (
+                                        <div className="relative group/img">
+                                          <img
+                                            src={s.screenshot_url}
+                                            className="w-12 h-12 object-cover rounded-lg border-2 border-zinc-200 hover:border-black transition-all cursor-zoom-in"
+                                            onClick={() => window.open(s.screenshot_url, '_blank')}
+                                            alt="Thumbnail"
+                                          />
+                                          <div className="absolute top-0 left-0 w-full h-full bg-black/5 rounded-lg pointer-events-none group-hover/img:bg-transparent transition-colors" />
+                                        </div>
+                                      ) : (
+                                        <span className="text-xs text-zinc-400 font-mono italic">No File</span>
+                                      )}
+                                    </TD>
+                                  </>
+                                )}
                                 <TD className="text-center">
                                   <Badge variant={
                                     s.status === 'VERIFIED' ? 'success' :
