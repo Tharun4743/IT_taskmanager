@@ -1546,6 +1546,8 @@ async function startServer() {
       custom_field_value: s.custom_field_value,
       verification_note: s.verification_note,
       rejection_reason: s.rejection_reason,
+      not_participating: s.not_participating,
+      not_participating_reason: s.not_participating_reason,
       submitted_at: s.submitted_at,
       verified_at: s.verified_at,
       resubmission_count: s.resubmission_count,
