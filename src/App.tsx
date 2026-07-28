@@ -785,6 +785,8 @@ export default function App() {
   const [selectedFiles, setSelectedFiles] = useState<Record<number, File>>({});
   const [isDraggingExcel, setIsDraggingExcel] = useState(false);
   const [isDraggingScreenshot, setIsDraggingScreenshot] = useState<number | null>(null);
+  const [notParticipating, setNotParticipating] = useState<Record<number, boolean>>({});
+  const [notParticipatingReason, setNotParticipatingReason] = useState<Record<number, string>>({});
   const [showPassword, setShowPassword] = useState(false);
   const [userRoleFilter, setUserRoleFilter] = useState('');
   const [userDeptFilter, setUserDeptFilter] = useState('');
@@ -1563,6 +1565,31 @@ export default function App() {
       }
     } catch (e) {
       addToast('Network error during submission', 'error');
+    }
+    setUploading(null);
+  };
+
+  const submitNotParticipating = async (taskId: number) => {
+    const reason = notParticipatingReason[taskId] || '';
+    if (!reason.trim()) return addToast('Please enter your reason for not participating.', 'error');
+    setUploading(taskId);
+    try {
+      const res = await fetch(`${API_URL}/api/submissions/not-participating`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: taskId, not_participating_reason: reason.trim() })
+      });
+      if (res.ok) {
+        setNotParticipating(prev => ({ ...prev, [taskId]: false }));
+        setNotParticipatingReason(prev => ({ ...prev, [taskId]: '' }));
+        addToast('Recorded: Not participating in this task.', 'info');
+        fetchSubmissions();
+      } else {
+        const data = await res.json();
+        addToast(`Failed: ${data.error}`, 'error');
+      }
+    } catch {
+      addToast('Network error. Please try again.', 'error');
     }
     setUploading(null);
   };
@@ -4022,7 +4049,7 @@ export default function App() {
                         </div>
 
                         {isStudent && task.status === 'OPEN' && (
-                          <div className="bg-zinc-50 p-6 rounded-xl border border-zinc-200 mt-6 shadow-sm">
+                          <div className="bg-zinc-50 p-5 rounded-xl border border-zinc-200 mt-6 shadow-sm space-y-4">
                             {isDeadlinePassed ? (
                               <div className="text-center py-6">
                                 <div className="w-12 h-12 bg-zinc-100 text-zinc-400 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -4036,6 +4063,23 @@ export default function App() {
                             ) : (
                               (() => {
                                 const isLocked = submission?.status === 'REJECTED' && (submission.resubmission_count || 0) >= 2;
+
+                                // Already opted out
+                                if (submission?.status === 'NOT_PARTICIPATING') {
+                                  return (
+                                    <div className="flex flex-col gap-3">
+                                      <div className="flex items-center gap-3 p-3 bg-orange-50 border border-orange-200 rounded-xl">
+                                        <div className="w-9 h-9 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center shrink-0">
+                                          <AlertTriangle size={18} />
+                                        </div>
+                                        <div className="min-w-0">
+                                          <p className="text-sm font-bold text-orange-700">Not Participating</p>
+                                          <p className="text-xs text-orange-600 mt-0.5 break-words">Reason: {submission.not_participating_reason || '—'}</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                }
 
                                 if (isLocked) {
                                   return (
@@ -4052,6 +4096,7 @@ export default function App() {
                                 }
 
                                 if (!submission || submission.status === 'REJECTED') {
+                                  const isOptingOut = notParticipating[task.id] || false;
                                   return (
                                     <div className="space-y-4">
                                       {submission?.status === 'REJECTED' && (
@@ -4061,88 +4106,134 @@ export default function App() {
                                           <p>Please correct your work and resubmit proof below.</p>
                                         </div>
                                       )}
-                                      <div>
-                                        <label className="text-sm font-medium text-zinc-700 mb-2 block">
-                                          {task.custom_field_label || "Custom Field"}
-                                        </label>
-                                        <Input
-                                          placeholder={`Enter ${task.custom_field_label || "value"}...`}
-                                          value={customFieldValue}
-                                          onChange={e => setCustomFieldValue(e.target.value)}
+
+                                      {/* Not Participating Checkbox */}
+                                      <label className="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-dashed border-zinc-300 hover:border-orange-400 hover:bg-orange-50/40 transition-all group">
+                                        <input
+                                          type="checkbox"
+                                          className="mt-0.5 w-4 h-4 accent-orange-500 cursor-pointer shrink-0"
+                                          checked={isOptingOut}
+                                          onChange={e => setNotParticipating(prev => ({ ...prev, [task.id]: e.target.checked }))}
                                         />
-                                      </div>
-                                      <div>
-                                        <label className="text-sm font-medium text-zinc-700 mb-2 block">
-                                          {task.screenshot_instruction || "Upload Screenshot"}
-                                        </label>
-                                        <div className="flex flex-col gap-4">
-                                          <div className="flex items-center gap-4">
-                                            <input
-                                              type="file"
-                                              accept="image/*"
-                                              id={`file-${task.id}`}
-                                              className="hidden"
-                                              onChange={e => handleFileUpload(task.id, e.target.files?.[0] || null)}
+                                        <div>
+                                          <span className="text-sm font-bold text-zinc-700 group-hover:text-orange-700 transition-colors">Not Participating / Not Interested</span>
+                                          <p className="text-xs text-zinc-400 mt-0.5">Check this if you do not wish to participate in this task. No screenshot or team details required.</p>
+                                        </div>
+                                      </label>
+
+                                      {/* If opted out — show only reason */}
+                                      {isOptingOut ? (
+                                        <div className="space-y-3">
+                                          <div>
+                                            <label className="text-sm font-bold text-zinc-700 mb-2 flex items-center gap-1.5">
+                                              <AlertTriangle size={14} className="text-orange-500" />
+                                              Reason for Not Participating <span className="text-red-500">*</span>
+                                            </label>
+                                            <Textarea
+                                              placeholder="e.g. I already participated in a similar event / Not relevant to my current semester..."
+                                              value={notParticipatingReason[task.id] || ''}
+                                              onChange={e => setNotParticipatingReason(prev => ({ ...prev, [task.id]: e.target.value }))}
+                                              className="min-h-[80px]"
                                             />
-                                            <div className="flex-1 w-full">
-                                              <div
-                                                className={cn(
-                                                  "relative w-full border-2 border-dashed rounded-xl p-6 md:p-8 flex flex-col items-center justify-center transition-all cursor-pointer group",
-                                                  selectedFiles[task.id] ? "border-emerald-500 bg-emerald-50 text-emerald-600" : (isDraggingScreenshot === task.id ? "border-blue-500 bg-blue-50 scale-105" : "border-zinc-200 bg-white text-zinc-400 hover:border-black hover:text-black")
-                                                )}
-                                                onDragOver={(e) => { e.preventDefault(); setIsDraggingScreenshot(task.id); }}
-                                                onDragLeave={() => setIsDraggingScreenshot(null)}
-                                                onDrop={(e) => {
-                                                  e.preventDefault();
-                                                  setIsDraggingScreenshot(null);
-                                                  handleFileUpload(task.id, e.dataTransfer.files[0]);
-                                                }}
-                                                onClick={() => document.getElementById(`file-${task.id}`)?.click()}
-                                              >
+                                          </div>
+                                          <Button
+                                            onClick={() => submitNotParticipating(task.id)}
+                                            disabled={uploading === task.id || !(notParticipatingReason[task.id] || '').trim()}
+                                            className={cn(
+                                              "w-full font-bold bg-orange-500 hover:bg-orange-600 text-white transition-all",
+                                              (uploading === task.id || !(notParticipatingReason[task.id] || '').trim()) && "opacity-50 cursor-not-allowed"
+                                            )}
+                                          >
+                                            {uploading === task.id ? <Loader2 size={18} className="animate-spin" /> : <><AlertTriangle size={16} /> Confirm: Not Participating</>}
+                                          </Button>
+                                        </div>
+                                      ) : (
+                                        /* Normal submission form */
+                                        <>
+                                          <div>
+                                            <label className="text-sm font-medium text-zinc-700 mb-2 block">
+                                              {task.custom_field_label || "Custom Field"}
+                                            </label>
+                                            <Input
+                                              placeholder={`Enter ${task.custom_field_label || "value"}...`}
+                                              value={customFieldValue}
+                                              onChange={e => setCustomFieldValue(e.target.value)}
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="text-sm font-medium text-zinc-700 mb-2 block">
+                                              {task.screenshot_instruction || "Upload Screenshot"}
+                                            </label>
+                                            <div className="flex flex-col gap-4">
+                                              <div className="flex items-center gap-4">
                                                 <input
                                                   type="file"
+                                                  accept="image/*"
                                                   id={`file-${task.id}`}
                                                   className="hidden"
-                                                  accept="image/*"
                                                   onChange={e => handleFileUpload(task.id, e.target.files?.[0] || null)}
                                                 />
-                                                {selectedFiles[task.id] ? (
-                                                  <>
-                                                    <CheckCircle2 size={24} className="mb-2 text-emerald-500" />
-                                                    <p className="font-bold text-center text-emerald-700 text-[10px] md:text-sm uppercase tracking-wide">Image Loaded</p>
-                                                    <p className="text-[10px] text-emerald-600/70 truncate w-full max-w-[200px] text-center">
-                                                      {selectedFiles[task.id].name}
-                                                    </p>
-                                                  </>
-                                                ) : (
-                                                  <>
-                                                    <Upload size={24} className="mb-2 group-hover:-translate-y-1 transition-transform" />
-                                                    <p className="font-bold text-center text-[10px] md:text-sm uppercase tracking-wide">Upload Screen</p>
-                                                    <p className="text-[10px] opacity-60 text-center">Drag or Click</p>
-                                                  </>
-                                                )}
+                                                <div className="flex-1 w-full">
+                                                  <div
+                                                    className={cn(
+                                                      "relative w-full border-2 border-dashed rounded-xl p-6 md:p-8 flex flex-col items-center justify-center transition-all cursor-pointer group",
+                                                      selectedFiles[task.id] ? "border-emerald-500 bg-emerald-50 text-emerald-600" : (isDraggingScreenshot === task.id ? "border-blue-500 bg-blue-50 scale-105" : "border-zinc-200 bg-white text-zinc-400 hover:border-black hover:text-black")
+                                                    )}
+                                                    onDragOver={(e) => { e.preventDefault(); setIsDraggingScreenshot(task.id); }}
+                                                    onDragLeave={() => setIsDraggingScreenshot(null)}
+                                                    onDrop={(e) => {
+                                                      e.preventDefault();
+                                                      setIsDraggingScreenshot(null);
+                                                      handleFileUpload(task.id, e.dataTransfer.files[0]);
+                                                    }}
+                                                    onClick={() => document.getElementById(`file-${task.id}`)?.click()}
+                                                  >
+                                                    <input
+                                                      type="file"
+                                                      id={`file-${task.id}`}
+                                                      className="hidden"
+                                                      accept="image/*"
+                                                      onChange={e => handleFileUpload(task.id, e.target.files?.[0] || null)}
+                                                    />
+                                                    {selectedFiles[task.id] ? (
+                                                      <>
+                                                        <CheckCircle2 size={24} className="mb-2 text-emerald-500" />
+                                                        <p className="font-bold text-center text-emerald-700 text-[10px] md:text-sm uppercase tracking-wide">Image Loaded</p>
+                                                        <p className="text-[10px] text-emerald-600/70 truncate w-full max-w-[200px] text-center">
+                                                          {selectedFiles[task.id].name}
+                                                        </p>
+                                                      </>
+                                                    ) : (
+                                                      <>
+                                                        <Upload size={24} className="mb-2 group-hover:-translate-y-1 transition-transform" />
+                                                        <p className="font-bold text-center text-[10px] md:text-sm uppercase tracking-wide">Upload Screen</p>
+                                                        <p className="text-[10px] opacity-60 text-center">Drag or Click</p>
+                                                      </>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                                <Button
+                                                  onClick={() => submitTask(task.id)}
+                                                  disabled={uploading === task.id || !selectedFiles[task.id]}
+                                                  variant={selectedFiles[task.id] ? "primary" : "secondary"}
+                                                  className={cn(
+                                                    "h-auto md:h-full px-8 py-4 shrink-0 transition-all font-black uppercase tracking-wider text-sm",
+                                                    (uploading === task.id || !selectedFiles[task.id]) && "opacity-50 cursor-not-allowed"
+                                                  )}
+                                                >
+                                                  {uploading === task.id ? <Loader2 size={20} className="animate-spin" /> : 'Submit'}
+                                                </Button>
+                                              </div>
+                                              <div className="mt-3 flex items-start gap-2 text-zinc-400">
+                                                <span className="text-xs shrink-0 mt-0.5">*</span>
+                                                <p className="text-xs italic leading-tight">
+                                                  {task.screenshot_instruction || "Ensure your screenshot clearly shows the completion or registration details before hitting Submit."}
+                                                </p>
                                               </div>
                                             </div>
-                                            <Button
-                                              onClick={() => submitTask(task.id)}
-                                              disabled={uploading === task.id || !selectedFiles[task.id]}
-                                              variant={selectedFiles[task.id] ? "primary" : "secondary"}
-                                              className={cn(
-                                                "h-auto md:h-full px-8 py-4 shrink-0 transition-all font-black uppercase tracking-wider text-sm",
-                                                (uploading === task.id || !selectedFiles[task.id]) && "opacity-50 cursor-not-allowed"
-                                              )}
-                                            >
-                                              {uploading === task.id ? <Loader2 size={20} className="animate-spin" /> : 'Submit'}
-                                            </Button>
                                           </div>
-                                          <div className="mt-3 flex items-start gap-2 text-zinc-400">
-                                            <span className="text-xs shrink-0 mt-0.5">*</span>
-                                            <p className="text-xs italic leading-tight">
-                                              {task.screenshot_instruction || "Ensure your screenshot clearly shows the completion or registration details before hitting Submit."}
-                                            </p>
-                                          </div>
-                                        </div>
-                                      </div>
+                                        </>
+                                      )}
                                     </div>
                                   );
                                 }

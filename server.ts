@@ -932,7 +932,8 @@ async function startServer() {
 
   const submissionSchemaValidator = z.object({
     task_id: z.string().min(1, 'Task ID is required'),
-    custom_field_value: z.string().optional()
+    custom_field_value: z.string().optional(),
+    not_participating_reason: z.string().optional()
   });
 
   app.get('/api/tasks/:id', authenticate, async (req: any, res) => {
@@ -1542,6 +1543,62 @@ async function startServer() {
       verified_at: s.verified_at,
       resubmission_count: s.resubmission_count,
     })));
+  });
+
+  // ── Not Participating submission (no screenshot required) ─────────────────
+  app.post('/api/submissions/not-participating', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    const { task_id, not_participating_reason } = req.body;
+    if (!task_id) return res.status(400).json({ error: 'Task ID is required' });
+    if (!not_participating_reason || !not_participating_reason.trim())
+      return res.status(400).json({ error: 'Please provide a reason for not participating.' });
+
+    try {
+      const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [task_id]);
+      const task = taskRes.rows[0];
+      if (!task) return res.status(404).json({ error: 'Task not found' });
+
+      // Check task accessibility
+      const accessRes = await pool.query(`
+        SELECT 1 FROM tasks t
+        LEFT JOIN task_classes tc ON t.id = tc.task_id
+        WHERE t.id = $1
+          AND (
+            (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
+            OR (t.department_id = $2 AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
+            OR tc.class_id = $3
+          )
+        LIMIT 1
+      `, [task.id, req.user.department_id, req.user.class_id]);
+      if (accessRes.rowCount === 0) return res.status(403).json({ error: 'Forbidden: You do not have access to this task.' });
+
+      // Check existing submission
+      const existingRes = await pool.query('SELECT * FROM task_submissions WHERE task_id = $1 AND user_id = $2 LIMIT 1', [task_id, req.user.id]);
+      const existing = existingRes.rows[0];
+
+      if (existing) {
+        if (existing.status === 'VERIFIED') return res.status(400).json({ error: 'Task already verified. Cannot mark as not participating.' });
+        // Update existing
+        await pool.query(`
+          UPDATE task_submissions
+          SET not_participating = TRUE, not_participating_reason = $1, status = 'NOT_PARTICIPATING',
+              screenshot_url = NULL, cloudinary_public_id = NULL, custom_field_value = NULL,
+              submitted_at = NOW(), updated_at = NOW()
+          WHERE id = $2
+        `, [not_participating_reason.trim(), existing.id]);
+        return res.json({ success: true, id: existing.id });
+      }
+
+      const subRes = await pool.query(`
+        INSERT INTO task_submissions (task_id, user_id, status, not_participating, not_participating_reason, submitted_at)
+        VALUES ($1, $2, 'NOT_PARTICIPATING', TRUE, $3, NOW())
+        RETURNING id
+      `, [task_id, req.user.id, not_participating_reason.trim()]);
+      return res.json({ success: true, id: subRes.rows[0].id });
+    } catch (err: any) {
+      if (err.code === '23505') return res.status(400).json({ error: 'You have already submitted a response for this task.' });
+      console.error('Not-participating submission error:', err);
+      return res.status(500).json({ error: 'Failed to record opt-out' });
+    }
   });
 
   app.post('/api/submissions', authenticate, authorize(['STUDENT']), upload.single('screenshot'), async (req: any, res) => {
