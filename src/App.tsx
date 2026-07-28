@@ -139,6 +139,8 @@ interface Submission {
   submitted_at: string;
   verified_at?: string;
   resubmission_count?: number;
+  not_participating?: boolean;
+  not_participating_reason?: string;
   class_name?: string;
   class_year?: number;
   class_ids?: (string | number)[];
@@ -4085,15 +4087,16 @@ export default function App() {
                                 // Already opted out
                                 if (submission?.status === 'NOT_PARTICIPATING') {
                                   return (
-                                    <div className="flex flex-col gap-3">
-                                      <div className="flex items-center gap-3 p-3 bg-orange-50 border border-orange-200 rounded-xl">
-                                        <div className="w-9 h-9 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center shrink-0">
-                                          <AlertTriangle size={18} />
-                                        </div>
-                                        <div className="min-w-0">
-                                          <p className="text-sm font-bold text-orange-700">Not Participating</p>
-                                          <p className="text-xs text-orange-600 mt-0.5 break-words">Reason: {submission.not_participating_reason || '—'}</p>
-                                        </div>
+                                    <div className="p-4 bg-orange-50/90 border border-orange-200 rounded-xl space-y-2">
+                                      <div className="flex items-center gap-2 text-orange-800 font-bold text-sm">
+                                        <AlertTriangle size={18} className="text-orange-500 shrink-0" />
+                                        <span>Status: Skip / Not Interested</span>
+                                      </div>
+                                      <div className="pl-6 border-l-2 border-orange-300 py-0.5">
+                                        <p className="text-[11px] font-bold text-orange-600 uppercase tracking-wider">Submitted Reason:</p>
+                                        <p className="text-sm text-orange-950 mt-0.5 font-semibold break-words leading-relaxed">
+                                          "{submission.not_participating_reason || 'No specific reason provided'}"
+                                        </p>
                                       </div>
                                     </div>
                                   );
