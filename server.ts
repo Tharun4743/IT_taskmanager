@@ -1315,6 +1315,7 @@ async function startServer() {
         verified: statuses.filter(s => s === 'VERIFIED').length,
         pending: targetStudentIds.size - sMap.size,
         rejected: statuses.filter(s => s === 'REJECTED').length,
+        not_participating: statuses.filter(s => s === 'NOT_PARTICIPATING').length,
         class_breakdown
       };
     });
@@ -1355,6 +1356,12 @@ async function startServer() {
       SELECT count(*) FROM task_submissions ts
       JOIN users u ON ts.user_id = u.id
       WHERE u.department_id = $1 AND ts.status = 'VERIFIED'
+    `, [deptId]);
+
+    const notParticipatingSubmissionsRes = await pool.query(`
+      SELECT count(*) FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      WHERE u.department_id = $1 AND ts.status = 'NOT_PARTICIPATING'
     `, [deptId]);
 
     res.json({

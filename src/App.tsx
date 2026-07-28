@@ -3062,10 +3062,11 @@ export default function App() {
                   ) : isHOD ? (
                     <div className="flex flex-col gap-10">
                       {/* Premium Header Stats */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                         <StatCard title="Active Classes" value={hodStats?.total_classes || 0} icon={<Building2 />} color="blue" />
                         <StatCard title="Class Advisors" value={hodStats?.total_advisors || 0} icon={<UserCheck />} color="emerald" />
                         <StatCard title="Total Enrollment" value={hodStats?.total_students || 0} icon={<GraduationCap />} color="indigo" />
+                        <StatCard title="Not Interested / Opted Out" value={hodStats?.not_participating_submissions ?? submissions.filter(s => s.status === 'NOT_PARTICIPATING').length} icon={<AlertTriangle />} color="bg-orange-500" />
                         <StatCard title="Tasks Under Oversight" value={hodStats?.taskStats?.length || 0} icon={<ClipboardList />} color="orange" />
                       </div>
 
