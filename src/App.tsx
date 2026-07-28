@@ -2086,7 +2086,7 @@ export default function App() {
         );
         if (sub) {
           submissionStatus = sub.status;
-          submissionLabel = sub.status === 'VERIFIED' ? 'Verified' : sub.status === 'REJECTED' ? 'Rejected' : 'Submitted';
+          submissionLabel = sub.status === 'VERIFIED' ? 'Verified' : sub.status === 'REJECTED' ? 'Rejected' : sub.status === 'NOT_PARTICIPATING' ? 'Not Interested' : 'Submitted';
         }
       } else {
         const studentSubs = submissions.filter(s => s.user_id?.toString() === student.id?.toString());
@@ -2155,7 +2155,8 @@ export default function App() {
       if (analyzerGenderFilter === 'BOYS' && g !== 'MALE') return false;
       if (analyzerGenderFilter === 'GIRLS' && g !== 'FEMALE') return false;
       if (analyzerStatusFilter === 'COMPLETED') return isStudentDone(s);
-      if (analyzerStatusFilter === 'PENDING') return !isStudentDone(s);
+      if (analyzerStatusFilter === 'PENDING') return !isStudentDone(s) && s.submissionStatus !== 'NOT_PARTICIPATING';
+      if (analyzerStatusFilter === 'NOT_PARTICIPATING') return s.submissionStatus === 'NOT_PARTICIPATING';
       return true;
     });
 
@@ -2265,6 +2266,7 @@ export default function App() {
               <option value="ALL">All Status</option>
               <option value="COMPLETED">Completed</option>
               <option value="PENDING">Not Registered</option>
+              <option value="NOT_PARTICIPATING">Not Interested</option>
             </Select>
           </div>
         </div>
