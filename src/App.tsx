@@ -4114,37 +4114,40 @@ export default function App() {
                                         </div>
                                       )}
 
-                                      {/* ── Participation Intent Selector ── */}
-                                      <div className="grid grid-cols-2 gap-3">
-                                        {/* Participate */}
-                                        <button
-                                          type="button"
-                                          onClick={() => setNotParticipating(prev => ({ ...prev, [task.id]: false }))}
-                                          className={cn(
-                                            'flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all font-semibold text-sm',
-                                            !isOptingOut
-                                              ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm'
-                                              : 'border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300'
-                                          )}
-                                        >
-                                          <CheckCircle2 size={22} className={!isOptingOut ? 'text-emerald-500' : 'text-zinc-300'} />
-                                          <span>I'm Participating</span>
-                                        </button>
+                                      {/* ── Intent Selector (works for any task type) ── */}
+                                      <div>
+                                        <p className="text-xs font-semibold text-zinc-500 mb-2 uppercase tracking-wide">Will you be submitting this task?</p>
+                                        <div className="grid grid-cols-2 gap-3">
+                                          {/* Yes, submit */}
+                                          <button
+                                            type="button"
+                                            onClick={() => setNotParticipating(prev => ({ ...prev, [task.id]: false }))}
+                                            className={cn(
+                                              'flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all font-semibold text-sm',
+                                              !isOptingOut
+                                                ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm'
+                                                : 'border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300'
+                                            )}
+                                          >
+                                            <CheckCircle2 size={22} className={!isOptingOut ? 'text-emerald-500' : 'text-zinc-300'} />
+                                            <span>Yes, I'll Submit</span>
+                                          </button>
 
-                                        {/* Not Participating */}
-                                        <button
-                                          type="button"
-                                          onClick={() => setNotParticipating(prev => ({ ...prev, [task.id]: true }))}
-                                          className={cn(
-                                            'flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all font-semibold text-sm',
-                                            isOptingOut
-                                              ? 'border-orange-400 bg-orange-50 text-orange-700 shadow-sm'
-                                              : 'border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300'
-                                          )}
-                                        >
-                                          <AlertTriangle size={22} className={isOptingOut ? 'text-orange-500' : 'text-zinc-300'} />
-                                          <span>Not Participating</span>
-                                        </button>
+                                          {/* Skip / Not Interested */}
+                                          <button
+                                            type="button"
+                                            onClick={() => setNotParticipating(prev => ({ ...prev, [task.id]: true }))}
+                                            className={cn(
+                                              'flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all font-semibold text-sm',
+                                              isOptingOut
+                                                ? 'border-orange-400 bg-orange-50 text-orange-700 shadow-sm'
+                                                : 'border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300'
+                                            )}
+                                          >
+                                            <AlertTriangle size={22} className={isOptingOut ? 'text-orange-500' : 'text-zinc-300'} />
+                                            <span>Skip / Not Interested</span>
+                                          </button>
+                                        </div>
                                       </div>
 
                                       {/* ── If NOT participating: just reason ── */}
