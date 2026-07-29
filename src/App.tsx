@@ -4517,7 +4517,23 @@ export default function App() {
                           />
                         </TH>
                         <TH>Student</TH>
-                        <TH>Task</TH>
+                        <TH>
+                          <div className="flex items-center gap-1.5">
+                            <span>Task</span>
+                            <select
+                              className="bg-transparent border-none text-[9px] font-black text-zinc-400 hover:text-zinc-600 outline-none cursor-pointer uppercase w-16"
+                              value={verificationTaskFilter}
+                              onChange={e => { setVerificationTaskFilter(e.target.value); setSubmissionPage(1); }}
+                            >
+                              <option value="">ALL</option>
+                              {tasks.map(t => (
+                                <option key={t.id} value={t.id.toString()}>
+                                  {t.title.length > 15 ? t.title.substring(0, 15) + '...' : t.title}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </TH>
                         {verificationFilter === 'NOT INTERESTED' ? (
                           <TH colSpan={2}>Reason for Not Interested</TH>
                         ) : (
