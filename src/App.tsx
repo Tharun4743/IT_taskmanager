@@ -922,10 +922,10 @@ export default function App() {
   }, [highlightedTaskId, tasks, view]);
 
   useEffect(() => {
-    if (token && (view === 'verifications' || ['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR'].includes(user?.role || ''))) {
+    if (token && (view === 'verifications' || ['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR'].includes(user?.role || '') || (user?.role === 'STUDENT' && user?.is_coordinator))) {
       fetchTeamSubmissionsForTask(verificationTaskFilter);
     }
-  }, [verificationTaskFilter, view, token, user?.role]);
+  }, [verificationTaskFilter, view, token, user?.role, user?.is_coordinator]);
 
   const runHealthCheckWithRetries = async () => {
     setIsWakingServer(true);
@@ -5181,9 +5181,14 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Faculty Team Submissions Review Section */}
-                  {(!verificationTaskFilter || tasks.find(t => t.id.toString() === verificationTaskFilter)?.submission_type === 'TEAM') && teamSubmissions.length > 0 && (() => {
+                  {/* Faculty & Coordinator Team Submissions Review Section */}
+                  {(!verificationTaskFilter || tasks.find(t => t.id.toString() === verificationTaskFilter)?.submission_type === 'TEAM') && (() => {
                     const filteredTeamSubs = teamSubmissions.filter(sub => {
+                      // 0. Filter by Task Dropdown
+                      if (verificationTaskFilter && sub.task_id?.toString() !== verificationTaskFilter) {
+                        return false;
+                      }
+
                       // 1. Filter by Status Tab
                       if (verificationFilter === 'PENDING') {
                         if (sub.status !== 'PENDING') return false;
@@ -5208,14 +5213,17 @@ export default function App() {
 
                       // 3. Filter by Class
                       if (verificationClassFilter) {
+                        const matchesTeamClass = sub.class_id?.toString() === verificationClassFilter;
                         const leaderUser = users.find(u => u.id === sub.leader_id || u.register_number === sub.leader_regno);
-                        const matchesClass = leaderUser?.class_id?.toString() === verificationClassFilter ||
+                        const matchesClass = matchesTeamClass || leaderUser?.class_id?.toString() === verificationClassFilter ||
                           sub.members?.some(m => users.find(u => u.id === m.id || u.register_number === m.register_number)?.class_id?.toString() === verificationClassFilter);
                         if (!matchesClass) return false;
                       }
 
                       return true;
                     });
+
+                    if (filteredTeamSubs.length === 0 && teamSubmissions.length === 0) return null;
 
                     return (
                       <div className="mb-8 space-y-4">
