@@ -6380,6 +6380,17 @@ export default function App() {
                             </Badge>
                           </div>
 
+                          {currentTaskTeam.submission.status === 'REJECTED' && (
+                            <div className="p-3 bg-red-50 border border-red-200 rounded-xl space-y-1 text-xs text-red-700">
+                              <p className="font-extrabold flex items-center gap-1.5 text-red-800">
+                                <XCircle size={15} /> Submission Rejected
+                              </p>
+                              <p className="font-semibold">
+                                <span className="font-bold text-red-900">Feedback / Reason:</span> {currentTaskTeam.submission.remarks || 'Please check task instructions and upload corrected proof screenshot below.'}
+                              </p>
+                            </div>
+                          )}
+
                           {currentTaskTeam.submission.proof_url && (
                             <img
                               src={currentTaskTeam.submission.proof_url}
@@ -6389,15 +6400,20 @@ export default function App() {
                             />
                           )}
 
-                          {currentTaskTeam.submission.remarks && (
+                          {currentTaskTeam.submission.remarks && currentTaskTeam.submission.status !== 'REJECTED' && (
                             <p className="text-xs text-zinc-600 bg-white p-3 rounded-xl border border-zinc-200">
                               <span className="font-bold text-zinc-800">Remarks:</span> {currentTaskTeam.submission.remarks}
                             </p>
                           )}
                         </div>
-                      ) : user?.id?.toString() === currentTaskTeam.leader_id?.toString() ? (
-                        /* Leader Proof Upload */
+                      ) : null}
+
+                      {user?.id?.toString() === currentTaskTeam.leader_id?.toString() && (!currentTaskTeam.submission || currentTaskTeam.submission.status === 'REJECTED') && (
+                        /* Leader Proof Upload / Re-upload */
                         <div className="space-y-4 bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100">
+                          <h6 className="text-xs font-bold text-indigo-900 uppercase tracking-wider">
+                            {currentTaskTeam.submission?.status === 'REJECTED' ? 'Resubmit Team Task Proof' : 'Submit Team Task Proof'}
+                          </h6>
                           <div>
                             <label className="text-xs font-bold text-zinc-700 mb-1.5 block">Proof Screenshot <span className="text-red-500">*</span></label>
                             <input
@@ -6423,10 +6439,12 @@ export default function App() {
                             disabled={isSubmittingTeam || !teamProofFile}
                             className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2"
                           >
-                            {isSubmittingTeam ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />} Submit Task Proof
+                            {isSubmittingTeam ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />} {currentTaskTeam.submission?.status === 'REJECTED' ? 'Resubmit Proof' : 'Submit Task Proof'}
                           </Button>
                         </div>
-                      ) : (
+                      )}
+
+                      {user?.id?.toString() !== currentTaskTeam.leader_id?.toString() && !currentTaskTeam.submission && (
                         <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-2xl text-center text-xs text-zinc-500 font-medium">
                           Waiting for team leader (<span className="font-bold text-zinc-800">{currentTaskTeam.leader_name}</span>) to submit the team proof.
                         </div>
