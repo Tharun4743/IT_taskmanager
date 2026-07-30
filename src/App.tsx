@@ -1508,6 +1508,7 @@ export default function App() {
   };
 
   const handleRespondInvitation = async (invitationId: string, response: 'ACCEPT' | 'DECLINE') => {
+    setMyInvitations(prev => prev.filter(inv => inv.id !== invitationId));
     try {
       const res = await fetch(`${API_URL}/api/team/respond`, {
         method: 'POST',
@@ -1517,14 +1518,19 @@ export default function App() {
       const data = await res.json();
       if (res.ok) {
         addToast(`Invitation ${response === 'ACCEPT' ? 'accepted' : 'declined'} successfully!`, 'success');
-        fetchMyTeamsAndInvitations();
-        fetchTasks();
+        Promise.all([
+          fetchMyTeamsAndInvitations(),
+          fetchTasks(),
+          fetchSubmissions()
+        ]);
         if (teamModalTask) openTeamModal(teamModalTask);
       } else {
         addToast(data.error || 'Failed to respond to invitation', 'error');
+        fetchMyTeamsAndInvitations();
       }
     } catch (e) {
       addToast('Network error responding to invitation', 'error');
+      fetchMyTeamsAndInvitations();
     }
   };
 

@@ -14,14 +14,11 @@ if (!databaseUrl) {
 
 export const pool = new Pool({
   connectionString: databaseUrl,
-  // Render's free Postgres allows up to 25 concurrent connections.
-  // max:10 leaves headroom for admin queries and background tasks
-  // while supporting ~30+ concurrent student sessions.
-  max: 10,
-  // Release idle connections after 10s to avoid holding slots unnecessarily
-  idleTimeoutMillis: 10000,
-  // Fail fast if pool is exhausted — avoids piling up stalled requests
+  max: 20,
+  idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
+  statement_timeout: 10000,
+  keepAlive: true,
   ssl: databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1')
     ? false
     : { rejectUnauthorized: false }
@@ -260,9 +257,11 @@ export async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_teams_task_class ON teams(task_id, class_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_teams_leader ON teams(leader_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_team_members_student ON team_members(student_id);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_team_invitations_student ON team_invitations(student_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_team_members_team_status ON team_members(team_id, status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_team_invitations_student_status ON team_invitations(student_id, status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_team_submissions_team ON team_submissions(team_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_teams_status ON teams(status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);`);
 
     // Seed Supreme Admin if not exists
     const adminRes = await client.query(`SELECT * FROM users WHERE role = 'SUPREME_ADMIN' LIMIT 1;`);
