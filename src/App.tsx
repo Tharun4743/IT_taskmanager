@@ -4926,7 +4926,7 @@ export default function App() {
                               })()
                             )}
                           </div>
-                        )}                {(isAdmin || (isHOD && (String(task.department_id) === String(user?.department_id) || (Array.isArray(task.class_ids) && task.class_ids.some(cid => classes.find(c => String(c.id) === String(cid))?.department_id?.toString() === user?.department_id?.toString())))) || String(task.created_by) === String(user?.id) || ((isAdvisor || isCoordinator) && Array.isArray(task.class_ids) && (!task.class_ids.length || task.class_ids.some(cid => String(cid) === String(user?.class_id))))) && (
+                        )}                {((isHOD && (String(task.department_id) === String(user?.department_id) || (Array.isArray(task.class_ids) && task.class_ids.some(cid => classes.find(c => String(c.id) === String(cid))?.department_id?.toString() === user?.department_id?.toString()))))) && (
                           <div className="mt-6 flex gap-4 border-t border-zinc-100 pt-4">
                             <Button
                               variant="ghost"

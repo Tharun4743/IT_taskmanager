@@ -1141,7 +1141,7 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/tasks/:id/status', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), async (req: any, res) => {
+  app.patch('/api/tasks/:id/status', authenticate, authorize(['HOD']), async (req: any, res) => {
     const { status } = req.body;
     const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [req.params.id]);
     const task = taskRes.rows[0];
@@ -1151,9 +1151,7 @@ async function startServer() {
     const taskClassIds = tcRes.rows.map(r => r.class_id.toString());
 
     let isAuthorized = false;
-    if (req.user.role === 'SUPREME_ADMIN') isAuthorized = true;
-    else if (task.created_by.toString() === req.user.id.toString()) isAuthorized = true;
-    else if (req.user.role === 'HOD') {
+    if (req.user.role === 'HOD') {
       if (task.department_id?.toString() === req.user.department_id?.toString()) {
         isAuthorized = true;
       } else if (taskClassIds.length > 0) {
@@ -1165,8 +1163,6 @@ async function startServer() {
           isAuthorized = true;
         }
       }
-    } else if (req.user.role === 'CLASS_ADVISOR' && taskClassIds.includes(req.user.class_id?.toString())) {
-      isAuthorized = true;
     }
 
     if (!isAuthorized) return res.status(403).json({ error: 'Forbidden' });
@@ -1175,13 +1171,10 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  app.delete('/api/tasks/:id', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR', 'STUDENT']), async (req: any, res) => {
+  app.delete('/api/tasks/:id', authenticate, authorize(['HOD']), async (req: any, res) => {
     const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [req.params.id]);
     const task = taskRes.rows[0];
     if (!task) return res.status(404).json({ error: 'Task not found' });
-
-    const isOwner = task.created_by.toString() === req.user.id.toString();
-    const isAdmin = req.user.role === 'SUPREME_ADMIN';
 
     const tcRes = await pool.query('SELECT class_id FROM task_classes WHERE task_id = $1', [task.id]);
     const taskClassIds = tcRes.rows.map(r => r.class_id.toString());
@@ -1200,10 +1193,7 @@ async function startServer() {
       }
     }
 
-    const isClassAdvisor = req.user.role === 'CLASS_ADVISOR' && taskClassIds.includes(req.user.class_id?.toString());
-    const isCoordinator = req.user.role === 'STUDENT' && req.user.is_coordinator && taskClassIds.includes(req.user.class_id?.toString());
-
-    if (!isOwner && !isAdmin && !isDeptHOD && !isClassAdvisor && !isCoordinator)
+    if (!isDeptHOD)
       return res.status(403).json({ error: 'Forbidden' });
 
     // Clean up Cloudinary assets first (both submissions and poster image)
@@ -3011,8 +3001,7 @@ async function startServer() {
       SELECT ts.*, t.team_name, u.full_name as leader_name, u.register_number as leader_regno, t.task_id
       FROM team_submissions ts
       JOIN teams t ON ts.team_id = t.id
-      JOIN users u ON t.leader_id = u.id
-    `;
+      JOIN users u ON t.leader_id = u.id`;
     const params: any[] = [];
     if (taskId) {
       query += ` WHERE t.task_id = $1`;
