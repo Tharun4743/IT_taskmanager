@@ -922,10 +922,10 @@ export default function App() {
   }, [highlightedTaskId, tasks, view]);
 
   useEffect(() => {
-    if (verificationTaskFilter && token) {
+    if (token && (view === 'verifications' || ['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR'].includes(user?.role || ''))) {
       fetchTeamSubmissionsForTask(verificationTaskFilter);
     }
-  }, [verificationTaskFilter, token]);
+  }, [verificationTaskFilter, view, token, user?.role]);
 
   const runHealthCheckWithRetries = async () => {
     setIsWakingServer(true);
@@ -975,6 +975,7 @@ export default function App() {
           fetchTasks();
           fetchSubmissions();
           fetchNotifications();
+          if (user?.role === 'STUDENT') fetchMyTeamsAndInvitations();
         }, 60000);
         return () => clearInterval(interval);
       } else {
@@ -982,6 +983,12 @@ export default function App() {
       }
     }
   }, [isServerAwake, token]);
+
+  useEffect(() => {
+    if (token && user?.role === 'STUDENT' && view === 'tasks') {
+      fetchMyTeamsAndInvitations();
+    }
+  }, [view, token, user?.role]);
 
   const fetchInitialData = async () => {
     try {
@@ -1511,6 +1518,7 @@ export default function App() {
       if (res.ok) {
         addToast(`Invitation ${response === 'ACCEPT' ? 'accepted' : 'declined'} successfully!`, 'success');
         fetchMyTeamsAndInvitations();
+        fetchTasks();
         if (teamModalTask) openTeamModal(teamModalTask);
       } else {
         addToast(data.error || 'Failed to respond to invitation', 'error');
@@ -1595,9 +1603,10 @@ export default function App() {
     }
   };
 
-  const fetchTeamSubmissionsForTask = async (taskId: string) => {
+  const fetchTeamSubmissionsForTask = async (taskId?: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/team/submissions?taskId=${taskId}`, {
+      const url = taskId ? `${API_URL}/api/team/submissions?taskId=${taskId}` : `${API_URL}/api/team/submissions`;
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -4154,6 +4163,68 @@ export default function App() {
                 className="w-full h-full flex flex-col min-h-0"
               >
                 <PageLayout>
+                  {isStudent && myInvitations.length > 0 && (
+                    <div className="space-y-4 mb-8">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+                          <h3 className="text-sm font-extrabold uppercase tracking-wider text-indigo-950 flex items-center gap-2">
+                            <Users size={18} className="text-indigo-600" />
+                            Pending Team Formation Invitation{myInvitations.length > 1 ? 's' : ''} ({myInvitations.length})
+                          </h3>
+                        </div>
+                      </div>
+                      {myInvitations.map(inv => (
+                        <div 
+                          key={inv.id} 
+                          className="p-5 bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 text-white rounded-2xl shadow-xl border border-indigo-700/50 flex flex-col md:flex-row md:items-center justify-between gap-5 transition-all hover:shadow-2xl"
+                        >
+                          <div className="flex items-start gap-4">
+                            <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/20 shadow-inner">
+                              <Users size={24} className="text-indigo-200" />
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full">
+                                  Team Invitation
+                                </span>
+                                {inv.task_category && (
+                                  <span className="bg-purple-500/30 text-purple-200 border border-purple-400/30 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                    {inv.task_category}
+                                  </span>
+                                )}
+                              </div>
+                              <h4 className="text-base font-extrabold text-white leading-snug">
+                                You are invited to join team <span className="text-amber-300 underline font-black">"{inv.team_name}"</span>
+                              </h4>
+                              <p className="text-xs text-indigo-200 font-medium flex items-center gap-1.5 flex-wrap">
+                                <span>Invited by: <strong className="text-white">{inv.inviter_name || 'Classmate'}</strong></span>
+                                <span>•</span>
+                                <span>Task: <strong className="text-indigo-100">{inv.task_title}</strong></span>
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-indigo-700/50">
+                            <Button
+                              type="button"
+                              onClick={() => handleRespondInvitation(inv.id, 'ACCEPT')}
+                              className="bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs px-5 py-2.5 rounded-xl border-none shadow-lg hover:shadow-emerald-500/25 transition-all flex items-center gap-2 cursor-pointer"
+                            >
+                              <CheckCircle2 size={16} /> Accept Invitation
+                            </Button>
+                            <Button
+                              type="button"
+                              onClick={() => handleRespondInvitation(inv.id, 'DECLINE')}
+                              className="bg-white/10 hover:bg-white/20 text-indigo-100 hover:text-white font-bold text-xs px-4 py-2.5 rounded-xl border border-white/20 backdrop-blur-sm transition-all cursor-pointer"
+                            >
+                              Decline
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {(isAdmin || isHOD || isAdvisor || isCoordinator) && (
                     <ContentCard className={cn(
                       user?.is_year_coordinator ? "border-indigo-100 bg-indigo-50/10" : ""
@@ -5105,95 +5176,136 @@ export default function App() {
                   </div>
 
                   {/* Faculty Team Submissions Review Section */}
-                  {verificationTaskFilter && tasks.find(t => t.id.toString() === verificationTaskFilter)?.submission_type === 'TEAM' && (
-                    <div className="mb-8 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="primary" className="bg-indigo-600 text-white border-none">
-                            <Users size={12} /> Team Task Submissions
-                          </Badge>
-                          <span className="text-xs text-zinc-500 font-bold">
-                            {teamSubmissions.length} Team{teamSubmissions.length !== 1 ? 's' : ''} Submitted
-                          </span>
-                        </div>
-                      </div>
+                  {(!verificationTaskFilter || tasks.find(t => t.id.toString() === verificationTaskFilter)?.submission_type === 'TEAM') && teamSubmissions.length > 0 && (() => {
+                    const filteredTeamSubs = teamSubmissions.filter(sub => {
+                      // 1. Filter by Status Tab
+                      if (verificationFilter === 'PENDING') {
+                        if (sub.status !== 'PENDING') return false;
+                      } else if (verificationFilter === 'VERIFIED') {
+                        if (sub.status !== 'APPROVED' && sub.status !== 'VERIFIED') return false;
+                      } else if (verificationFilter === 'REJECTED') {
+                        if (sub.status !== 'REJECTED') return false;
+                      } else if (verificationFilter === 'NOT INTERESTED') {
+                        return false;
+                      }
+                      // 'ALL' tab includes all team submissions
 
-                      {teamSubmissions.length === 0 ? (
-                        <div className="p-8 bg-zinc-50 border border-zinc-200 rounded-2xl text-center text-xs text-zinc-500">
-                          No team submissions received yet for this task.
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {teamSubmissions.map(sub => (
-                            <Card key={sub.id} className="p-5 space-y-4 border border-zinc-200 hover:border-indigo-300 transition-colors">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <h4 className="font-extrabold text-zinc-900 text-base flex items-center gap-2">
-                                    {sub.team_name}
-                                  </h4>
-                                  <p className="text-xs text-zinc-500 font-medium">
-                                    Leader: <span className="font-bold text-zinc-800">{sub.leader_name}</span> ({sub.leader_regno})
-                                  </p>
-                                </div>
-                                <Badge variant={
-                                  sub.status === 'APPROVED' ? 'success' :
-                                  sub.status === 'REJECTED' ? 'danger' : 'warning'
-                                }>
-                                  {sub.status}
-                                </Badge>
-                              </div>
+                      // 2. Filter by Search Query
+                      if (submissionSearchTerm) {
+                        const q = submissionSearchTerm.toLowerCase();
+                        const matchesTeamName = sub.team_name?.toLowerCase().includes(q);
+                        const matchesLeader = sub.leader_name?.toLowerCase().includes(q) || sub.leader_regno?.toLowerCase().includes(q);
+                        const matchesMember = sub.members?.some(m => (m.full_name || m.username)?.toLowerCase().includes(q) || m.register_number?.toLowerCase().includes(q));
+                        const matchesTaskTitle = sub.task_title?.toLowerCase().includes(q);
+                        if (!matchesTeamName && !matchesLeader && !matchesMember && !matchesTaskTitle) return false;
+                      }
 
-                              {/* Members list */}
-                              {sub.members && sub.members.length > 0 && (
-                                <div className="bg-zinc-50 p-3 rounded-xl space-y-1 border border-zinc-100">
-                                  <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Accepted Members ({sub.members.length})</p>
-                                  <div className="flex flex-wrap gap-1.5 pt-1">
-                                    {sub.members.map(m => (
-                                      <span key={m.id} className="bg-white border border-zinc-200 text-zinc-700 px-2 py-0.5 rounded-lg text-xs font-semibold">
-                                        {m.full_name || m.username} ({m.register_number})
+                      // 3. Filter by Class
+                      if (verificationClassFilter) {
+                        const leaderUser = users.find(u => u.id === sub.leader_id || u.register_number === sub.leader_regno);
+                        const matchesClass = leaderUser?.class_id?.toString() === verificationClassFilter ||
+                          sub.members?.some(m => users.find(u => u.id === m.id || u.register_number === m.register_number)?.class_id?.toString() === verificationClassFilter);
+                        if (!matchesClass) return false;
+                      }
+
+                      return true;
+                    });
+
+                    return (
+                      <div className="mb-8 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="primary" className="bg-indigo-600 text-white border-none">
+                              <Users size={12} /> Team Task Submissions
+                            </Badge>
+                            <span className="text-xs text-zinc-500 font-bold">
+                              {filteredTeamSubs.length} Team{filteredTeamSubs.length !== 1 ? 's' : ''} {verificationFilter === 'ALL' ? 'Submitted' : verificationFilter}
+                            </span>
+                          </div>
+                        </div>
+
+                        {filteredTeamSubs.length === 0 ? (
+                          <div className="p-8 bg-zinc-50 border border-zinc-200 rounded-2xl text-center text-xs text-zinc-500">
+                            No {verificationFilter.toLowerCase()} team submissions found.
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {filteredTeamSubs.map(sub => (
+                              <Card key={sub.id} className="p-5 space-y-4 border border-zinc-200 hover:border-indigo-300 transition-colors">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md">
+                                        {sub.task_title || tasks.find(t => String(t.id) === String(sub.task_id))?.title || 'Team Task'}
                                       </span>
-                                    ))}
+                                    </div>
+                                    <h4 className="font-extrabold text-zinc-900 text-base flex items-center gap-2">
+                                      {sub.team_name}
+                                    </h4>
+                                    <p className="text-xs text-zinc-500 font-medium">
+                                      Leader: <span className="font-bold text-zinc-800">{sub.leader_name}</span> ({sub.leader_regno})
+                                    </p>
                                   </div>
+                                  <Badge variant={
+                                    sub.status === 'APPROVED' || sub.status === 'VERIFIED' ? 'success' :
+                                    sub.status === 'REJECTED' ? 'danger' : 'warning'
+                                  }>
+                                    {sub.status}
+                                  </Badge>
                                 </div>
-                              )}
 
-                              {/* Proof Image */}
-                              {sub.proof_url && (
-                                <div className="rounded-xl overflow-hidden bg-zinc-900 border border-zinc-200 max-h-48 flex items-center justify-center cursor-pointer" onClick={() => window.open(sub.proof_url, '_blank')}>
-                                  <img src={sub.proof_url} alt="Team Proof" className="max-h-48 object-contain" />
-                                </div>
-                              )}
+                                {/* Members list */}
+                                {sub.members && sub.members.length > 0 && (
+                                  <div className="bg-zinc-50 p-3 rounded-xl space-y-1 border border-zinc-100">
+                                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Accepted Members ({sub.members.length})</p>
+                                    <div className="flex flex-wrap gap-1.5 pt-1">
+                                      {sub.members.map(m => (
+                                        <span key={m.id} className="bg-white border border-zinc-200 text-zinc-700 px-2 py-0.5 rounded-lg text-xs font-semibold">
+                                          {m.full_name || m.username} ({m.register_number})
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
 
-                              {sub.remarks && (
-                                <p className="text-xs text-zinc-600 italic bg-zinc-50 p-2.5 rounded-lg border border-zinc-100">
-                                  "{sub.remarks}"
-                                </p>
-                              )}
+                                {/* Proof Image */}
+                                {sub.proof_url && (
+                                  <div className="rounded-xl overflow-hidden bg-zinc-900 border border-zinc-200 max-h-48 flex items-center justify-center cursor-pointer" onClick={() => window.open(sub.proof_url, '_blank')}>
+                                    <img src={sub.proof_url} alt="Team Proof" className="max-h-48 object-contain" />
+                                  </div>
+                                )}
 
-                              {sub.status === 'PENDING' && (
-                                <div className="flex gap-2 pt-2 border-t border-zinc-100">
-                                  <Button
-                                    variant="success"
-                                    className="flex-1 text-xs py-2 font-bold"
-                                    onClick={() => handleReviewTeamSubmission(sub.id, 'APPROVED')}
-                                  >
-                                    <CheckCircle2 size={16} /> Approve Team
-                                  </Button>
-                                  <Button
-                                    variant="danger"
-                                    className="flex-1 text-xs py-2 font-bold"
-                                    onClick={() => handleReviewTeamSubmission(sub.id, 'REJECTED')}
-                                  >
-                                    <XCircle size={16} /> Reject Team
-                                  </Button>
-                                </div>
-                              )}
-                            </Card>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                                {sub.remarks && (
+                                  <p className="text-xs text-zinc-600 italic bg-zinc-50 p-2.5 rounded-lg border border-zinc-100">
+                                    "{sub.remarks}"
+                                  </p>
+                                )}
+
+                                {sub.status === 'PENDING' && (
+                                  <div className="flex gap-2 pt-2 border-t border-zinc-100">
+                                    <Button
+                                      variant="success"
+                                      className="flex-1 text-xs py-2 font-bold"
+                                      onClick={() => handleReviewTeamSubmission(sub.id, 'APPROVED')}
+                                    >
+                                      <CheckCircle2 size={16} /> Approve Team
+                                    </Button>
+                                    <Button
+                                      variant="danger"
+                                      className="flex-1 text-xs py-2 font-bold"
+                                      onClick={() => handleReviewTeamSubmission(sub.id, 'REJECTED')}
+                                    >
+                                      <XCircle size={16} /> Reject Team
+                                    </Button>
+                                  </div>
+                                )}
+                              </Card>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <Table className="min-w-[800px] md:min-w-0">
                     <THead>
@@ -6029,7 +6141,7 @@ export default function App() {
                         </p>
                       </div>
 
-                      {user?.id?.toString() === currentTaskTeam.leader_id?.toString() && (['FORMING', 'READY', 'REJECTED'].includes(currentTaskTeam.status)) && (
+                      {user?.id?.toString() === currentTaskTeam.leader_id?.toString() && currentTaskTeam.status !== 'APPROVED' && (
                         <Button
                           variant="ghost"
                           onClick={() => handleDeleteTeam(currentTaskTeam.id)}
@@ -6075,7 +6187,7 @@ export default function App() {
                                   {m.status}
                                 </Badge>
 
-                                {user?.id?.toString() === currentTaskTeam.leader_id?.toString() && !isLeader && (['FORMING', 'READY', 'REJECTED'].includes(currentTaskTeam.status)) && (
+                                {user?.id?.toString() === currentTaskTeam.leader_id?.toString() && !isLeader && currentTaskTeam.status !== 'APPROVED' && (
                                   <button
                                     onClick={() => handleRemoveTeamMember(m.id)}
                                     className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -6126,6 +6238,107 @@ export default function App() {
                             );
                           })}
                         </div>
+                      </div>
+                    )}
+
+                    {/* Invite Additional Classmates Section for Leader */}
+                    {user?.id?.toString() === currentTaskTeam.leader_id?.toString() && currentTaskTeam.status !== 'APPROVED' && (
+                      <div className="pt-4 border-t border-zinc-200 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h5 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                            Invite Additional Classmates
+                          </h5>
+                          <span className="text-xs text-zinc-400 font-mono">
+                            Max {teamModalTask?.max_team_size || 5} members
+                          </span>
+                        </div>
+
+                        {eligibleClassmates.length > 0 ? (
+                          <div className="space-y-3">
+                            <div className="relative">
+                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+                              <Input
+                                placeholder="Search classmate by Name or Reg No..."
+                                value={classmateSearchTerm}
+                                onChange={e => setClassmateSearchTerm(e.target.value)}
+                                className="pl-9 h-9 text-xs"
+                              />
+                            </div>
+
+                            {(() => {
+                              const filtered = eligibleClassmates.filter(s =>
+                                !classmateSearchTerm ||
+                                (s.full_name || '').toLowerCase().includes(classmateSearchTerm.toLowerCase()) ||
+                                (s.register_number || '').toLowerCase().includes(classmateSearchTerm.toLowerCase()) ||
+                                (s.username || '').toLowerCase().includes(classmateSearchTerm.toLowerCase())
+                              );
+
+                              if (filtered.length === 0) {
+                                return (
+                                  <p className="text-xs text-zinc-400 italic">No matching classmates found.</p>
+                                );
+                              }
+
+                              const currentTotal = ((currentTaskTeam.members || []).filter(m => ['ACCEPTED', 'PENDING'].includes(m.status)).length) + (currentTaskTeam.invitations || []).length;
+                              const maxAllowed = teamModalTask?.max_team_size || 5;
+
+                              return (
+                                <div className="max-h-40 overflow-y-auto border border-zinc-200 rounded-2xl p-2.5 bg-zinc-50/50 space-y-1.5 custom-scrollbar">
+                                  {filtered.map(student => {
+                                    const isSelected = selectedClassmateIds.includes(student.id);
+                                    return (
+                                      <label
+                                        key={student.id}
+                                        className={cn(
+                                          "flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all border text-xs",
+                                          isSelected ? "bg-indigo-50/90 border-indigo-300 shadow-sm" : "bg-white border-zinc-200 hover:border-indigo-300"
+                                        )}
+                                      >
+                                        <div className="flex items-center gap-2.5">
+                                          <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={e => {
+                                              if (e.target.checked) {
+                                                if (currentTotal + selectedClassmateIds.length >= maxAllowed) {
+                                                  return addToast(`Max team limit is ${maxAllowed} members`, 'warning');
+                                                }
+                                                setSelectedClassmateIds(prev => [...prev, student.id]);
+                                              } else {
+                                                setSelectedClassmateIds(prev => prev.filter(id => id !== student.id));
+                                              }
+                                            }}
+                                            className="w-3.5 h-3.5 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500"
+                                          />
+                                          <div>
+                                            <p className="font-bold text-zinc-900">{student.full_name}</p>
+                                            <p className="text-[10px] text-zinc-400 font-mono">Reg No: {student.register_number || student.username}</p>
+                                          </div>
+                                        </div>
+                                        {isSelected && (
+                                          <Badge variant="primary" className="bg-indigo-600 text-white text-[10px]">
+                                            Selected
+                                          </Badge>
+                                        )}
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()}
+
+                            {selectedClassmateIds.length > 0 && (
+                              <Button
+                                onClick={handleInviteMoreClassmates}
+                                className="w-full h-10 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2"
+                              >
+                                <UserPlus size={16} /> Send Invitation ({selectedClassmateIds.length})
+                              </Button>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-zinc-400 italic">No available classmates in your section to invite.</p>
+                        )}
                       </div>
                     )}
 
