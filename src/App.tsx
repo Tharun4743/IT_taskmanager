@@ -3451,12 +3451,37 @@ export default function App() {
                     {notifications.length === 0 ? (
                       <p className="text-xs text-zinc-400 text-center py-4">No notifications yet</p>
                     ) : (
-                      notifications.map(n => (
-                        <div key={n.id} className={cn("p-3 rounded-lg text-xs", n.is_read ? "bg-zinc-50" : "bg-blue-50 border border-blue-100")}>
-                          <p className="text-zinc-900 mb-1">{n.message}</p>
-                          <p className="text-xs text-zinc-400">{new Date(n.created_at).toLocaleString()}</p>
-                        </div>
-                      ))
+                      notifications.map(n => {
+                        const matchingInv = myInvitations.find(inv => 
+                          n.message.includes(inv.team_name) || n.message.includes(inv.task_title)
+                        ) || myInvitations[0];
+                        const isTeamInv = n.type === 'TEAM_INVITATION' || n.message.toLowerCase().includes('invited');
+                        return (
+                          <div key={n.id} className={cn("p-3 rounded-lg text-xs", n.is_read ? "bg-zinc-50" : "bg-blue-50 border border-blue-100")}>
+                            <p className="text-zinc-900 mb-1 font-medium">{n.message}</p>
+                            <p className="text-[10px] text-zinc-400 mb-2">{new Date(n.created_at).toLocaleString()}</p>
+                            {isTeamInv && myInvitations.length > 0 && (
+                              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-blue-200/50">
+                                <Button
+                                  size="sm"
+                                  onClick={(e) => { e.stopPropagation(); handleRespondInvitation((matchingInv || myInvitations[0]).id, 'ACCEPT'); }}
+                                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold px-3 py-1 h-auto rounded-lg shadow-sm"
+                                >
+                                  Accept
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={(e) => { e.stopPropagation(); handleRespondInvitation((matchingInv || myInvitations[0]).id, 'DECLINE'); }}
+                                  className="bg-zinc-200 hover:bg-zinc-300 text-zinc-800 text-[11px] font-bold px-3 py-1 h-auto rounded-lg"
+                                >
+                                  Decline
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
                     )}
                   </div>
                 </div>
@@ -4658,27 +4683,65 @@ export default function App() {
                         {isStudent && task.status === 'OPEN' && (
                           <div className="bg-zinc-50 p-5 rounded-xl border border-zinc-200 mt-6 shadow-sm space-y-4">
                             {task.submission_type === 'TEAM' ? (
-                              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-indigo-50/90 border border-indigo-200 rounded-xl shadow-xs">
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <Badge variant="primary" className="bg-indigo-600 text-white border-none">
-                                      <Users size={12} /> Team Task
-                                    </Badge>
-                                    <span className="text-xs font-bold text-indigo-950">
-                                      Requires Team of {task.min_team_size || 2} - {task.max_team_size || 5} Members
-                                    </span>
+                              <div className="space-y-3">
+                                {(() => {
+                                  const pendingInvForTask = myInvitations.find(inv => String(inv.task_id) === String(task.id));
+                                  if (pendingInvForTask) {
+                                    return (
+                                      <div className="p-4 bg-gradient-to-r from-amber-500 via-indigo-600 to-purple-700 text-white rounded-xl shadow-md flex flex-wrap items-center justify-between gap-4">
+                                        <div className="space-y-0.5">
+                                          <div className="flex items-center gap-2">
+                                            <Badge variant="primary" className="bg-white text-indigo-900 font-extrabold border-none">
+                                              PENDING INVITATION
+                                            </Badge>
+                                          </div>
+                                          <p className="text-sm font-black">
+                                            {pendingInvForTask.inviter_name || 'A classmate'} invited you to join team <span className="underline">"{pendingInvForTask.team_name}"</span>!
+                                          </p>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          <Button
+                                            type="button"
+                                            onClick={() => handleRespondInvitation(pendingInvForTask.id, 'ACCEPT')}
+                                            className="bg-white text-indigo-700 hover:bg-indigo-50 font-black text-xs px-4 py-2 rounded-xl shadow-sm border-none"
+                                          >
+                                            Accept Invitation
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            onClick={() => handleRespondInvitation(pendingInvForTask.id, 'DECLINE')}
+                                            className="bg-black/30 hover:bg-black/50 text-white font-bold text-xs px-4 py-2 rounded-xl border border-white/30"
+                                          >
+                                            Decline
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-indigo-50/90 border border-indigo-200 rounded-xl shadow-xs">
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant="primary" className="bg-indigo-600 text-white border-none">
+                                        <Users size={12} /> Team Task
+                                      </Badge>
+                                      <span className="text-xs font-bold text-indigo-950">
+                                        Requires Team of {task.min_team_size || 2} - {task.max_team_size || 5} Members
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-indigo-700 font-medium">
+                                      Form a team with your classmates, accept pending invitations, or manage your current team and proof submission.
+                                    </p>
                                   </div>
-                                  <p className="text-xs text-indigo-700 font-medium">
-                                    Form a team with your classmates, accept pending invitations, or manage your current team and proof submission.
-                                  </p>
+                                  <Button
+                                    type="button"
+                                    onClick={() => openTeamModal(task)}
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-sm shrink-0 flex items-center gap-2"
+                                  >
+                                    <Users size={16} /> Manage / View Team
+                                  </Button>
                                 </div>
-                                <Button
-                                  type="button"
-                                  onClick={() => openTeamModal(task)}
-                                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-sm shrink-0 flex items-center gap-2"
-                                >
-                                  <Users size={16} /> Manage / View Team
-                                </Button>
                               </div>
                             ) : isDeadlinePassed ? (
                               <div className="text-center py-6">
@@ -6033,12 +6096,35 @@ export default function App() {
                       <div className="space-y-2">
                         <h5 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Pending Invitations</h5>
                         <div className="space-y-2">
-                          {currentTaskTeam.invitations.map(inv => (
-                            <div key={inv.id} className="flex items-center justify-between p-3 bg-amber-50/60 border border-amber-200 rounded-xl text-xs text-amber-900 font-semibold">
-                              <span>Waiting for {inv.student_name} to respond...</span>
-                              <Badge variant="warning">Pending</Badge>
-                            </div>
-                          ))}
+                          {currentTaskTeam.invitations.map(inv => {
+                            const isMe = String(inv.student_id) === String(user?.id);
+                            return (
+                              <div key={inv.id} className="flex items-center justify-between p-3 bg-amber-50/90 border border-amber-200 rounded-xl text-xs text-amber-900 font-semibold shadow-xs">
+                                <span>{isMe ? "You have been invited to join this team!" : `Waiting for ${inv.student_name} to respond...`}</span>
+                                {isMe ? (
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleRespondInvitation(inv.id, 'ACCEPT')}
+                                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs px-3 py-1.5 rounded-xl shadow-sm border-none"
+                                    >
+                                      Accept
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleRespondInvitation(inv.id, 'DECLINE')}
+                                      className="bg-white hover:bg-zinc-100 text-zinc-700 font-bold text-xs px-3 py-1.5 rounded-xl border border-zinc-200"
+                                    >
+                                      Decline
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <Badge variant="warning">Pending</Badge>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
