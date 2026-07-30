@@ -117,11 +117,75 @@ interface Task {
   department_name: string | null;
   class_ids: (string | number)[];
   status: 'OPEN' | 'CLOSED';
+  submission_type?: 'INDIVIDUAL' | 'TEAM';
+  min_team_size?: number;
+  max_team_size?: number;
   created_at: string;
   submission_status?: string;
   submission_count?: number;
   poster_url?: string | null;
   poster_cloudinary_public_id?: string | null;
+}
+
+interface TeamMember {
+  id: string;
+  team_id: string;
+  student_id: string;
+  full_name?: string;
+  register_number?: string;
+  username?: string;
+  email?: string;
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'REMOVED';
+  accepted_at?: string;
+  joined_at: string;
+}
+
+interface TeamInvitation {
+  id: string;
+  team_id: string;
+  student_id: string;
+  invited_by: string;
+  inviter_name?: string;
+  team_name?: string;
+  task_title?: string;
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED';
+  created_at: string;
+}
+
+interface TeamSubmission {
+  id: string;
+  team_id: string;
+  submitted_by: string;
+  proof_url: string;
+  cloudinary_public_id?: string;
+  remarks?: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  reviewed_by?: string;
+  reviewed_at?: string;
+  created_at: string;
+  team_name?: string;
+  leader_name?: string;
+  leader_regno?: string;
+  members?: TeamMember[];
+}
+
+interface Team {
+  id: string;
+  task_id: string;
+  class_id: string;
+  leader_id: string;
+  leader_name?: string;
+  leader_regno?: string;
+  team_name: string;
+  status: 'FORMING' | 'READY' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+  created_at: string;
+  updated_at: string;
+  members?: TeamMember[];
+  invitations?: TeamInvitation[];
+  submission?: TeamSubmission | null;
+  min_team_size?: number;
+  max_team_size?: number;
+  task_title?: string;
 }
 
 interface Submission {
@@ -731,6 +795,22 @@ export default function App() {
   const [selectedSubReviews, setSelectedSubReviews] = useState<any[]>([]);
   const [showReviewsModal, setShowReviewsModal] = useState<boolean>(false);
 
+  // Team Task State
+  const [teamModalTask, setTeamModalTask] = useState<Task | null>(null);
+  const [currentTaskTeam, setCurrentTaskTeam] = useState<Team | null>(null);
+  const [eligibleClassmates, setEligibleClassmates] = useState<any[]>([]);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [selectedClassmateIds, setSelectedClassmateIds] = useState<string[]>([]);
+  const [classmateSearchTerm, setClassmateSearchTerm] = useState('');
+  const [teamProofFile, setTeamProofFile] = useState<File | null>(null);
+  const [teamRemarks, setTeamRemarks] = useState('');
+  const [isSubmittingTeam, setIsSubmittingTeam] = useState(false);
+  const [teamSubmissions, setTeamSubmissions] = useState<TeamSubmission[]>([]);
+  const [myTeams, setMyTeams] = useState<Team[]>([]);
+  const [myInvitations, setMyInvitations] = useState<TeamInvitation[]>([]);
+  const [reviewingTeamSubmission, setReviewingTeamSubmission] = useState<TeamSubmission | null>(null);
+  const [teamRejectionReason, setTeamRejectionReason] = useState('');
+
   // Forms
   const [newDept, setNewDept] = useState('');
   const [newClass, setNewClass] = useState({ name: '', department_id: '', year: '', batch: '' });
@@ -754,7 +834,10 @@ export default function App() {
     screenshot_instruction: '',
     custom_field_label: '',
     department_id: '',
-    class_ids: []
+    class_ids: [] as (string | number)[],
+    submission_type: 'INDIVIDUAL',
+    min_team_size: 2,
+    max_team_size: 5
   });
   const [uploading, setUploading] = useState<number | null>(null);
   const [hodCreationRole, setHodCreationRole] = useState<'CLASS_ADVISOR' | 'STUDENT'>('CLASS_ADVISOR');
@@ -837,6 +920,12 @@ export default function App() {
       }, 400);
     }
   }, [highlightedTaskId, tasks, view]);
+
+  useEffect(() => {
+    if (verificationTaskFilter && token) {
+      fetchTeamSubmissionsForTask(verificationTaskFilter);
+    }
+  }, [verificationTaskFilter, token]);
 
   const runHealthCheckWithRetries = async () => {
     setIsWakingServer(true);
@@ -981,12 +1070,16 @@ export default function App() {
               if (freshUser.role === 'STUDENT' && freshUser.is_coordinator) fetchCoordinatorStats();
               fetchMyClass();
             }
-            if (freshUser.role === 'STUDENT') fetchStudentStats();
+            if (freshUser.role === 'STUDENT') {
+              fetchStudentStats();
+              fetchMyTeamsAndInvitations();
+            }
             if (freshUser.is_year_coordinator) fetchYearStats();
           } else {
             // Fallback to saved user if refresh fails
             setUser(savedUser);
             if (savedUser.role === 'SUPREME_ADMIN') fetchSupremeStats();
+            if (savedUser.role === 'STUDENT') fetchMyTeamsAndInvitations();
           }
         } catch (err) {
           setUser(savedUser);
@@ -1275,6 +1368,274 @@ export default function App() {
     setNotifications([]);
   };
 
+  const fetchMyTeamsAndInvitations = async () => {
+    if (!token || user?.role !== 'STUDENT') return;
+    try {
+      const res = await fetch(`${API_URL}/api/team/my`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMyTeams(data.teams || []);
+        setMyInvitations(data.invitations || []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch my teams:', e);
+    }
+  };
+
+  const openTeamModal = async (task: Task) => {
+    setTeamModalTask(task);
+    setTeamProofFile(null);
+    setTeamRemarks('');
+    setSelectedClassmateIds([]);
+    setNewTeamName('');
+
+    try {
+      const res = await fetch(`${API_URL}/api/team/task/${task.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCurrentTaskTeam(data.team || null);
+
+        if (!data.team && user?.role === 'STUDENT') {
+          const classmatesRes = await fetch(`${API_URL}/api/team/classmates/${task.id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (classmatesRes.ok) {
+            setEligibleClassmates(await classmatesRes.json());
+          }
+        }
+      }
+    } catch (e) {
+      addToast('Failed to load team details', 'error');
+    }
+  };
+
+  const handleCreateTeam = async () => {
+    if (!teamModalTask) return;
+    if (!newTeamName.trim()) return addToast('Please enter a team name', 'error');
+
+    setIsSubmittingTeam(true);
+    try {
+      const res = await fetch(`${API_URL}/api/team/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          taskId: teamModalTask.id,
+          teamName: newTeamName.trim(),
+          members: selectedClassmateIds
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        addToast('Team created successfully and invitations sent!', 'success');
+        setNewTeamName('');
+        setSelectedClassmateIds([]);
+        openTeamModal(teamModalTask);
+        fetchMyTeamsAndInvitations();
+      } else {
+        addToast(data.error || 'Failed to create team', 'error');
+      }
+    } catch (e) {
+      addToast('Network error creating team', 'error');
+    } finally {
+      setIsSubmittingTeam(false);
+    }
+  };
+
+  const handleCreateSoloTeam = async () => {
+    if (!teamModalTask) return;
+    setIsSubmittingTeam(true);
+    try {
+      const soloTeamName = newTeamName.trim() || `${user?.full_name || user?.username || 'Student'} (Solo)`;
+      const res = await fetch(`${API_URL}/api/team/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          taskId: teamModalTask.id,
+          teamName: soloTeamName,
+          members: []
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        addToast('Solo submission mode activated! You can now submit your proof.', 'success');
+        openTeamModal(teamModalTask);
+        fetchMyTeamsAndInvitations();
+      } else {
+        addToast(data.error || 'Failed to activate solo mode', 'error');
+      }
+    } catch (e) {
+      addToast('Network error creating solo entry', 'error');
+    } finally {
+      setIsSubmittingTeam(false);
+    }
+  };
+
+  const handleInviteMoreClassmates = async () => {
+    if (!currentTaskTeam || selectedClassmateIds.length === 0) return;
+    try {
+      const res = await fetch(`${API_URL}/api/team/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          teamId: currentTaskTeam.id,
+          studentIds: selectedClassmateIds
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast('Invitations sent successfully!', 'success');
+        setSelectedClassmateIds([]);
+        if (teamModalTask) openTeamModal(teamModalTask);
+      } else {
+        addToast(data.error || 'Failed to send invitations', 'error');
+      }
+    } catch (e) {
+      addToast('Network error sending invitations', 'error');
+    }
+  };
+
+  const handleRespondInvitation = async (invitationId: string, response: 'ACCEPT' | 'DECLINE') => {
+    try {
+      const res = await fetch(`${API_URL}/api/team/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ invitationId, response })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast(`Invitation ${response === 'ACCEPT' ? 'accepted' : 'declined'} successfully!`, 'success');
+        fetchMyTeamsAndInvitations();
+        if (teamModalTask) openTeamModal(teamModalTask);
+      } else {
+        addToast(data.error || 'Failed to respond to invitation', 'error');
+      }
+    } catch (e) {
+      addToast('Network error responding to invitation', 'error');
+    }
+  };
+
+  const handleRemoveTeamMember = async (memberId: string) => {
+    if (!confirm('Remove this member from team?')) return;
+    try {
+      const res = await fetch(`${API_URL}/api/team/member/${memberId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast('Member removed from team', 'info');
+        if (teamModalTask) openTeamModal(teamModalTask);
+      } else {
+        addToast(data.error || 'Failed to remove member', 'error');
+      }
+    } catch (e) {
+      addToast('Network error removing member', 'error');
+    }
+  };
+
+  const handleDeleteTeam = async (teamId: string) => {
+    if (!confirm('Delete this team? All invitations and member details will be deleted.')) return;
+    try {
+      const res = await fetch(`${API_URL}/api/team/${teamId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast('Team deleted', 'info');
+        setCurrentTaskTeam(null);
+        fetchMyTeamsAndInvitations();
+        if (teamModalTask) openTeamModal(teamModalTask);
+      } else {
+        addToast(data.error || 'Failed to delete team', 'error');
+      }
+    } catch (e) {
+      addToast('Network error deleting team', 'error');
+    }
+  };
+
+  const handleSubmitTeamProof = async () => {
+    if (!currentTaskTeam || !teamProofFile) {
+      return addToast('Please select a proof screenshot file', 'error');
+    }
+
+    setIsSubmittingTeam(true);
+    try {
+      const formData = new FormData();
+      formData.append('teamId', currentTaskTeam.id);
+      formData.append('remarks', teamRemarks);
+      formData.append('screenshot', teamProofFile);
+
+      const res = await fetch(`${API_URL}/api/team/submit`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        addToast('Team task submitted successfully!', 'success');
+        setTeamProofFile(null);
+        setTeamRemarks('');
+        if (teamModalTask) openTeamModal(teamModalTask);
+        fetchSubmissions();
+      } else {
+        addToast(data.error || 'Failed to submit team task', 'error');
+      }
+    } catch (e) {
+      addToast('Network error submitting team task', 'error');
+    } finally {
+      setIsSubmittingTeam(false);
+    }
+  };
+
+  const fetchTeamSubmissionsForTask = async (taskId: string) => {
+    try {
+      const res = await fetch(`${API_URL}/api/team/submissions?taskId=${taskId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setTeamSubmissions(await res.json());
+      }
+    } catch (e) {
+      console.error('Failed to fetch team submissions:', e);
+    }
+  };
+
+  const handleReviewTeamSubmission = async (submissionId: string, status: 'APPROVED' | 'REJECTED') => {
+    try {
+      const res = await fetch(`${API_URL}/api/team/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          submissionId,
+          status,
+          feedback: status === 'REJECTED' ? teamRejectionReason : 'Approved team submission'
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast(`Team submission ${status.toLowerCase()} successfully!`, 'success');
+        setReviewingTeamSubmission(null);
+        setTeamRejectionReason('');
+        if (verificationTaskFilter) {
+          fetchTeamSubmissionsForTask(verificationTaskFilter);
+        }
+        fetchSubmissions();
+      } else {
+        addToast(data.error || 'Failed to review submission', 'error');
+      }
+    } catch (e) {
+      addToast('Network error reviewing team submission', 'error');
+    }
+  };
+
   const createDepartment = async (e: React.FormEvent) => {
     e.preventDefault();
     const res = await fetch(`${API_URL}/api/departments`, {
@@ -1463,7 +1824,7 @@ export default function App() {
 
       if (res.ok) {
         const createdTask = await res.json();
-        setNewTask({ title: '', description: '', category: 'Competition', external_link: '', deadline: '', screenshot_instruction: '', custom_field_label: '', department_id: '', class_ids: [] });
+        setNewTask({ title: '', description: '', category: 'Competition', external_link: '', deadline: '', screenshot_instruction: '', custom_field_label: '', department_id: '', class_ids: [], submission_type: 'INDIVIDUAL', min_team_size: 2, max_team_size: 5 });
         setPosterFile(null);
         setPosterPreview(null);
         setShowTaskPreview(false);
@@ -1921,6 +2282,54 @@ export default function App() {
       });
     });
 
+    // ── SHEET 3: Team Wise Report ──────────────────────────────────────────────
+    const teamRows: any[] = [];
+    try {
+      const teamRes = await fetch(`${API_URL}/api/team/report`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (teamRes.ok) {
+        const teamData: any[] = await teamRes.json();
+        let teamSno = 1;
+        teamData.forEach(t => {
+          if (filters?.taskId && t.task_id?.toString() !== filters.taskId.toString()) {
+            return;
+          }
+
+          const leaderStr = `${t.leader_name || 'Leader'} (${t.leader_regno || 'N/A'})`;
+          const statusStr = t.submission_status || t.team_status || 'FORMING';
+          const acceptedMembers = (t.members || []).filter((m: any) => m.status === 'ACCEPTED');
+
+          if (acceptedMembers.length === 0) {
+            teamRows.push({
+              'S.No': teamSno,
+              'Task Name': t.task_title || '—',
+              'Team Name': t.team_name || '—',
+              'Team Leader': leaderStr,
+              'Team Member': `${leaderStr} (Leader)`,
+              'Team Status': statusStr,
+            });
+          } else {
+            acceptedMembers.forEach((m: any, idx: number) => {
+              const isLeader = m.register_number === t.leader_regno || m.full_name === t.leader_name;
+              const memStr = `${m.full_name || 'Student'} (${m.register_number || 'N/A'})${isLeader ? ' (Leader)' : ''}`;
+              teamRows.push({
+                'S.No': idx === 0 ? teamSno : '',
+                'Task Name': t.task_title || '—',
+                'Team Name': t.team_name || '—',
+                'Team Leader': leaderStr,
+                'Team Member': memStr,
+                'Team Status': statusStr,
+              });
+            });
+          }
+          teamSno++;
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching team report data for excel:', err);
+    }
+
     // ── Build Workbook ─────────────────────────────────────────────────────────
     const sheet1Cols = [
       'S.No',
@@ -1934,6 +2343,9 @@ export default function App() {
       'Reason (If Not Participating)'
     ];
     const sheet2Cols = ['Task Name', 'Class', 'Total Students', 'Verified', 'Submitted', 'Rejected', 'Not Participating', 'Not Submitted'];
+    const sheet3Cols = ['S.No', 'Task Name', 'Team Name', 'Team Leader', 'Team Member', 'Team Status'];
+
+    const sheet3Line5 = `TEAM WISE TASK REPORT - ${classInfoStr}`;
 
     const ws1 = buildSheetWithHeader(sheet1Cols, detailedRows, sheet1Line5);
     const ws2 = buildSheetWithHeader(
@@ -1941,10 +2353,16 @@ export default function App() {
       summaryRows.length ? summaryRows : [{ 'Task Name': 'No summary data.' }],
       sheet2Line5
     );
+    const ws3 = buildSheetWithHeader(
+      sheet3Cols,
+      teamRows.length ? teamRows : [{ 'S.No': 1, 'Task Name': 'No team data available for selection' }],
+      sheet3Line5
+    );
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws1, 'Detailed Report');
     XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
+    XLSX.utils.book_append_sheet(wb, ws3, 'Team Wise Report');
 
     const dateTag   = new Date().toISOString().split('T')[0];
     const roleTag   = isAdminRole ? 'SuperAdmin' : isHODRole ? 'HOD' : isYearCoordRole ? `Year${user?.year_scope}_Coord` : 'Class';
@@ -3815,6 +4233,68 @@ export default function App() {
                           />
                         </div>
 
+                        {/* Task Submission Type Selector */}
+                        <div className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-4 md:col-span-2 space-y-3">
+                          <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest block">
+                            Task Submission Type
+                          </label>
+                          <div className="flex items-center gap-6">
+                            <label className="flex items-center gap-2 cursor-pointer font-semibold text-sm text-zinc-800">
+                              <input
+                                type="radio"
+                                name="submission_type"
+                                value="INDIVIDUAL"
+                                checked={newTask.submission_type === 'INDIVIDUAL'}
+                                onChange={() => setNewTask(prev => ({ ...prev, submission_type: 'INDIVIDUAL' }))}
+                                className="w-4 h-4 text-black border-zinc-300 focus:ring-black"
+                              />
+                              <span>Individual Task</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer font-semibold text-sm text-zinc-800">
+                              <input
+                                type="radio"
+                                name="submission_type"
+                                value="TEAM"
+                                checked={newTask.submission_type === 'TEAM'}
+                                onChange={() => setNewTask(prev => ({ ...prev, submission_type: 'TEAM' }))}
+                                className="w-4 h-4 text-indigo-600 border-zinc-300 focus:ring-indigo-500"
+                              />
+                              <span className="flex items-center gap-1.5 font-bold text-indigo-600">
+                                <Users size={16} /> Team Task
+                              </span>
+                            </label>
+                          </div>
+
+                          {newTask.submission_type === 'TEAM' && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-zinc-200">
+                              <div>
+                                <label className="text-xs font-bold text-zinc-600 mb-1 block">
+                                  Minimum Team Size
+                                </label>
+                                <Input
+                                  type="number"
+                                  min={2}
+                                  max={10}
+                                  value={newTask.min_team_size}
+                                  onChange={e => setNewTask(prev => ({ ...prev, min_team_size: parseInt(e.target.value, 10) || 2 }))}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs font-bold text-zinc-600 mb-1 block">
+                                  Maximum Team Size
+                                </label>
+                                <Input
+                                  type="number"
+                                  min={2}
+                                  max={20}
+                                  value={newTask.max_team_size}
+                                  onChange={e => setNewTask(prev => ({ ...prev, max_team_size: parseInt(e.target.value, 10) || 5 }))}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
                         {isAdmin && (
                           <div className="min-w-0">
                             <Select
@@ -3978,6 +4458,39 @@ export default function App() {
                   )}
 
                 <div className="space-y-4 pb-12">
+                  {isStudent && myInvitations.length > 0 && (
+                    <div className="space-y-3 mb-6">
+                      {myInvitations.map(inv => (
+                        <div key={inv.id} className="p-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 text-white rounded-2xl shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                              <Users size={20} className="text-white" />
+                            </div>
+                            <div>
+                              <p className="font-bold text-sm">Team Invitation Received!</p>
+                              <p className="text-xs text-indigo-100 font-medium">
+                                {inv.inviter_name || 'Classmate'} invited you to join team <span className="font-bold text-white">"{inv.team_name}"</span> for task <span className="font-bold text-white">"{inv.task_title}"</span>
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Button
+                              onClick={() => handleRespondInvitation(inv.id, 'ACCEPT')}
+                              className="bg-white text-indigo-700 hover:bg-indigo-50 font-bold text-xs px-4 py-2 rounded-xl border-none shadow-sm"
+                            >
+                              Accept Invitation
+                            </Button>
+                            <Button
+                              onClick={() => handleRespondInvitation(inv.id, 'DECLINE')}
+                              className="bg-white/20 hover:bg-white/30 text-white font-semibold text-xs px-4 py-2 rounded-xl border border-white/30"
+                            >
+                              Decline
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {tasks.map(task => {
                     const submission = submissions.find(s => s.task_id === task.id && s.user_id?.toString() === user?.id?.toString());
                     const isDeadlinePassed = task.deadline && new Date(task.deadline) < new Date();
@@ -4052,11 +4565,16 @@ export default function App() {
 
                         <div className="flex flex-col md:flex-row justify-between items-start mb-4 gap-4">
                           <div className="space-y-1">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1.5", catStyle)}>
                                 {renderCategoryIcon(task.category || '', 12)}
                                 <span>{task.category || 'General'}</span>
                               </span>
+                              {task.submission_type === 'TEAM' && (
+                                <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                  <Users size={12} /> Team (Min {task.min_team_size || 2} - Max {task.max_team_size || 5})
+                                </span>
+                              )}
                               <h4 className="font-bold text-zinc-900 text-lg md:text-xl break-words">{task.title}</h4>
                             </div>
                             <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
@@ -4139,7 +4657,30 @@ export default function App() {
 
                         {isStudent && task.status === 'OPEN' && (
                           <div className="bg-zinc-50 p-5 rounded-xl border border-zinc-200 mt-6 shadow-sm space-y-4">
-                            {isDeadlinePassed ? (
+                            {task.submission_type === 'TEAM' ? (
+                              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-indigo-50/90 border border-indigo-200 rounded-xl shadow-xs">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="primary" className="bg-indigo-600 text-white border-none">
+                                      <Users size={12} /> Team Task
+                                    </Badge>
+                                    <span className="text-xs font-bold text-indigo-950">
+                                      Requires Team of {task.min_team_size || 2} - {task.max_team_size || 5} Members
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-indigo-700 font-medium">
+                                    Form a team with your classmates, accept pending invitations, or manage your current team and proof submission.
+                                  </p>
+                                </div>
+                                <Button
+                                  type="button"
+                                  onClick={() => openTeamModal(task)}
+                                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-sm shrink-0 flex items-center gap-2"
+                                >
+                                  <Users size={16} /> Manage / View Team
+                                </Button>
+                              </div>
+                            ) : isDeadlinePassed ? (
                               <div className="text-center py-6">
                                 <div className="w-12 h-12 bg-zinc-100 text-zinc-400 rounded-full flex items-center justify-center mx-auto mb-3">
                                   <Clock size={24} />
@@ -4499,6 +5040,97 @@ export default function App() {
                       </Select>
                     </div>
                   </div>
+
+                  {/* Faculty Team Submissions Review Section */}
+                  {verificationTaskFilter && tasks.find(t => t.id.toString() === verificationTaskFilter)?.submission_type === 'TEAM' && (
+                    <div className="mb-8 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="primary" className="bg-indigo-600 text-white border-none">
+                            <Users size={12} /> Team Task Submissions
+                          </Badge>
+                          <span className="text-xs text-zinc-500 font-bold">
+                            {teamSubmissions.length} Team{teamSubmissions.length !== 1 ? 's' : ''} Submitted
+                          </span>
+                        </div>
+                      </div>
+
+                      {teamSubmissions.length === 0 ? (
+                        <div className="p-8 bg-zinc-50 border border-zinc-200 rounded-2xl text-center text-xs text-zinc-500">
+                          No team submissions received yet for this task.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {teamSubmissions.map(sub => (
+                            <Card key={sub.id} className="p-5 space-y-4 border border-zinc-200 hover:border-indigo-300 transition-colors">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <h4 className="font-extrabold text-zinc-900 text-base flex items-center gap-2">
+                                    {sub.team_name}
+                                  </h4>
+                                  <p className="text-xs text-zinc-500 font-medium">
+                                    Leader: <span className="font-bold text-zinc-800">{sub.leader_name}</span> ({sub.leader_regno})
+                                  </p>
+                                </div>
+                                <Badge variant={
+                                  sub.status === 'APPROVED' ? 'success' :
+                                  sub.status === 'REJECTED' ? 'danger' : 'warning'
+                                }>
+                                  {sub.status}
+                                </Badge>
+                              </div>
+
+                              {/* Members list */}
+                              {sub.members && sub.members.length > 0 && (
+                                <div className="bg-zinc-50 p-3 rounded-xl space-y-1 border border-zinc-100">
+                                  <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Accepted Members ({sub.members.length})</p>
+                                  <div className="flex flex-wrap gap-1.5 pt-1">
+                                    {sub.members.map(m => (
+                                      <span key={m.id} className="bg-white border border-zinc-200 text-zinc-700 px-2 py-0.5 rounded-lg text-xs font-semibold">
+                                        {m.full_name || m.username} ({m.register_number})
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Proof Image */}
+                              {sub.proof_url && (
+                                <div className="rounded-xl overflow-hidden bg-zinc-900 border border-zinc-200 max-h-48 flex items-center justify-center cursor-pointer" onClick={() => window.open(sub.proof_url, '_blank')}>
+                                  <img src={sub.proof_url} alt="Team Proof" className="max-h-48 object-contain" />
+                                </div>
+                              )}
+
+                              {sub.remarks && (
+                                <p className="text-xs text-zinc-600 italic bg-zinc-50 p-2.5 rounded-lg border border-zinc-100">
+                                  "{sub.remarks}"
+                                </p>
+                              )}
+
+                              {sub.status === 'PENDING' && (
+                                <div className="flex gap-2 pt-2 border-t border-zinc-100">
+                                  <Button
+                                    variant="success"
+                                    className="flex-1 text-xs py-2 font-bold"
+                                    onClick={() => handleReviewTeamSubmission(sub.id, 'APPROVED')}
+                                  >
+                                    <CheckCircle2 size={16} /> Approve Team
+                                  </Button>
+                                  <Button
+                                    variant="danger"
+                                    className="flex-1 text-xs py-2 font-bold"
+                                    onClick={() => handleReviewTeamSubmission(sub.id, 'REJECTED')}
+                                  >
+                                    <XCircle size={16} /> Reject Team
+                                  </Button>
+                                </div>
+                              )}
+                            </Card>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <Table className="min-w-[800px] md:min-w-0">
                     <THead>
@@ -5159,14 +5791,328 @@ export default function App() {
                       <Copy size={16} /> Copy
                     </Button>
                   </div>
-                  <p className="text-[11px] text-zinc-500 font-medium mt-1">
-                    Directly opens this task after user logs in (or instantly if already logged in).
-                  </p>
                 </div>
 
                 <Button onClick={() => setSharedTaskModal(null)} className="w-full">
                   Done
                 </Button>
+              </motion.div>
+            </div>
+          )}
+
+          {teamModalTask && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white rounded-3xl p-6 md:p-8 max-w-2xl w-full shadow-2xl relative space-y-6 max-h-[90vh] overflow-y-auto"
+              >
+                <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+                      <Users size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-zinc-900">{teamModalTask.title} — Team Management</h3>
+                      <p className="text-xs text-zinc-500 font-medium">Min {teamModalTask.min_team_size || 2} - Max {teamModalTask.max_team_size || 5} Members</p>
+                    </div>
+                  </div>
+                  <button onClick={() => { setTeamModalTask(null); setCurrentTaskTeam(null); }} className="p-1.5 hover:bg-zinc-100 rounded-full transition-colors">
+                    <X size={20} className="text-zinc-400" />
+                  </button>
+                </div>
+
+                {!currentTaskTeam ? (
+                  /* Form a New Team View */
+                  <div className="space-y-6">
+                    <div className="bg-indigo-50/70 border border-indigo-100 p-4 rounded-2xl space-y-1">
+                      <h4 className="font-bold text-sm text-indigo-900">Form a New Team</h4>
+                      <p className="text-xs text-indigo-700">
+                        Create a team for this task and invite your classmates. As team leader, you will be able to manage members and upload the final proof submission.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-zinc-700 uppercase tracking-wider block">Team Name <span className="text-red-500">*</span></label>
+                      <Input
+                        placeholder="e.g. Cyber Squad / Tech Titans"
+                        value={newTeamName}
+                        onChange={e => setNewTeamName(e.target.value)}
+                        className="h-11 font-semibold"
+                      />
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-zinc-700 uppercase tracking-wider block">
+                          Select Classmates to Invite (Optional)
+                        </label>
+                        <span className="text-xs text-zinc-400 font-mono">
+                          Max {teamModalTask.max_team_size ? teamModalTask.max_team_size - 1 : 4} invites
+                        </span>
+                      </div>
+
+                      {eligibleClassmates.length > 0 && (
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+                          <Input
+                            placeholder="Search classmate by Name or Reg No..."
+                            value={classmateSearchTerm}
+                            onChange={e => setClassmateSearchTerm(e.target.value)}
+                            className="pl-9 h-9 text-xs"
+                          />
+                        </div>
+                      )}
+
+                      {(() => {
+                        const filtered = eligibleClassmates.filter(s =>
+                          !classmateSearchTerm ||
+                          (s.full_name || '').toLowerCase().includes(classmateSearchTerm.toLowerCase()) ||
+                          (s.register_number || '').toLowerCase().includes(classmateSearchTerm.toLowerCase()) ||
+                          (s.username || '').toLowerCase().includes(classmateSearchTerm.toLowerCase())
+                        );
+
+                        if (filtered.length === 0) {
+                          return (
+                            <div className="p-6 bg-zinc-50 border border-zinc-200 rounded-2xl text-center text-xs text-zinc-500">
+                              {classmateSearchTerm ? 'No matching classmates found.' : 'No available classmates in your section for this task (all students might already be in teams).'}
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="max-h-60 overflow-y-auto border border-zinc-200 rounded-2xl p-3 bg-zinc-50/50 space-y-2 custom-scrollbar">
+                            {filtered.map(student => {
+                              const isSelected = selectedClassmateIds.includes(student.id);
+                              return (
+                                <label
+                                  key={student.id}
+                                  className={cn(
+                                    "flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border",
+                                    isSelected ? "bg-indigo-50/90 border-indigo-300 shadow-sm" : "bg-white border-zinc-200 hover:border-indigo-300"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={e => {
+                                        if (e.target.checked) {
+                                          if (selectedClassmateIds.length >= (teamModalTask.max_team_size ? teamModalTask.max_team_size - 1 : 4)) {
+                                            return addToast(`Max team limit is ${teamModalTask.max_team_size || 5} including leader`, 'warning');
+                                          }
+                                          setSelectedClassmateIds(prev => [...prev, student.id]);
+                                        } else {
+                                          setSelectedClassmateIds(prev => prev.filter(id => id !== student.id));
+                                        }
+                                      }}
+                                      className="w-4 h-4 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                    <div>
+                                      <p className="text-sm font-extrabold text-zinc-900">{student.full_name}</p>
+                                      <p className="text-xs text-indigo-600 font-mono font-semibold">Reg No: {student.register_number || student.username}</p>
+                                    </div>
+                                  </div>
+                                  {isSelected && (
+                                    <Badge variant="primary" className="bg-indigo-600 text-white text-[10px]">
+                                      Selected
+                                    </Badge>
+                                  )}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Button
+                        onClick={handleCreateSoloTeam}
+                        disabled={isSubmittingTeam}
+                        variant="secondary"
+                        className="flex-1 h-12 border-zinc-300 font-bold rounded-2xl flex items-center justify-center gap-2 text-xs"
+                      >
+                        <User size={16} /> Complete as Solo (Individual)
+                      </Button>
+                      <Button
+                        onClick={handleCreateTeam}
+                        disabled={isSubmittingTeam || !newTeamName.trim()}
+                        className="flex-1 h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 text-xs"
+                      >
+                        {isSubmittingTeam ? <Loader2 size={18} className="animate-spin" /> : <Users size={16} />} Create Team & Send Invites
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Manage Existing Team View */
+                  <div className="space-y-6">
+                    <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-zinc-50 border border-zinc-200 rounded-2xl">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-lg font-extrabold text-zinc-900">{currentTaskTeam.team_name}</h4>
+                          <Badge variant={
+                            currentTaskTeam.status === 'APPROVED' ? 'success' :
+                            currentTaskTeam.status === 'REJECTED' ? 'danger' :
+                            currentTaskTeam.status === 'SUBMITTED' ? 'info' :
+                            currentTaskTeam.status === 'READY' ? 'warning' : 'neutral'
+                          }>
+                            {currentTaskTeam.status}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-zinc-500 font-medium mt-0.5">
+                          Leader: <span className="font-bold text-zinc-800">{currentTaskTeam.leader_name}</span> ({currentTaskTeam.leader_regno})
+                        </p>
+                      </div>
+
+                      {user?.id?.toString() === currentTaskTeam.leader_id?.toString() && (['FORMING', 'READY', 'REJECTED'].includes(currentTaskTeam.status)) && (
+                        <Button
+                          variant="ghost"
+                          onClick={() => handleDeleteTeam(currentTaskTeam.id)}
+                          className="text-red-500 hover:bg-red-50 hover:text-red-700 text-xs font-bold px-3 py-1.5 rounded-xl border border-red-100"
+                        >
+                          <Trash2 size={14} /> Delete Team
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Team Members List */}
+                    <div className="space-y-3">
+                      <h5 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                        Team Members ({(currentTaskTeam.members || []).filter(m => m.status === 'ACCEPTED').length} Accepted)
+                      </h5>
+                      <div className="space-y-2">
+                        {(currentTaskTeam.members || []).map(m => {
+                          const isLeader = m.student_id?.toString() === currentTaskTeam.leader_id?.toString();
+                          return (
+                            <div key={m.id} className="flex items-center justify-between p-3 bg-white border border-zinc-200 rounded-2xl">
+                              <div className="flex items-center gap-3">
+                                <div className={cn(
+                                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold",
+                                  isLeader ? "bg-indigo-600 text-white" : "bg-zinc-100 text-zinc-600"
+                                )}>
+                                  {isLeader ? 'L' : 'M'}
+                                </div>
+                                <div>
+                                  <p className="text-sm font-bold text-zinc-900 flex items-center gap-2">
+                                    {m.full_name || m.username}
+                                    {isLeader && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-extrabold">Leader</span>}
+                                  </p>
+                                  <p className="text-xs text-zinc-400 font-mono">{m.register_number}</p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                <Badge variant={
+                                  m.status === 'ACCEPTED' ? 'success' :
+                                  m.status === 'PENDING' ? 'warning' :
+                                  m.status === 'DECLINED' ? 'danger' : 'neutral'
+                                }>
+                                  {m.status}
+                                </Badge>
+
+                                {user?.id?.toString() === currentTaskTeam.leader_id?.toString() && !isLeader && (['FORMING', 'READY', 'REJECTED'].includes(currentTaskTeam.status)) && (
+                                  <button
+                                    onClick={() => handleRemoveTeamMember(m.id)}
+                                    className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                    title="Remove Member"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Pending Invitations */}
+                    {currentTaskTeam.invitations && currentTaskTeam.invitations.length > 0 && (
+                      <div className="space-y-2">
+                        <h5 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Pending Invitations</h5>
+                        <div className="space-y-2">
+                          {currentTaskTeam.invitations.map(inv => (
+                            <div key={inv.id} className="flex items-center justify-between p-3 bg-amber-50/60 border border-amber-200 rounded-xl text-xs text-amber-900 font-semibold">
+                              <span>Waiting for {inv.student_name} to respond...</span>
+                              <Badge variant="warning">Pending</Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Team Task Proof Submission / Status Section */}
+                    <div className="pt-4 border-t border-zinc-200 space-y-4">
+                      <h5 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Team Submission Status</h5>
+
+                      {currentTaskTeam.submission ? (
+                        <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-2xl space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-zinc-600">Submitted Proof</span>
+                            <Badge variant={
+                              currentTaskTeam.submission.status === 'APPROVED' ? 'success' :
+                              currentTaskTeam.submission.status === 'REJECTED' ? 'danger' : 'warning'
+                            }>
+                              {currentTaskTeam.submission.status}
+                            </Badge>
+                          </div>
+
+                          {currentTaskTeam.submission.proof_url && (
+                            <img
+                              src={currentTaskTeam.submission.proof_url}
+                              alt="Team Proof"
+                              className="max-h-48 rounded-xl object-contain border border-zinc-200 cursor-pointer"
+                              onClick={() => window.open(currentTaskTeam.submission?.proof_url, '_blank')}
+                            />
+                          )}
+
+                          {currentTaskTeam.submission.remarks && (
+                            <p className="text-xs text-zinc-600 bg-white p-3 rounded-xl border border-zinc-200">
+                              <span className="font-bold text-zinc-800">Remarks:</span> {currentTaskTeam.submission.remarks}
+                            </p>
+                          )}
+                        </div>
+                      ) : user?.id?.toString() === currentTaskTeam.leader_id?.toString() ? (
+                        /* Leader Proof Upload */
+                        <div className="space-y-4 bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100">
+                          <div>
+                            <label className="text-xs font-bold text-zinc-700 mb-1.5 block">Proof Screenshot <span className="text-red-500">*</span></label>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={e => setTeamProofFile(e.target.files?.[0] || null)}
+                              className="w-full text-xs text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-xs font-bold text-zinc-700 mb-1.5 block">Remarks / Notes (Optional)</label>
+                            <Textarea
+                              placeholder="Add any additional notes for the reviewer..."
+                              value={teamRemarks}
+                              onChange={e => setTeamRemarks(e.target.value)}
+                              className="min-h-[80px]"
+                            />
+                          </div>
+
+                          <Button
+                            onClick={handleSubmitTeamProof}
+                            disabled={isSubmittingTeam || !teamProofFile}
+                            className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2"
+                          >
+                            {isSubmittingTeam ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />} Submit Task Proof
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-2xl text-center text-xs text-zinc-500 font-medium">
+                          Waiting for team leader (<span className="font-bold text-zinc-800">{currentTaskTeam.leader_name}</span>) to submit the team proof.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </motion.div>
             </div>
           )}

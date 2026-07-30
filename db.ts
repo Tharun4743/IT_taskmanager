@@ -168,6 +168,60 @@ export async function initDB() {
       );
     `);
 
+    // Team Tasks Feature Tables
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS teams (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        task_id UUID REFERENCES tasks(id) ON DELETE CASCADE NOT NULL,
+        class_id UUID REFERENCES classes(id) ON DELETE CASCADE NOT NULL,
+        leader_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        team_name VARCHAR(255) NOT NULL,
+        status VARCHAR(50) DEFAULT 'FORMING',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS team_members (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id UUID REFERENCES teams(id) ON DELETE CASCADE NOT NULL,
+        student_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        status VARCHAR(50) DEFAULT 'PENDING',
+        accepted_at TIMESTAMP,
+        joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT unique_team_student UNIQUE (team_id, student_id)
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS team_invitations (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id UUID REFERENCES teams(id) ON DELETE CASCADE NOT NULL,
+        student_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        invited_by UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        status VARCHAR(50) DEFAULT 'PENDING',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        responded_at TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS team_submissions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id UUID REFERENCES teams(id) ON DELETE CASCADE NOT NULL,
+        submitted_by UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        proof_url VARCHAR(1000),
+        cloudinary_public_id VARCHAR(255),
+        remarks TEXT,
+        status VARCHAR(50) DEFAULT 'PENDING',
+        reviewed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        reviewed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     // Schema Migrations
     await client.query(`
       ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS cloudinary_public_id VARCHAR(255);
@@ -184,6 +238,15 @@ export async function initDB() {
     await client.query(`
       ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS not_participating_reason TEXT;
     `);
+    await client.query(`
+      ALTER TABLE tasks ADD COLUMN IF NOT EXISTS submission_type VARCHAR(50) DEFAULT 'INDIVIDUAL';
+    `);
+    await client.query(`
+      ALTER TABLE tasks ADD COLUMN IF NOT EXISTS min_team_size INT DEFAULT 2;
+    `);
+    await client.query(`
+      ALTER TABLE tasks ADD COLUMN IF NOT EXISTS max_team_size INT DEFAULT 5;
+    `);
 
     // Create indexes
     await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_dept ON tasks(department_id);`);
@@ -194,6 +257,12 @@ export async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_submissions_status ON task_submissions(status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_lower_username ON users(LOWER(username));`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_lower_regno ON users(LOWER(register_number));`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_teams_task_class ON teams(task_id, class_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_teams_leader ON teams(leader_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_team_members_student ON team_members(student_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_team_invitations_student ON team_invitations(student_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_team_submissions_team ON team_submissions(team_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_teams_status ON teams(status);`);
 
     // Seed Supreme Admin if not exists
     const adminRes = await client.query(`SELECT * FROM users WHERE role = 'SUPREME_ADMIN' LIMIT 1;`);
