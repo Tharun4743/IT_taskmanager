@@ -1172,6 +1172,59 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  app.patch('/api/tasks/:id/reopen', authenticate, authorize(['HOD']), async (req: any, res) => {
+    const { deadline } = req.body;
+    if (!deadline) {
+      return res.status(400).json({ error: 'New deadline date and time is required to reopen the task.' });
+    }
+
+    const newDeadline = new Date(deadline);
+    if (isNaN(newDeadline.getTime()) || newDeadline <= new Date()) {
+      return res.status(400).json({ error: 'Deadline must be a valid future date and time.' });
+    }
+
+    const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [req.params.id]);
+    const task = taskRes.rows[0];
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+
+    const tcRes = await pool.query('SELECT class_id FROM task_classes WHERE task_id = $1', [task.id]);
+    const taskClassIds = tcRes.rows.map(r => r.class_id.toString());
+
+    let isAuthorized = false;
+    if (req.user.role === 'HOD') {
+      if (task.department_id?.toString() === req.user.department_id?.toString()) {
+        isAuthorized = true;
+      } else if (taskClassIds.length > 0) {
+        const hodClassRes = await pool.query(
+          'SELECT 1 FROM classes WHERE id = ANY($1::uuid[]) AND department_id = $2 LIMIT 1',
+          [taskClassIds, req.user.department_id]
+        );
+        if (hodClassRes.rowCount && hodClassRes.rowCount > 0) {
+          isAuthorized = true;
+        }
+      }
+    }
+
+    if (!isAuthorized) return res.status(403).json({ error: 'Forbidden: Only HOD of the task department can reopen and extend deadline' });
+
+    await pool.query(
+      'UPDATE tasks SET status = \'OPEN\', deadline = $1, updated_at = NOW() WHERE id = $2',
+      [newDeadline.toISOString(), req.params.id]
+    );
+
+    if (taskClassIds.length > 0) {
+      const targetStudentsRes = await pool.query("SELECT id FROM users WHERE class_id = ANY($1) AND role = 'STUDENT'", [taskClassIds]);
+      for (const s of targetStudentsRes.rows) {
+        await pool.query(
+          'INSERT INTO notifications (user_id, message, type) VALUES ($1, $2, $3)',
+          [s.id, `Deadline extended & task reopened by HOD for "${task.title}". New deadline: ${newDeadline.toLocaleString()}`, 'TASK_REOPENED']
+        );
+      }
+    }
+
+    res.json({ success: true, deadline: newDeadline.toISOString(), status: 'OPEN' });
+  });
+
   app.delete('/api/tasks/:id', authenticate, authorize(['HOD']), async (req: any, res) => {
     const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [req.params.id]);
     const task = taskRes.rows[0];

@@ -811,6 +811,10 @@ export default function App() {
   const [reviewingTeamSubmission, setReviewingTeamSubmission] = useState<TeamSubmission | null>(null);
   const [teamRejectionReason, setTeamRejectionReason] = useState('');
 
+  // HOD Task Reopen & Deadline Extension State
+  const [extendingTask, setExtendingTask] = useState<Task | null>(null);
+  const [extendedDeadline, setExtendedDeadline] = useState('');
+
   // Forms
   const [newDept, setNewDept] = useState('');
   const [newClass, setNewClass] = useState({ name: '', department_id: '', year: '', batch: '' });
@@ -2038,6 +2042,27 @@ export default function App() {
     } catch (e) {
       setTasks(prev => prev.map(t => t.id.toString() === id.toString() ? { ...t, status: currentStatus as any } : t));
       addToast('Network error updating task status', 'error');
+    }
+  };
+
+  const handleExtendDeadlineAndReopen = async (taskId: string | number, deadlineIso: string) => {
+    try {
+      const res = await fetch(`${API_URL}/api/tasks/${taskId}/reopen`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ deadline: deadlineIso })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast('Task reopened and deadline extended successfully!', 'success');
+        setExtendingTask(null);
+        setExtendedDeadline('');
+        fetchTasks();
+      } else {
+        addToast(data.error || 'Failed to extend deadline and reopen task', 'error');
+      }
+    } catch (e) {
+      addToast('Network error reopening task', 'error');
     }
   };
 
@@ -5047,7 +5072,6 @@ export default function App() {
                                     </div>
                                   );
                                 }
-
                                 return (
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
@@ -5079,21 +5103,35 @@ export default function App() {
                               })()
                             )}
                           </div>
-                        )}                {((isHOD && (String(task.department_id) === String(user?.department_id) || (Array.isArray(task.class_ids) && task.class_ids.some(cid => classes.find(c => String(c.id) === String(cid))?.department_id?.toString() === user?.department_id?.toString()))))) && (
-                          <div className="mt-6 flex gap-4 border-t border-zinc-100 pt-4">
+                        )}
+                        {((isHOD && (String(task.department_id) === String(user?.department_id) || (Array.isArray(task.class_ids) && task.class_ids.some(cid => classes.find(c => String(c.id) === String(cid))?.department_id?.toString() === user?.department_id?.toString()))))) && (
+                          <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-zinc-100 pt-4">
+                            <Button
+                              variant="secondary"
+                              className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 text-xs font-bold flex items-center gap-1.5"
+                              onClick={() => {
+                                setExtendingTask(task);
+                                const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
+                                const pad = (n: number) => String(n).padStart(2, '0');
+                                setExtendedDeadline(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
+                              }}
+                            >
+                              <Clock size={14} /> Extend Deadline & Reopen
+                            </Button>
+
                             <Button
                               variant="ghost"
-                              className="text-zinc-400 hover:text-zinc-900"
+                              className="text-zinc-500 hover:text-zinc-900 text-xs font-semibold"
                               onClick={() => toggleTaskStatus(task.id, task.status)}
                             >
                               {task.status === 'OPEN' ? 'Close Task' : 'Open Task'}
                             </Button>
                             <Button
                               variant="ghost"
-                              className="text-zinc-400 hover:text-red-500"
+                              className="text-zinc-400 hover:text-red-500 text-xs font-semibold"
                               onClick={() => deleteTask(task.id)}
                             >
-                              <Trash2 size={18} /> Delete
+                              <Trash2 size={16} /> Delete
                             </Button>
                           </div>
                         )}
@@ -6457,7 +6495,55 @@ export default function App() {
           )}
         </AnimatePresence>
       </main >
-    </div >
+      {/* HOD Extend Deadline & Reopen Modal */}
+      <AnimatePresence>
+        {extendingTask && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl p-6 md:p-8 w-full max-w-md shadow-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-black text-zinc-900 flex items-center gap-2">
+                  <Clock className="text-indigo-600" size={20} /> Extend Deadline & Reopen
+                </h3>
+                <button onClick={() => setExtendingTask(null)} className="text-zinc-400 hover:text-zinc-600">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <p className="text-xs text-zinc-600 font-medium">
+                Task: <span className="font-bold text-zinc-900">{extendingTask.title}</span>
+              </p>
+
+              <div>
+                <label className="text-xs font-bold text-zinc-700 block mb-1">New Extended Deadline Date & Time <span className="text-red-500">*</span></label>
+                <input
+                  type="datetime-local"
+                  value={extendedDeadline}
+                  onChange={e => setExtendedDeadline(e.target.value)}
+                  min={(() => { const d = new Date(); const pad = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; })()}
+                  className="w-full h-11 px-4 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-semibold cursor-pointer [color-scheme:light]"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="ghost" onClick={() => setExtendingTask(null)}>Cancel</Button>
+                <Button
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 rounded-xl text-xs"
+                  onClick={() => handleExtendDeadlineAndReopen(extendingTask.id, extendedDeadline)}
+                  disabled={!extendedDeadline}
+                >
+                  Save New Deadline & Reopen
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      </div>
     </FooterContext.Provider>
   );
 }
