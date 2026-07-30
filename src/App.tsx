@@ -4727,7 +4727,20 @@ export default function App() {
                                 isDeadlinePassed ? "text-red-500" : (isWithin24h ? "text-orange-500" : "text-zinc-600")
                               )}>
                                 {task.deadline ? new Date(task.deadline).toLocaleString() : "No deadline"}
-                                {isWithin24h && <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded mt-1">Due within 24h!</span>}
+                                {isDeadlinePassed ? (
+                                  <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-extrabold mt-1 uppercase">Deadline Passed</span>
+                                ) : isWithin24h ? (
+                                  <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-extrabold mt-1 uppercase">Due within 24h</span>
+                                ) : task.deadline ? (
+                                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold mt-1">
+                                    {(() => {
+                                      const diffMs = new Date(task.deadline).getTime() - Date.now();
+                                      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                                      const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                                      return `${diffDays}d ${diffHours}h remaining`;
+                                    })()}
+                                  </span>
+                                ) : null}
                               </p>
                             </div>
                           </div>
@@ -5273,11 +5286,22 @@ export default function App() {
                                   <div className="bg-zinc-50 p-3 rounded-xl space-y-1 border border-zinc-100">
                                     <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Accepted Members ({sub.members.length})</p>
                                     <div className="flex flex-wrap gap-1.5 pt-1">
-                                      {sub.members.map(m => (
-                                        <span key={m.id} className="bg-white border border-zinc-200 text-zinc-700 px-2 py-0.5 rounded-lg text-xs font-semibold">
-                                          {m.full_name || m.username} ({m.register_number})
-                                        </span>
-                                      ))}
+                                      {sub.members.map(m => {
+                                        const isLeader = String(m.student_id) === String(sub.leader_id) || m.register_number === sub.leader_regno;
+                                        return (
+                                          <span key={m.id} className={cn(
+                                            "border px-2 py-0.5 rounded-lg text-xs font-semibold flex items-center gap-1.5",
+                                            isLeader ? "bg-indigo-50 border-indigo-200 text-indigo-900" : "bg-white border-zinc-200 text-zinc-700"
+                                          )}>
+                                            {m.full_name || m.username} ({m.register_number})
+                                            {isLeader ? (
+                                              <span className="bg-indigo-600 text-white text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase">Leader</span>
+                                            ) : (
+                                              <span className="bg-zinc-100 text-zinc-600 text-[9px] px-1.5 py-0.2 rounded font-bold uppercase">Member</span>
+                                            )}
+                                          </span>
+                                        );
+                                      })}
                                     </div>
                                   </div>
                                 )}

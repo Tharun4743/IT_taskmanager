@@ -54,6 +54,7 @@ const cloudinaryStorage = new CloudinaryStorage({
   params: {
     folder: 'academic-task-uploads',
     allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
+    transformation: [{ quality: 'auto', fetch_format: 'auto' }],
     resource_type: 'auto',
   } as any,
 });
