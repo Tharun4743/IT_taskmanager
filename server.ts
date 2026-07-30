@@ -1737,14 +1737,27 @@ async function startServer() {
       const subsRes = await pool.query(query, params);
       const submissions = subsRes.rows;
 
-      for (const sub of submissions) {
-        const membersRes = await pool.query(`
+      const teamIds = submissions.map((s: any) => s.team_id).filter(Boolean);
+      if (teamIds.length > 0) {
+        const allMembersRes = await pool.query(`
           SELECT tm.*, u.full_name, u.register_number, u.username
           FROM team_members tm
           JOIN users u ON tm.student_id = u.id
-          WHERE tm.team_id = $1 AND tm.status = 'ACCEPTED'
-        `, [sub.team_id]);
-        sub.members = membersRes.rows;
+          WHERE tm.team_id = ANY($1::uuid[]) AND tm.status = 'ACCEPTED'
+        `, [teamIds]);
+
+        const membersByTeam = new Map<string, any[]>();
+        allMembersRes.rows.forEach((m: any) => {
+          const tid = m.team_id.toString();
+          if (!membersByTeam.has(tid)) membersByTeam.set(tid, []);
+          membersByTeam.get(tid)!.push(m);
+        });
+
+        submissions.forEach((sub: any) => {
+          sub.members = membersByTeam.get(sub.team_id.toString()) || [];
+        });
+      } else {
+        submissions.forEach((sub: any) => { sub.members = []; });
       }
 
       res.json(submissions);
