@@ -452,13 +452,23 @@ async function startServer() {
         ORDER BY u.role ASC, c.year ASC NULLS LAST, c.name ASC NULLS LAST, u.register_number ASC NULLS LAST, u.full_name ASC
       `, [req.user.department_id]);
     } else if (req.user.role === 'CLASS_ADVISOR' || (req.user.role === 'STUDENT' && req.user.is_coordinator)) {
-      usersRes = await pool.query(`
-        SELECT u.*, c.name as class_name
-        FROM users u
-        LEFT JOIN classes c ON u.class_id = c.id
-        WHERE u.class_id = $1 AND u.role = 'STUDENT'
-        ORDER BY u.register_number ASC, u.full_name ASC
-      `, [req.user.class_id]);
+      if (req.user.role === 'CLASS_ADVISOR' && req.user.is_year_coordinator) {
+        usersRes = await pool.query(`
+          SELECT u.*, c.name as class_name, c.year as class_year
+          FROM users u
+          LEFT JOIN classes c ON u.class_id = c.id
+          WHERE u.department_id = $1 AND c.year = $2 AND u.role = 'STUDENT'
+          ORDER BY c.name ASC, u.register_number ASC, u.full_name ASC
+        `, [req.user.department_id, req.user.year_scope]);
+      } else {
+        usersRes = await pool.query(`
+          SELECT u.*, c.name as class_name
+          FROM users u
+          LEFT JOIN classes c ON u.class_id = c.id
+          WHERE u.class_id = $1 AND u.role = 'STUDENT'
+          ORDER BY u.register_number ASC, u.full_name ASC
+        `, [req.user.class_id]);
+      }
     } else {
       return res.status(403).json({ error: 'Forbidden' });
     }
@@ -1797,9 +1807,30 @@ async function startServer() {
         params.push(taskId);
         query += ` AND t.task_id = $${params.length}`;
       }
-      if (classId) {
+
+      if (req.user.role === 'STUDENT' || (req.user.role === 'CLASS_ADVISOR' && !req.user.is_year_coordinator)) {
+        params.push(req.user.class_id);
+        query += ` AND (t.class_id = $${params.length} OR u.class_id = $${params.length})`;
+      } else if (req.user.role === 'CLASS_ADVISOR' && req.user.is_year_coordinator) {
+        if (classId) {
+          params.push(classId);
+          query += ` AND (t.class_id = $${params.length} OR u.class_id = $${params.length})`;
+        } else {
+          params.push(req.user.department_id);
+          params.push(req.user.year_scope);
+          query += ` AND (t.class_id IN (SELECT id FROM classes WHERE department_id = $${params.length - 1} AND year = $${params.length}) OR u.class_id IN (SELECT id FROM classes WHERE department_id = $${params.length - 1} AND year = $${params.length}))`;
+        }
+      } else if (req.user.role === 'HOD') {
+        if (classId) {
+          params.push(classId);
+          query += ` AND (t.class_id = $${params.length} OR u.class_id = $${params.length})`;
+        } else {
+          params.push(req.user.department_id);
+          query += ` AND u.department_id = $${params.length}`;
+        }
+      } else if (classId) {
         params.push(classId);
-        query += ` AND t.class_id = $${params.length}`;
+        query += ` AND (t.class_id = $${params.length} OR u.class_id = $${params.length})`;
       }
       query += ' ORDER BY ts.created_at DESC';
 
@@ -1859,6 +1890,18 @@ async function startServer() {
     const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [team.task_id]);
     const task = taskRes.rows[0];
     if (!task) return res.status(404).json({ error: 'Task not found' });
+
+    if (req.user.role === 'STUDENT' || (req.user.role === 'CLASS_ADVISOR' && !req.user.is_year_coordinator)) {
+      const userClassId = req.user.class_id?.toString();
+      const teamClassId = team.class_id?.toString();
+      if (userClassId && teamClassId !== userClassId) {
+        const leaderRes = await pool.query('SELECT class_id FROM users WHERE id = $1', [team.leader_id]);
+        const leaderClassId = leaderRes.rows[0]?.class_id?.toString();
+        if (leaderClassId !== userClassId) {
+          return res.status(403).json({ error: 'Forbidden: You can only review team submissions for your class.' });
+        }
+      }
+    }
 
     const client = await pool.connect();
     try {
@@ -2728,7 +2771,7 @@ async function startServer() {
 
   app.get('/api/team/report', authenticate, async (req: any, res) => {
     try {
-      const teamsRes = await pool.query(`
+      let query = `
         SELECT 
           t.id as team_id,
           t.team_name,
@@ -2747,8 +2790,24 @@ async function startServer() {
         JOIN tasks tk ON t.task_id = tk.id
         JOIN users leader ON t.leader_id = leader.id
         LEFT JOIN team_submissions ts ON t.id = ts.team_id
-        ORDER BY tk.title ASC, t.team_name ASC
-      `);
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (req.user.role === 'STUDENT' || (req.user.role === 'CLASS_ADVISOR' && !req.user.is_year_coordinator)) {
+        params.push(req.user.class_id);
+        query += ` AND (t.class_id = $${params.length} OR leader.class_id = $${params.length})`;
+      } else if (req.user.role === 'CLASS_ADVISOR' && req.user.is_year_coordinator) {
+        params.push(req.user.department_id);
+        params.push(req.user.year_scope);
+        query += ` AND (t.class_id IN (SELECT id FROM classes WHERE department_id = $1 AND year = $2) OR leader.class_id IN (SELECT id FROM classes WHERE department_id = $1 AND year = $2))`;
+      } else if (req.user.role === 'HOD') {
+        params.push(req.user.department_id);
+        query += ` AND leader.department_id = $${params.length}`;
+      }
+
+      query += ' ORDER BY tk.title ASC, t.team_name ASC';
+      const teamsRes = await pool.query(query, params);
 
       const teams = teamsRes.rows;
 

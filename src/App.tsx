@@ -2132,11 +2132,11 @@ export default function App() {
     // 1. Scope students by role and optional classIds filter
     const targetStudents = users.filter(u => {
       if (u.role !== 'STUDENT') return false;
-      if (selectedClassIds.length > 0) return selectedClassIds.includes(u.class_id?.toString() || '');
       if (isClsRole && !isAdminRole && !isHODRole && !isYearCoordRole) {
-        const cid = user?.class_id || myClass?.id;
-        return cid && u.class_id?.toString() === cid.toString();
+        const cid = (user?.class_id || myClass?.id)?.toString();
+        return cid ? u.class_id?.toString() === cid : false;
       }
+      if (selectedClassIds.length > 0) return selectedClassIds.includes(u.class_id?.toString() || '');
       if (isYearCoordRole && !isAdminRole && !isHODRole) {
         const sc = classes.find(c => c.id.toString() === u.class_id?.toString());
         return u.department_id?.toString() === user?.department_id?.toString() && Number(sc?.year) === Number(user?.year_scope);
@@ -3590,13 +3590,21 @@ export default function App() {
                       <StatCard title="Class Students" value={advisorStats?.total_students || 0} icon={<Users />} color="bg-blue-500" />
                       <StatCard
                         title="Responded Students"
-                        value={new Set(submissions.filter(s => String(s.class_id || user?.class_id) === String(user?.class_id)).map(s => s.user_id)).size}
+                        value={new Set(submissions.filter(s => {
+                          const std = users.find(u => u.id === s.user_id);
+                          const cid = s.class_id || std?.class_id;
+                          return cid && String(cid) === String(user?.class_id);
+                        }).map(s => s.user_id)).size}
                         icon={<CheckCircle2 />}
                         color="bg-indigo-500"
                       />
                       <StatCard
                         title="Pending Verification"
-                        value={new Set(submissions.filter(s => s.status === 'SUBMITTED' && String(s.class_id || user?.class_id) === String(user?.class_id)).map(s => s.user_id)).size || advisorStats?.submitted_tasks_count || 0}
+                        value={new Set(submissions.filter(s => {
+                          const std = users.find(u => u.id === s.user_id);
+                          const cid = s.class_id || std?.class_id;
+                          return s.status === 'SUBMITTED' && cid && String(cid) === String(user?.class_id);
+                        }).map(s => s.user_id)).size || advisorStats?.submitted_tasks_count || 0}
                         icon={<Clock />}
                         color="bg-orange-500"
                       />
@@ -3617,13 +3625,21 @@ export default function App() {
                               <StatCard title="Class Students" value={coordinatorStats?.class_student_count || coordinatorStats?.total_students || 0} icon={<Users />} color="bg-blue-500" />
                               <StatCard
                                 title="Responded Students"
-                                value={new Set(submissions.filter(s => String(s.class_id || user?.class_id) === String(user?.class_id)).map(s => s.user_id)).size}
+                                value={new Set(submissions.filter(s => {
+                                  const std = users.find(u => u.id === s.user_id);
+                                  const cid = s.class_id || std?.class_id;
+                                  return cid && String(cid) === String(user?.class_id);
+                                }).map(s => s.user_id)).size}
                                 icon={<CheckCircle2 />}
                                 color="bg-indigo-500"
                               />
                               <StatCard
                                 title="Pending Verification"
-                                value={new Set(submissions.filter(s => s.status === 'SUBMITTED' && String(s.class_id || user?.class_id) === String(user?.class_id)).map(s => s.user_id)).size || coordinatorStats?.pending_reviews || 0}
+                                value={new Set(submissions.filter(s => {
+                                  const std = users.find(u => u.id === s.user_id);
+                                  const cid = s.class_id || std?.class_id;
+                                  return s.status === 'SUBMITTED' && cid && String(cid) === String(user?.class_id);
+                                }).map(s => s.user_id)).size || coordinatorStats?.pending_reviews || 0}
                                 icon={<Clock />}
                                 color="bg-orange-500"
                               />
@@ -3645,7 +3661,11 @@ export default function App() {
                               </div>
                             </div>
                             <div className="flex flex-col items-center md:items-end">
-                              <span className="text-4xl font-black">{submissions.filter(s => s.status === 'SUBMITTED' && String(s.class_id) === String(user?.class_id)).length}</span>
+                              <span className="text-4xl font-black">{submissions.filter(s => {
+                                const std = users.find(u => u.id === s.user_id);
+                                const cid = s.class_id || std?.class_id;
+                                return s.status === 'SUBMITTED' && cid && String(cid) === String(user?.class_id);
+                              }).length}</span>
                               <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Pending Tasks</span>
                             </div>
                           </div>
@@ -3998,6 +4018,10 @@ export default function App() {
                             return true;
                           })
                           .filter(u => {
+                            if (!isAdmin && !isHOD && !user?.is_year_coordinator) {
+                              const userClassId = (user?.class_id || myClass?.id)?.toString();
+                              if (userClassId && u.class_id?.toString() !== userClassId) return false;
+                            }
                             if (userYearFilter) {
                               const cls = classes.find(c => c.id?.toString() === u.class_id?.toString());
                               const yr = cls?.year || (u as any).class_year;
@@ -5260,12 +5284,24 @@ export default function App() {
                       }
 
                       // 3. Filter by Class
-                      if (verificationClassFilter) {
+                      if (!isAdmin && !isHOD && !user?.is_year_coordinator) {
+                        const userClassId = user?.class_id?.toString();
+                        const matchesTeamClass = sub.class_id?.toString() === userClassId;
+                        const leaderUser = users.find(u => u.id === sub.leader_id || u.register_number === sub.leader_regno);
+                        const matchesClass = matchesTeamClass || leaderUser?.class_id?.toString() === userClassId ||
+                          sub.members?.some(m => users.find(u => u.id === m.id || u.register_number === m.register_number)?.class_id?.toString() === userClassId);
+                        if (!matchesClass) return false;
+                      } else if (verificationClassFilter) {
                         const matchesTeamClass = sub.class_id?.toString() === verificationClassFilter;
                         const leaderUser = users.find(u => u.id === sub.leader_id || u.register_number === sub.leader_regno);
                         const matchesClass = matchesTeamClass || leaderUser?.class_id?.toString() === verificationClassFilter ||
                           sub.members?.some(m => users.find(u => u.id === m.id || u.register_number === m.register_number)?.class_id?.toString() === verificationClassFilter);
                         if (!matchesClass) return false;
+                      } else if (user?.is_year_coordinator) {
+                        const leaderUser = users.find(u => u.id === sub.leader_id || u.register_number === sub.leader_regno);
+                        const subClassId = sub.class_id?.toString() || leaderUser?.class_id?.toString();
+                        const subClass = classes.find(c => c.id.toString() === subClassId);
+                        if (subClass && Number(subClass.year) !== Number(user?.year_scope)) return false;
                       }
 
                       return true;
@@ -5420,9 +5456,19 @@ export default function App() {
                             return s.status === verificationFilter;
                           })
                           .filter(s => {
+                            const std = users.find(u => u.id === s.user_id);
+                            const subClassId = s.class_id?.toString() || std?.class_id?.toString();
+
+                            if (!isAdmin && !isHOD && !user?.is_year_coordinator) {
+                              const userClassId = user?.class_id?.toString();
+                              return userClassId ? subClassId === userClassId : true;
+                            }
                             if (verificationClassFilter) {
-                              const std = users.find(u => u.id === s.user_id);
-                              return std?.class_id?.toString() === verificationClassFilter;
+                              return subClassId === verificationClassFilter;
+                            }
+                            if (user?.is_year_coordinator) {
+                              const subClass = classes.find(c => c.id.toString() === subClassId);
+                              return subClass ? Number(subClass.year) === Number(user?.year_scope) : true;
                             }
                             return true;
                           })
