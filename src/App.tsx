@@ -2339,30 +2339,19 @@ export default function App() {
           const leaderStr = `${t.leader_name || 'Leader'} (${t.leader_regno || 'N/A'})`;
           const statusStr = t.submission_status || t.team_status || 'FORMING';
           const acceptedMembers = (t.members || []).filter((m: any) => m.status === 'ACCEPTED');
+          const participantsStr = acceptedMembers.length > 0
+            ? acceptedMembers.map((m: any) => `${m.full_name || 'Student'} (${m.register_number || 'N/A'})`).join(', ')
+            : leaderStr;
 
-          if (acceptedMembers.length === 0) {
-            teamRows.push({
-              'S.No': teamSno,
-              'Task Name': t.task_title || '—',
-              'Team Name': t.team_name || '—',
-              'Team Leader': leaderStr,
-              'Team Member': `${leaderStr} (Leader)`,
-              'Team Status': statusStr,
-            });
-          } else {
-            acceptedMembers.forEach((m: any, idx: number) => {
-              const isLeader = m.register_number === t.leader_regno || m.full_name === t.leader_name;
-              const memStr = `${m.full_name || 'Student'} (${m.register_number || 'N/A'})${isLeader ? ' (Leader)' : ''}`;
-              teamRows.push({
-                'S.No': idx === 0 ? teamSno : '',
-                'Task Name': t.task_title || '—',
-                'Team Name': t.team_name || '—',
-                'Team Leader': leaderStr,
-                'Team Member': memStr,
-                'Team Status': statusStr,
-              });
-            });
-          }
+          teamRows.push({
+            'S.No': teamSno,
+            'Team Name': t.team_name || '—',
+            'Team Leader': leaderStr,
+            'Team Participants': participantsStr,
+            'Hackathon / Task Name': t.task_title || '—',
+            'Category': t.task_category || 'Competition',
+            'Team Status': statusStr,
+          });
           teamSno++;
         });
       }
@@ -2383,7 +2372,15 @@ export default function App() {
       'Reason (If Not Participating)'
     ];
     const sheet2Cols = ['Task Name', 'Class', 'Total Students', 'Verified', 'Submitted', 'Rejected', 'Not Participating', 'Not Submitted'];
-    const sheet3Cols = ['S.No', 'Task Name', 'Team Name', 'Team Leader', 'Team Member', 'Team Status'];
+    const sheet3Cols = [
+      'S.No',
+      'Team Name',
+      'Team Leader',
+      'Team Participants',
+      'Hackathon / Task Name',
+      'Category',
+      'Team Status'
+    ];
 
     const sheet3Line5 = `TEAM WISE TASK REPORT - ${classInfoStr}`;
 
@@ -2395,7 +2392,7 @@ export default function App() {
     );
     const ws3 = buildSheetWithHeader(
       sheet3Cols,
-      teamRows.length ? teamRows : [{ 'S.No': 1, 'Task Name': 'No team data available for selection' }],
+      teamRows.length ? teamRows : [{ 'S.No': 1, 'Team Name': 'No team data available for selection' }],
       sheet3Line5
     );
 
@@ -6454,12 +6451,28 @@ export default function App() {
                           </h6>
                           <div>
                             <label className="text-xs font-bold text-zinc-700 mb-1.5 block">Proof Screenshot <span className="text-red-500">*</span></label>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={e => setTeamProofFile(e.target.files?.[0] || null)}
-                              className="w-full text-xs text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer"
-                            />
+                            {teamProofFile ? (
+                              <div className="bg-white p-3 rounded-xl border border-indigo-200 flex items-center justify-between">
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                  <FileImage size={18} className="text-indigo-600 shrink-0" />
+                                  <span className="text-xs font-medium text-zinc-800 truncate">{teamProofFile.name}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setTeamProofFile(null)}
+                                  className="text-xs font-bold text-red-600 hover:text-red-800 flex items-center gap-1 bg-red-50 px-2.5 py-1 rounded-lg border border-red-200 shrink-0 ml-2"
+                                >
+                                  <Trash2 size={13} /> Delete / Change
+                                </button>
+                              </div>
+                            ) : (
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={e => setTeamProofFile(e.target.files?.[0] || null)}
+                                className="w-full text-xs text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer"
+                              />
+                            )}
                           </div>
 
                           <div>

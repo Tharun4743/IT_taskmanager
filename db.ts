@@ -260,6 +260,8 @@ export async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_team_members_student ON team_members(student_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_team_members_team_status ON team_members(team_id, status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_team_invitations_student_status ON team_invitations(student_id, status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_team_invitations_team_student ON team_invitations(team_id, student_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, is_read);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_team_submissions_team ON team_submissions(team_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_teams_status ON teams(status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);`);

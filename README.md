@@ -9,114 +9,162 @@
 [![Cloudinary](https://img.shields.io/badge/Cloudinary-3448C5?style=for-the-badge&logo=cloudinary&logoColor=white)](https://cloudinary.com)
 [![Render](https://img.shields.io/badge/Render-46E3B7?style=for-the-badge&logo=render&logoColor=white)](https://render.com)
 
-**Enterprise-Grade Academic Workflow & Verification Platform**
-*Developed for VSB Engineering College — Department of Information Technology*
+**Enterprise-Grade Academic Workflow, Team Task & Verification Platform**
+*Developed for M.Kumarasamy / VSB Engineering College — Department of Information Technology*
 
 </div>
 
 ---
 
-## 📌 Project Overview
+## 📌 1. System Overview & Architecture
 
-At **VSB Engineering College**, academic task tracking and student event participation were handled manually through spreadsheets and email attachments across multiple year cohorts and sections. This created serious bottlenecks:
+The **VSBEC Task Manager** is a full-stack academic workflow, proof verification, and institutional analytics platform. It replaces legacy spreadsheet tracking with a real-time, role-guarded cloud system for managing academic activities (Competitions, Courses, Workshops, and College Work).
 
-| Challenge | Impact |
-|:---|:---|
-| Manual proof review | Faculty spent dozens of hours weekly cross-checking screenshots |
-| Data inconsistencies | Mixed-case field values broke section analytics and dashboards |
-| Storage exhaustion | Local server disks filled with uncompressed image and PDF uploads |
-| No audit trail | Zero traceability on reviewer decisions or resubmission counts |
-
----
-
-## 🎯 Engineering Objectives
-
-As **Lead Full-Stack Software Engineer**, I was responsible for designing, building, and deploying a secure cloud-based system to automate the complete task distribution and proof verification workflow.
-
-```
- CORE OBJECTIVES
- ─────────────────────────────────────────────────────
-  ①  6-Tier RBAC security system
-  ②  PostgreSQL database with UUID keys & connection pooling
-  ③  Cloudinary CDN direct file streaming pipeline
-  ④  Institutional multi-sheet Excel report generator
-  ⑤  Production cloud deployment on Render
- ─────────────────────────────────────────────────────
-```
-
-### Role-Based Access Control (RBAC) Matrix
-
-| Feature | Supreme Admin | HOD | Year Coord | Advisor | Student Coord | Student |
-|:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| System-Wide Analytics | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Department Overview | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Year-Wide Task Assignment | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Class Task Assignment | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Assign Coordinator | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ |
-| Verify / Reject Proofs | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Multi-Class Excel Export | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Submit Task Proof | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+### Architecture Highlights
+* **Single-Page Application**: Built with **React 19**, **Tailwind CSS v4**, **Lucide Icons**, and **Motion** animations, compiled via Vite.
+* **REST API Server**: Built with **Express 4**, featuring strict JWT authentication, role guards, Zod validation, and rate limiting.
+* **PostgreSQL Engine**: Raw SQL query execution via `pg.Pool` with connection pooling, statement timeouts, and optimized B-Tree indexing.
+* **Cloud Storage**: Integrated **Cloudinary CDN** streaming for task posters and student proof screenshots with batched resource cleanup.
 
 ---
 
-## 🛠️ Technical Implementation
+## 👥 2. Complete Role Workflows & Authorization
 
-### System Architecture
+### 🎓 2.1 Role 1: Student
+* **Capabilities**:
+  * View individual & team tasks assigned to their Class Section or Department.
+  * Submit individual task proof screenshot + custom field text.
+  * Mark tasks as "Not Participating" with a mandatory explanation reason.
+  * Preview selected screenshots before submission with a one-click **"Delete / Pick Different Image"** button.
+  * Create team tasks, invite section classmates, accept/decline team invites, and track team status.
+  * Team Leaders can submit team proof screenshot once all invited members have accepted (0 pending invites).
+  * Resubmit rejected tasks (up to 2 resubmissions).
+  * View personal submission history and reviewer feedback notes.
+* **Restrictions**:
+  * Cannot create individual tasks or verify submissions.
+  * Cannot invite students from outside their class section.
+
+### 👑 2.2 Role 2: Student Coordinator
+* **Capabilities**:
+  * All Student capabilities.
+  * Create new tasks targeted to their assigned class section.
+  * Verify or reject individual and team task submissions for students in their assigned section.
+  * Unlock rejected student submissions to grant additional resubmissions.
+  * Access section statistics, submission progress, and gender-wise breakdowns.
+* **Restrictions**:
+  * Cannot close tasks, reopen tasks, or extend deadlines (HOD Exclusive).
+  * Cannot manage users, advisors, or class structures.
+
+### 👨‍🏫 2.3 Role 3: Class Advisor & Year Coordinator
+* **Capabilities**:
+  * Manage students in their class section (Single entry or Bulk Excel/CSV upload).
+  * Promote/demote Student Coordinators.
+  * Reset student passwords back to default (Register Number).
+  * Create tasks targeted to their section.
+  * If **Year Coordinator**: Scope expands across all sections in their assigned Year (e.g. Year 2 IT-A, IT-B, IT-C). Can assign year-wide tasks and view year analytics.
+  * Verify/reject submissions and generate class reports.
+* **Restrictions**:
+  * Cannot close tasks, reopen tasks, or extend deadlines (HOD Exclusive).
+
+### 🏛️ 2.4 Role 4: Head of Department (HOD)
+* **Capabilities**:
+  * Department-wide control across all classes, advisors, coordinators, and students.
+  * Create, edit, and delete classes and advisors within the department.
+  * Create department-wide tasks or select target classes.
+  * **Exclusive Task Control**:
+    * **Close / Open Task**: Toggle task availability status (`OPEN` / `CLOSED`).
+    * **Reopen & Extend Deadline**: Set a new future deadline date/time, automatically reopen closed tasks, and dispatch `TASK_REOPENED` notifications to all target students.
+  * Verify/reject any submission in the department.
+  * Access comprehensive department analytics and multi-sheet institutional Excel reports.
+
+### 🛡️ 2.5 Role 5: Supreme Admin
+* **Capabilities**:
+  * Unrestricted institution-wide control across all departments, classes, users, tasks, and system settings.
+  * Create and delete departments.
+  * System-wide analytics and report exports.
+
+---
+
+## 🔄 3. System Execution Flowcharts
+
+### 3.1 Task & Submission Lifecycle Diagram
 
 ```mermaid
 graph TD
-    subgraph Client ["Client Layer — Single Page Application"]
-        UI["React 19 + Tailwind CSS"]
-        Excel["SheetJS Excel Exporter"]
-    end
-
-    subgraph Gateway ["API Gateway and Security Middleware"]
-        CORS["CORS + Rate Limiter"]
-        JWT["JWT Auth + Role Guard"]
-    end
-
-    subgraph Backend ["Backend — Node.js + Express"]
-        TaskSvc["Task Controller"]
-        SubSvc["Submission Controller"]
-        AnalyticsSvc["Analytics Controller"]
-        ReportSvc["Report Generator"]
-    end
-
-    subgraph Data ["Data and Cloud Layer"]
-        DB[(PostgreSQL)]
-        CDN["Cloudinary CDN"]
-    end
-
-    UI -->|REST API| CORS --> JWT
-    JWT --> TaskSvc
-    JWT --> SubSvc
-    JWT --> AnalyticsSvc
-    JWT --> ReportSvc
-    SubSvc -->|Stream Upload| CDN
-    TaskSvc --> DB
-    SubSvc --> DB
-    AnalyticsSvc --> DB
-    ReportSvc --> DB
+    A[Task Published by Staff / HOD] -->|Assigned to Class / Dept| B(Student Views Task)
+    
+    B -->|Individual Task| C[Upload Proof / Custom Field]
+    B -->|Opt Out| D[Mark Not Participating + Add Reason]
+    B -->|Team Task| E[Leader Creates Team & Invites Classmates]
+    
+    E --> F{Classmates Accept/Decline Invite}
+    F -->|Accepted| G[Pending Invites Expired on Other Teams]
+    G --> H{All Members Accepted & 0 Pending?}
+    H -->|Yes| I[Team Leader Submits Team Proof]
+    
+    C --> J[Reviewer Verification Grid]
+    I --> J
+    
+    J -->|Approved| K[Status: VERIFIED / APPROVED]
+    J -->|Rejected| L[Status: REJECTED + Feedback Reason]
+    
+    L -->|Resubmit Count < 2| B
+    L -->|Resubmit Count >= 2| M[Submission Locked]
+    M -->|HOD / Advisor Action| N[Unlock Submission] --> B
 ```
 
 ---
 
-### Task Submission and Verification Lifecycle
+## 🤝 4. Team Task Rules & Logic Specification
 
-```mermaid
-stateDiagram-v2
-    [*] --> OPEN: Task Published by Staff or HOD
-    OPEN --> SUBMITTED: Student Uploads Proof
-    SUBMITTED --> VERIFIED: Advisor Approves
-    SUBMITTED --> REJECTED: Advisor Rejects with Note
-    REJECTED --> SUBMITTED: Student Resubmits (Max 2 Attempts)
-    VERIFIED --> [*]: Counted in Analytics and Metrics
-    REJECTED --> LOCKED: Resubmission Limit Reached
-```
+1. **Classmate Invitations**:
+   * A student can create a team and select section classmates to invite.
+   * Invitations are dispatched with `PENDING` status.
+2. **Conflict Prevention & Auto-Expiration**:
+   * A student can receive multiple team invitations while in `PENDING` state.
+   * **Once a student ACCEPTS an invitation to Team A**:
+     * Their membership in Team A becomes `ACCEPTED`.
+     * All other `PENDING` invitations for that student for the same task are automatically marked as `EXPIRED` and `DECLINED`.
+     * Other team leaders can no longer invite or add this student.
+3. **Proof Submission Requirements**:
+   * The team leader can submit screenshot proof **only when**:
+     1. All invited team members have responded (`0 PENDING` invitations remaining).
+     2. The minimum team size requirement is met.
+4. **Pre-Submission Screenshot Management**:
+   * Before clicking submit, both Individual students and Team Leaders can click **"Delete / Pick Different Image"** to remove a selected file preview and select another image.
 
 ---
 
-### Database Schema
+## 📊 5. Institutional Excel Report Generator
+
+The system generates a multi-sheet **.xlsx** workbook formatted according to institutional presentation standards:
+
+```
+╔════════════════════════════════════════════════════════════════════════════════════════════╗
+║                            VSB ENGINEERING COLLEGE, KARUR                                  ║
+║                             (AN AUTONOMOUS INSTITUTION)                                    ║
+║                        DEPARTMENT OF INFORMATION TECHNOLOGY                                ║
+║                              ACADEMIC YEAR 2024 – 2028                                     ║
+║                      [Task Name / Selection] - [Target Classes]                            ║
+╠════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Sheet 1: Detailed Report  → S.No | Name | Reg No | Mail ID | Task Name | Status | Custom... ║
+║ Sheet 2: Summary Report   → Task Name | Class | Total | Verified | Submitted | Rejected... ║
+║ Sheet 3: Team Wise Report → S.No | Team Name | Leader | Participants | Task | Category | Status ║
+╚════════════════════════════════════════════════════════════════════════════════════════════╝
+```
+
+### Sheet 3 Column Schema ("Team Wise Report")
+1. **S.No**: Serial Number
+2. **Team Name**: Name of the team
+3. **Team Leader**: Leader Name & Register Number (`John Doe (REG101)`)
+4. **Team Participants**: Comma-separated list of all accepted team members (`John Doe (REG101), Jane Smith (REG102)`)
+5. **Hackathon / Task Name**: Title of the team task
+6. **Category**: Category (e.g. Competition / Workshop / Hackathon)
+7. **Team Status**: Current submission/verification status (`FORMING`, `READY`, `SUBMITTED`, `APPROVED`, `REJECTED`)
+
+---
+
+## 🗄️ 6. Database Schema & Performance Indexing
 
 ```mermaid
 erDiagram
@@ -128,168 +176,104 @@ erDiagram
     classes ||--|{ task_classes : "receives"
     users ||--o{ task_submissions : "submits"
     tasks ||--o{ task_submissions : "contains"
-    task_submissions ||--o{ submission_reviews : "audit trail"
-    users ||--o{ notifications : "receives"
+    teams ||--o{ team_members : "has"
+    teams ||--o{ team_invitations : "sends"
+    teams ||--o{ team_submissions : "submits proof"
 
-    departments {
-        uuid id PK
-        varchar name
-        timestamp created_at
-    }
-    classes {
-        uuid id PK
-        varchar name
-        uuid department_id FK
-        int year
-    }
     users {
         uuid id PK
+        varchar username UK
+        varchar password
         varchar role
         uuid class_id FK
         varchar full_name
-        varchar register_number
-        varchar gender
+        varchar register_number UK
     }
     tasks {
         uuid id PK
         varchar title
         timestamp deadline
         varchar status
-        uuid department_id FK
+        varchar submission_type
     }
-    task_submissions {
+    teams {
         uuid id PK
         uuid task_id FK
-        uuid user_id FK
+        uuid class_id FK
+        uuid leader_id FK
+        varchar team_name
         varchar status
-        varchar screenshot_url
-        int resubmission_count
     }
 ```
 
----
-
-### Engineering Decisions
-
-**Frontend — React 19 and TypeScript**
-```
-  • React 19 + TypeScript SPA with Tailwind CSS v4
-  • Dark-mode glassmorphic dashboards and analytics cards
-  • SheetJS (XLSX) multi-sheet institutional report export
-  • Lucide Icons with smooth transition animations
-```
-
-**Backend — Express.js and Security**
-```
-  • Express.js REST APIs with Zod schema validation
-  • JWT Authentication with role-scope authorization guards
-  • Rate Limiting (300 req / 15 min) + HTTP Compression
-  • IDOR prevention — each role locked to their assigned scope
-```
-
-**Database — PostgreSQL and Data Hygiene**
-```
-  • pg.Pool connection pooling — 25+ concurrent connections
-  • UUID primary keys + relational indexes on hot columns
-  • Automated name sanitization (regex dot-stripping)
-  • Case-insensitive aggregation via UPPER() normalization
-```
-
-**Cloud CDN and Audit Control**
-```
-  • Multer + Cloudinary Storage Engine for direct streaming
-  • Immutable HTTPS CDN URLs stored in PostgreSQL
-  • submission_reviews audit trail for full traceability
-  • 2-attempt resubmission hard limit on rejected proofs
-```
+### Hot B-Tree Performance Indexes
+* `idx_tasks_dept`: `tasks(department_id)`
+* `idx_submissions_task_user`: `task_submissions(task_id, user_id)`
+* `idx_users_class_role`: `users(class_id, role)`
+* `idx_team_invitations_team_student`: `team_invitations(team_id, student_id)`
+* `idx_notifications_user_read`: `notifications(user_id, is_read)`
 
 ---
 
-## 🏆 Results and Impact
+## 🔌 7. REST API Endpoints Specification
 
-| Metric | Before | After | Improvement |
-|:---|:---:|:---:|:---:|
-| Data Accuracy | ~60% | **100%** | +40% |
-| Verification Time | Days | Seconds | **90% faster** |
-| Local Storage Used | Exhausted | **Zero** | 100% offloaded |
-| Report Generation | ~4 hours | **2 seconds** | 99.9% faster |
-| API Response Time | — | **less than 100ms** | Production grade |
-
-```
- KEY ACHIEVEMENTS
- ──────────────────────────────────────────────────────
-  ✅  300+ student records fully cleaned and standardized
-  ✅  90% reduction in faculty administrative workload
-  ✅  100% screenshot media offloaded to Cloudinary CDN
-  ✅  2-second automated Excel export (was 4+ hours manual)
-  ✅  Sub-100ms API response times deployed on Render
- ──────────────────────────────────────────────────────
-```
-
----
-
-## 📊 Institutional Excel Report Format
-
-```
-╔══════════════════════════════════════════════════════════╗
-║          VSB ENGINEERING COLLEGE, KARUR                  ║
-║             (AN AUTONOMOUS INSTITUTION)                  ║
-║        DEPARTMENT OF INFORMATION TECHNOLOGY              ║
-║              ACADEMIC YEAR 2024 – 2028                   ║
-║      [Task Name] – [YEAR] IT SECTION [SECTION]           ║
-╠══════════════════════════════════════════════════════════╣
-║  Sheet 1 → S.No | Name | Reg No | Email | Status        ║
-║  Sheet 2 → Summary | Verified | Submitted | Rejected     ║
-╚══════════════════════════════════════════════════════════╝
-```
+| Method | Endpoint | Access Roles | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/auth/login` | Public | Strict bcrypt password authentication |
+| `GET` | `/api/auth/me` | Authenticated | Get current authenticated user profile |
+| `GET` | `/api/tasks` | Authenticated | List tasks scoped by role & section |
+| `POST` | `/api/tasks` | Admin, HOD, Advisor, Coord | Create a new individual or team task |
+| `PATCH`| `/api/tasks/:id/status` | HOD, Supreme Admin | **Close or Open task** |
+| `PATCH`| `/api/tasks/:id/reopen` | HOD, Supreme Admin | **Reopen task & extend deadline** |
+| `DELETE`|`/api/tasks/:id` | HOD, Supreme Admin | Delete task and batch purge Cloudinary assets |
+| `POST` | `/api/submissions` | Student | Submit individual proof (with screenshot) |
+| `POST` | `/api/submissions/not-participating` | Student | Opt out of task with reason |
+| `PATCH`| `/api/submissions/:id/verify` | HOD, Advisor, Coord | Verify or reject individual submission |
+| `PATCH`| `/api/submissions/:id/unlock` | HOD, Advisor, Coord | Unlock submission for further resubmission |
+| `GET` | `/api/team/classmates/:taskId` | Student | Get eligible section classmates for team |
+| `POST` | `/api/team/create` | Student | Create team & send invitations |
+| `POST` | `/api/team/invite` | Student | Invite additional classmates to team |
+| `POST` | `/api/team/respond` | Student | Accept or decline team invitation |
+| `POST` | `/api/team/submit` | Student (Leader) | Submit team task proof (0 pending invites req) |
+| `POST` | `/api/team/review` | HOD, Advisor, Coord | Review & approve/reject team submission |
+| `GET` | `/api/team/report` | Authenticated | Fetch team report data for Excel export |
+| `GET` | `/api/stats/hod` | HOD | Fetch HOD department analytics |
+| `GET` | `/api/stats/advisor` | Class Advisor | Fetch section analytics & gender stats |
+| `GET` | `/api/stats/coordinator` | Student Coordinator | Fetch coordinator section analytics |
 
 ---
 
-## 🔒 Security and Privacy
+## 🛠️ 8. Setup & Local Development
 
-| Principle | Implementation |
-|:---|:---|
-| No Hardcoded Secrets | All credentials loaded via `.env` variables only |
-| Git Protected | `.env` excluded via `.gitignore` — never pushed |
-| Placeholder Documentation | All examples use sanitized dummy values |
-| Scope-Guarded APIs | Every route validates role and class scope before execution |
-
----
-
-## 🚀 Setup and Deployment
-
-### Configure Environment Variables
-
+### 1. Configure Environment Variables (`.env`)
 ```env
 PORT=3000
-DATABASE_URL=postgresql://your_db_user:your_password@your_host:5432/your_db_name
-JWT_SECRET=your_strong_jwt_secret
+DATABASE_URL=postgresql://user:password@localhost:5432/vsbec_taskmanager
+JWT_SECRET=your_jwt_secret_key
 CLOUDINARY_CLOUD_NAME=your_cloud_name
 CLOUDINARY_API_KEY=your_api_key
 CLOUDINARY_API_SECRET=your_api_secret
 ```
 
-### Run Locally
-
+### 2. Install & Run Locally
 ```bash
-npm install        # Install dependencies
-npm run dev        # Start development server
+# Install dependencies
+npm install
+
+# Run TypeScript type check
+npm run lint
+
+# Start development server
+npm run dev
 ```
 
-### Production Build
-
+### 3. Production Build
 ```bash
-npm run build      # Compile TypeScript and bundle frontend
-npm start          # Launch production server
-```
+# Build Vite frontend bundle
+npm run build
 
-### Deploy to Render
-
-```
-1. Connect GitHub repository to Render as a Web Service
-2. Use render.yaml Blueprint (auto-configured)
-3. Set environment variables in Render Dashboard
-4. Deploy — Build: npm install && npm run build | Start: npm start
+# Launch Express server
+npm start
 ```
 
 ---

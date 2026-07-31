@@ -175,10 +175,6 @@ async function startServer() {
       isPasswordValid = false;
     }
 
-    if (!isPasswordValid && (cleanPassword === user.register_number || cleanPassword === user.username || password === user.register_number || password === user.username)) {
-      isPasswordValid = true;
-    }
-
     if (!isPasswordValid) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -306,8 +302,8 @@ async function startServer() {
     }
 
     // Destroy Cloudinary assets after successful DB commit (best-effort)
-    for (const cid of cloudinaryIds) {
-      try { await cloudinary.uploader.destroy(cid); } catch (e) { console.error('Cloudinary cleanup error:', e); }
+    if (cloudinaryIds.length > 0) {
+      try { await cloudinary.api.delete_resources(cloudinaryIds); } catch (e) { console.error('Cloudinary cleanup error:', e); }
     }
     res.json({ success: true });
   });
@@ -418,8 +414,8 @@ async function startServer() {
       client.release();
     }
 
-    for (const cid of cloudinaryIds) {
-      try { await cloudinary.uploader.destroy(cid); } catch (e) { console.error('Cloudinary cleanup error:', e); }
+    if (cloudinaryIds.length > 0) {
+      try { await cloudinary.api.delete_resources(cloudinaryIds); } catch (e) { console.error('Cloudinary cleanup error:', e); }
     }
     res.json({ success: true });
   });
@@ -744,14 +740,13 @@ async function startServer() {
 
     // Clean up Cloudinary assets first
     try {
-      const subsRes = await pool.query('SELECT cloudinary_public_id FROM task_submissions WHERE user_id = $1', [req.params.id]);
-      for (const r of subsRes.rows) {
-        if (r.cloudinary_public_id) {
-          try {
-            await cloudinary.uploader.destroy(r.cloudinary_public_id);
-          } catch (err) {
-            console.error('Failed to delete user submission image from Cloudinary:', err);
-          }
+      const subsRes = await pool.query('SELECT cloudinary_public_id FROM task_submissions WHERE user_id = $1 AND cloudinary_public_id IS NOT NULL', [req.params.id]);
+      const cids = subsRes.rows.map(r => r.cloudinary_public_id).filter(Boolean);
+      if (cids.length > 0) {
+        try {
+          await cloudinary.api.delete_resources(cids);
+        } catch (err) {
+          console.error('Failed to delete user submission images from Cloudinary:', err);
         }
       }
     } catch (err) {
@@ -1103,13 +1098,13 @@ async function startServer() {
       }
 
       if (clsIds.length > 0) {
-        const targetStudentsRes = await client.query("SELECT id FROM users WHERE class_id = ANY($1) AND role = 'STUDENT'", [clsIds]);
-        for (const s of targetStudentsRes.rows) {
-          await client.query(
-            'INSERT INTO notifications (user_id, message, type) VALUES ($1, $2, $3)',
-            [s.id, `New task posted by ${dbUser.full_name || 'HOD'}: "${t.title}"`, 'NEW_TASK']
-          );
-        }
+        await client.query(
+          `INSERT INTO notifications (user_id, message, type)
+           SELECT id, $1, 'NEW_TASK'
+           FROM users
+           WHERE class_id = ANY($2::uuid[]) AND role = 'STUDENT'`,
+          [`New task posted by ${dbUser.full_name || 'HOD'}: "${t.title}"`, clsIds]
+        );
       }
 
       await client.query('COMMIT');
@@ -1142,7 +1137,7 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/tasks/:id/status', authenticate, authorize(['HOD']), async (req: any, res) => {
+  app.patch('/api/tasks/:id/status', authenticate, authorize(['HOD', 'SUPREME_ADMIN']), async (req: any, res) => {
     const { status } = req.body;
     const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [req.params.id]);
     const task = taskRes.rows[0];
@@ -1152,7 +1147,9 @@ async function startServer() {
     const taskClassIds = tcRes.rows.map(r => r.class_id.toString());
 
     let isAuthorized = false;
-    if (req.user.role === 'HOD') {
+    if (req.user.role === 'SUPREME_ADMIN') {
+      isAuthorized = true;
+    } else if (req.user.role === 'HOD') {
       if (task.department_id?.toString() === req.user.department_id?.toString()) {
         isAuthorized = true;
       } else if (taskClassIds.length > 0) {
@@ -1172,7 +1169,7 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  app.patch('/api/tasks/:id/reopen', authenticate, authorize(['HOD']), async (req: any, res) => {
+  app.patch('/api/tasks/:id/reopen', authenticate, authorize(['HOD', 'SUPREME_ADMIN']), async (req: any, res) => {
     const { deadline } = req.body;
     if (!deadline) {
       return res.status(400).json({ error: 'New deadline date and time is required to reopen the task.' });
@@ -1191,7 +1188,9 @@ async function startServer() {
     const taskClassIds = tcRes.rows.map(r => r.class_id.toString());
 
     let isAuthorized = false;
-    if (req.user.role === 'HOD') {
+    if (req.user.role === 'SUPREME_ADMIN') {
+      isAuthorized = true;
+    } else if (req.user.role === 'HOD') {
       if (task.department_id?.toString() === req.user.department_id?.toString()) {
         isAuthorized = true;
       } else if (taskClassIds.length > 0) {
@@ -1213,13 +1212,13 @@ async function startServer() {
     );
 
     if (taskClassIds.length > 0) {
-      const targetStudentsRes = await pool.query("SELECT id FROM users WHERE class_id = ANY($1) AND role = 'STUDENT'", [taskClassIds]);
-      for (const s of targetStudentsRes.rows) {
-        await pool.query(
-          'INSERT INTO notifications (user_id, message, type) VALUES ($1, $2, $3)',
-          [s.id, `Deadline extended & task reopened by HOD for "${task.title}". New deadline: ${newDeadline.toLocaleString()}`, 'TASK_REOPENED']
-        );
-      }
+      await pool.query(
+        `INSERT INTO notifications (user_id, message, type)
+         SELECT id, $1, 'TASK_REOPENED'
+         FROM users
+         WHERE class_id = ANY($2::uuid[]) AND role = 'STUDENT'`,
+        [`Deadline extended & task reopened by HOD for "${task.title}". New deadline: ${newDeadline.toLocaleString()}`, taskClassIds]
+      );
     }
 
     res.json({ success: true, deadline: newDeadline.toISOString(), status: 'OPEN' });
@@ -1260,14 +1259,13 @@ async function startServer() {
     }
 
     try {
-      const subsRes = await pool.query('SELECT cloudinary_public_id FROM task_submissions WHERE task_id = $1', [task.id]);
-      for (const r of subsRes.rows) {
-        if (r.cloudinary_public_id) {
-          try {
-            await cloudinary.uploader.destroy(r.cloudinary_public_id);
-          } catch (err) {
-            console.error('Failed to delete task submission image from Cloudinary:', err);
-          }
+      const subsRes = await pool.query('SELECT cloudinary_public_id FROM task_submissions WHERE task_id = $1 AND cloudinary_public_id IS NOT NULL', [task.id]);
+      const cids = subsRes.rows.map(r => r.cloudinary_public_id).filter(Boolean);
+      if (cids.length > 0) {
+        try {
+          await cloudinary.api.delete_resources(cids);
+        } catch (err) {
+          console.error('Failed to delete task submission images from Cloudinary:', err);
         }
       }
     } catch (err) {
@@ -1511,6 +1509,17 @@ async function startServer() {
         await client.query('UPDATE team_invitations SET status = \'ACCEPTED\', responded_at = CURRENT_TIMESTAMP WHERE id = $1', [invitationId]);
         await client.query('UPDATE team_members SET status = \'ACCEPTED\', accepted_at = CURRENT_TIMESTAMP WHERE team_id = $1 AND student_id = $2', [team.id, student.id]);
 
+        // Auto-expire all other pending invitations for this student for this task
+        await client.query(`
+          UPDATE team_invitations SET status = 'EXPIRED', responded_at = CURRENT_TIMESTAMP
+          WHERE student_id = $1 AND status = 'PENDING' AND team_id IN (SELECT id FROM teams WHERE task_id = $2 AND id != $3)
+        `, [student.id, team.task_id, team.id]);
+
+        await client.query(`
+          UPDATE team_members SET status = 'DECLINED'
+          WHERE student_id = $1 AND status = 'PENDING' AND team_id IN (SELECT id FROM teams WHERE task_id = $2 AND id != $3)
+        `, [student.id, team.task_id, team.id]);
+
         const acceptedCountRes = await client.query('SELECT COUNT(*) as count FROM team_members WHERE team_id = $1 AND status = \'ACCEPTED\'', [team.id]);
         const acceptedCount = parseInt(acceptedCountRes.rows[0].count, 10);
         const minTeamSize = task.min_team_size || 2;
@@ -1726,6 +1735,12 @@ async function startServer() {
     const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [team.task_id]);
     const task = taskRes.rows[0];
     const minTeamSize = task.min_team_size || 2;
+
+    const pendingCountRes = await pool.query('SELECT COUNT(*) as count FROM team_members WHERE team_id = $1 AND status = \'PENDING\'', [teamId]);
+    const pendingCount = parseInt(pendingCountRes.rows[0].count, 10);
+    if (pendingCount > 0) {
+      return res.status(400).json({ error: `Cannot submit proof while there are ${pendingCount} pending member invitations. All invited members must accept or be removed before submitting.` });
+    }
 
     const acceptedCountRes = await pool.query('SELECT COUNT(*) as count FROM team_members WHERE team_id = $1 AND status = \'ACCEPTED\'', [teamId]);
     const acceptedCount = parseInt(acceptedCountRes.rows[0].count, 10);
@@ -2711,447 +2726,6 @@ async function startServer() {
     }
   });
 
-  // ── Team Tasks API Endpoints ─────────────────────────────────────────────
-  app.get('/api/team/classmates/:taskId', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    const { taskId } = req.params;
-    const studentId = req.user.id;
-    const classId = req.user.class_id;
-
-    if (!classId) return res.json([]);
-
-    const classmatesRes = await pool.query(`
-      SELECT u.id, u.full_name, u.register_number, u.username
-      FROM users u
-      WHERE u.class_id = $1
-        AND u.role = 'STUDENT'
-        AND u.id != $2
-        AND u.id NOT IN (
-          SELECT tm.student_id FROM team_members tm
-          JOIN teams t ON tm.team_id = t.id
-          WHERE t.task_id = $3 AND tm.status IN ('ACCEPTED', 'PENDING')
-        )
-      ORDER BY u.full_name ASC
-    `, [classId, studentId, taskId]);
-
-    res.json(classmatesRes.rows);
-  });
-
-  app.post('/api/team/create', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    const { taskId, teamName, members } = req.body;
-    const leaderId = req.user.id;
-    const classId = req.user.class_id;
-
-    if (!teamName || !teamName.trim()) return res.status(400).json({ error: 'Team name is required' });
-    if (!classId) return res.status(400).json({ error: 'Student must be assigned to a class' });
-
-    const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1', [taskId]);
-    const task = taskRes.rows[0];
-    if (!task) return res.status(404).json({ error: 'Task not found' });
-    if (task.submission_type !== 'TEAM') return res.status(400).json({ error: 'This task is not a team task' });
-
-    const maxTeamSize = task.max_team_size || 5;
-    const memberIds = Array.isArray(members) ? members : [];
-    if (memberIds.length + 1 > maxTeamSize) {
-      return res.status(400).json({ error: `Team cannot exceed ${maxTeamSize} members including leader` });
-    }
-
-    if (memberIds.length > 0) {
-      const classCheck = await pool.query(
-        "SELECT count(*) FROM users WHERE id = ANY($1) AND class_id = $2 AND role = 'STUDENT'",
-        [memberIds, classId]
-      );
-      if (parseInt(classCheck.rows[0].count) !== memberIds.length) {
-        return res.status(400).json({ error: 'All team members must belong to your class section' });
-      }
-    }
-
-    const checkRes = await pool.query(`
-      SELECT tm.student_id FROM team_members tm
-      JOIN teams t ON tm.team_id = t.id
-      WHERE t.task_id = $1 AND tm.student_id = ANY($2) AND tm.status IN ('ACCEPTED', 'PENDING')
-    `, [taskId, [leaderId, ...memberIds]]);
-
-    if (checkRes.rowCount && checkRes.rowCount > 0) {
-      return res.status(400).json({ error: 'One or more selected students are already part of another team for this task' });
-    }
-
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      const initialStatus = memberIds.length === 0 ? 'READY' : 'FORMING';
-      const teamRes = await client.query(`
-        INSERT INTO teams (task_id, class_id, leader_id, team_name, status)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING *
-      `, [taskId, classId, leaderId, teamName.trim(), initialStatus]);
-      const team = teamRes.rows[0];
-
-      await client.query(`
-        INSERT INTO team_members (team_id, student_id, status, accepted_at)
-        VALUES ($1, $2, 'ACCEPTED', NOW())
-      `, [team.id, leaderId]);
-
-      for (const memId of memberIds) {
-        await client.query(`
-          INSERT INTO team_members (team_id, student_id, status)
-          VALUES ($1, $2, 'PENDING')
-        `, [team.id, memId]);
-
-        await client.query(`
-          INSERT INTO team_invitations (team_id, student_id, invited_by, status)
-          VALUES ($1, $2, $3, 'PENDING')
-        `, [team.id, memId, leaderId]);
-
-        await client.query(`
-          INSERT INTO notifications (user_id, message, type)
-          VALUES ($1, $2, 'TEAM_INVITATION')
-        `, [memId, `You were invited to join team "${teamName.trim()}" for task "${task.title}"`]);
-      }
-
-      await client.query('COMMIT');
-      res.json({ success: true, team });
-    } catch (err) {
-      await client.query('ROLLBACK');
-      console.error('Create Team Error:', err);
-      res.status(500).json({ error: 'Failed to create team' });
-    } finally {
-      client.release();
-    }
-  });
-
-  app.post('/api/team/invite', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    const { teamId, studentIds } = req.body;
-    const leaderId = req.user.id;
-
-    const teamRes = await pool.query('SELECT t.*, tk.max_team_size, tk.title as task_title FROM teams t JOIN tasks tk ON t.task_id = tk.id WHERE t.id = $1', [teamId]);
-    const team = teamRes.rows[0];
-    if (!team) return res.status(404).json({ error: 'Team not found' });
-    if (team.leader_id.toString() !== leaderId.toString()) return res.status(403).json({ error: 'Only team leader can invite members' });
-
-    const currentMembersRes = await pool.query("SELECT count(*) FROM team_members WHERE team_id = $1 AND status IN ('ACCEPTED', 'PENDING')", [teamId]);
-    const currentCount = parseInt(currentMembersRes.rows[0].count);
-    const newIds = Array.isArray(studentIds) ? studentIds : [];
-
-    if (currentCount + newIds.length > (team.max_team_size || 5)) {
-      return res.status(400).json({ error: `Team capacity exceeded. Maximum size is ${team.max_team_size || 5}` });
-    }
-
-    if (newIds.length > 0) {
-      const classCheck = await pool.query(
-        "SELECT count(*) FROM users WHERE id = ANY($1) AND class_id = $2 AND role = 'STUDENT'",
-        [newIds, req.user.class_id]
-      );
-      if (parseInt(classCheck.rows[0].count) !== newIds.length) {
-        return res.status(400).json({ error: 'All invited members must belong to your class section' });
-      }
-    }
-
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      for (const memId of newIds) {
-        await client.query(`
-          INSERT INTO team_members (team_id, student_id, status)
-          VALUES ($1, $2, 'PENDING')
-          ON CONFLICT (team_id, student_id) DO UPDATE SET status = 'PENDING'
-        `, [teamId, memId]);
-
-        await client.query(`
-          INSERT INTO team_invitations (team_id, student_id, invited_by, status)
-          VALUES ($1, $2, $3, 'PENDING')
-        `, [teamId, memId, leaderId]);
-
-        await client.query(`
-          INSERT INTO notifications (user_id, message, type)
-          VALUES ($1, $2, 'TEAM_INVITATION')
-        `, [memId, `You were invited to join team "${team.team_name}" for task "${team.task_title}"`]);
-      }
-      await client.query('COMMIT');
-      res.json({ success: true });
-    } catch (err) {
-      await client.query('ROLLBACK');
-      res.status(500).json({ error: 'Failed to send invitations' });
-    } finally {
-      client.release();
-    }
-  });
-
-  app.post('/api/team/respond', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    const { invitationId, response } = req.body;
-    const studentId = req.user.id;
-
-    const invRes = await pool.query('SELECT * FROM team_invitations WHERE id = $1 AND student_id = $2', [invitationId, studentId]);
-    const inv = invRes.rows[0];
-    if (!inv) return res.status(404).json({ error: 'Invitation not found' });
-
-    const status = response === 'ACCEPT' ? 'ACCEPTED' : 'DECLINED';
-
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query(`
-        UPDATE team_invitations SET status = $1, responded_at = NOW() WHERE id = $2
-      `, [status, invitationId]);
-
-      await client.query(`
-        UPDATE team_members SET status = $1, accepted_at = ${status === 'ACCEPTED' ? 'NOW()' : 'NULL'}
-        WHERE team_id = $2 AND student_id = $3
-      `, [status, inv.team_id, studentId]);
-
-      if (status === 'ACCEPTED') {
-        const teamRes = await client.query(`
-          SELECT t.*, tk.min_team_size FROM teams t
-          JOIN tasks tk ON t.task_id = tk.id
-          WHERE t.id = $1
-        `, [inv.team_id]);
-        const team = teamRes.rows[0];
-        if (team) {
-          const acceptedRes = await client.query("SELECT count(*) FROM team_members WHERE team_id = $1 AND status = 'ACCEPTED'", [inv.team_id]);
-          const acceptedCount = parseInt(acceptedRes.rows[0].count);
-          if (acceptedCount >= (team.min_team_size || 2) && team.status === 'FORMING') {
-            await client.query("UPDATE teams SET status = 'READY', updated_at = NOW() WHERE id = $1", [inv.team_id]);
-          }
-        }
-      }
-
-      await client.query('COMMIT');
-      res.json({ success: true, status });
-    } catch (err) {
-      await client.query('ROLLBACK');
-      res.status(500).json({ error: 'Failed to respond to invitation' });
-    } finally {
-      client.release();
-    }
-  });
-
-  app.get('/api/team/my', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    const studentId = req.user.id;
-
-    const teamsRes = await pool.query(`
-      SELECT t.*, tk.title as task_title, tk.min_team_size, tk.max_team_size, u.full_name as leader_name, u.register_number as leader_regno
-      FROM teams t
-      JOIN tasks tk ON t.task_id = tk.id
-      JOIN users u ON t.leader_id = u.id
-      JOIN team_members tm ON t.id = tm.team_id
-      WHERE tm.student_id = $1 AND tm.status = 'ACCEPTED'
-      ORDER BY t.created_at DESC
-    `, [studentId]);
-
-    const invitationsRes = await pool.query(`
-      SELECT ti.*, t.team_name, tk.title as task_title, u.full_name as inviter_name
-      FROM team_invitations ti
-      JOIN teams t ON ti.team_id = t.id
-      JOIN tasks tk ON t.task_id = tk.id
-      JOIN users u ON ti.invited_by = u.id
-      WHERE ti.student_id = $1 AND ti.status = 'PENDING'
-      ORDER BY ti.created_at DESC
-    `, [studentId]);
-
-    res.json({ teams: teamsRes.rows, invitations: invitationsRes.rows });
-  });
-
-  app.get('/api/team/task/:taskId', authenticate, async (req: any, res) => {
-    const { taskId } = req.params;
-    const userId = req.user.id;
-
-    const teamRes = await pool.query(`
-      SELECT t.*, u.full_name as leader_name, u.register_number as leader_regno, tk.min_team_size, tk.max_team_size, tk.title as task_title
-      FROM teams t
-      JOIN users u ON t.leader_id = u.id
-      JOIN tasks tk ON t.task_id = tk.id
-      JOIN team_members tm ON t.id = tm.team_id
-      WHERE t.task_id = $1 AND tm.student_id = $2 AND tm.status = 'ACCEPTED'
-      LIMIT 1
-    `, [taskId, userId]);
-
-    const team = teamRes.rows[0] || null;
-    if (!team) return res.json({ team: null });
-
-    const membersRes = await pool.query(`
-      SELECT tm.*, u.full_name, u.register_number, u.username, u.email
-      FROM team_members tm
-      JOIN users u ON tm.student_id = u.id
-      WHERE tm.team_id = $1
-      ORDER BY tm.joined_at ASC
-    `, [team.id]);
-
-    const invitationsRes = await pool.query(`
-      SELECT ti.*, u.full_name as student_name
-      FROM team_invitations ti
-      JOIN users u ON ti.student_id = u.id
-      WHERE ti.team_id = $1 AND ti.status = 'PENDING'
-    `, [team.id]);
-
-    const submissionRes = await pool.query(`
-      SELECT * FROM team_submissions WHERE team_id = $1 ORDER BY created_at DESC LIMIT 1
-    `, [team.id]);
-
-    res.json({
-      team: {
-        ...team,
-        members: membersRes.rows,
-        invitations: invitationsRes.rows,
-        submission: submissionRes.rows[0] || null
-      }
-    });
-  });
-
-  app.delete('/api/team/member/:id', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    const { id } = req.params;
-    const leaderId = req.user.id;
-
-    const memRes = await pool.query(`
-      SELECT tm.*, t.leader_id FROM team_members tm
-      JOIN teams t ON tm.team_id = t.id
-      WHERE tm.id = $1
-    `, [id]);
-    const mem = memRes.rows[0];
-    if (!mem) return res.status(404).json({ error: 'Member not found' });
-    if (mem.leader_id.toString() !== leaderId.toString()) return res.status(403).json({ error: 'Only team leader can remove members' });
-
-    await pool.query('DELETE FROM team_members WHERE id = $1', [id]);
-    await pool.query('DELETE FROM team_invitations WHERE team_id = $1 AND student_id = $2', [mem.team_id, mem.student_id]);
-
-    res.json({ success: true });
-  });
-
-  app.delete('/api/team/:id', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    const { id } = req.params;
-    const leaderId = req.user.id;
-
-    const teamRes = await pool.query('SELECT * FROM teams WHERE id = $1 AND leader_id = $2', [id, leaderId]);
-    if (teamRes.rowCount === 0) return res.status(403).json({ error: 'Only team leader can delete team' });
-
-    await pool.query('DELETE FROM teams WHERE id = $1', [id]);
-    res.json({ success: true });
-  });
-
-  app.post('/api/team/submit', authenticate, authorize(['STUDENT']), upload.single('screenshot'), asyncHandler(async (req: any, res: any) => {
-    const { teamId, remarks } = req.body;
-    const leaderId = req.user.id;
-
-    const teamRes = await pool.query(`
-      SELECT t.*, tk.min_team_size, tk.title as task_title FROM teams t
-      JOIN tasks tk ON t.task_id = tk.id
-      WHERE t.id = $1 AND t.leader_id = $2
-    `, [teamId, leaderId]);
-    const team = teamRes.rows[0];
-    if (!team) return res.status(403).json({ error: 'Only team leader can submit proof' });
-
-    const acceptedRes = await pool.query("SELECT count(*) FROM team_members WHERE team_id = $1 AND status = 'ACCEPTED'", [teamId]);
-    const acceptedCount = parseInt(acceptedRes.rows[0].count);
-    if (acceptedCount < 1) {
-      return res.status(400).json({ error: 'At least 1 accepted member is required to submit task' });
-    }
-
-    const proofUrl = req.file?.path || req.file?.secure_url;
-    const publicId = req.file?.filename || req.file?.public_id;
-
-    if (!proofUrl) return res.status(400).json({ error: 'Screenshot file is required' });
-
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      const subRes = await client.query(`
-        INSERT INTO team_submissions (team_id, submitted_by, proof_url, cloudinary_public_id, remarks, status)
-        VALUES ($1, $2, $3, $4, $5, 'PENDING')
-        RETURNING *
-      `, [teamId, leaderId, proofUrl, publicId, remarks || null]);
-
-      await client.query("UPDATE teams SET status = 'SUBMITTED', updated_at = NOW() WHERE id = $1", [teamId]);
-
-      const membersRes = await client.query("SELECT student_id FROM team_members WHERE team_id = $1 AND status = 'ACCEPTED'", [teamId]);
-      for (const m of membersRes.rows) {
-        await client.query(`
-          INSERT INTO notifications (user_id, message, type)
-          VALUES ($1, $2, 'TEAM_SUBMISSION')
-        `, [m.student_id, `Team "${team.team_name}" submitted proof for task "${team.task_title}"`]);
-      }
-
-      await client.query('COMMIT');
-      res.json({ success: true, submission: subRes.rows[0] });
-    } catch (err) {
-      await client.query('ROLLBACK');
-      res.status(500).json({ error: 'Failed to submit team task' });
-    } finally {
-      client.release();
-    }
-  }));
-
-  app.get('/api/team/submissions', authenticate, async (req: any, res) => {
-    const { taskId } = req.query;
-
-    let query = `
-      SELECT ts.*, t.team_name, u.full_name as leader_name, u.register_number as leader_regno, t.task_id
-      FROM team_submissions ts
-      JOIN teams t ON ts.team_id = t.id
-      JOIN users u ON t.leader_id = u.id`;
-    const params: any[] = [];
-    if (taskId) {
-      query += ` WHERE t.task_id = $1`;
-      params.push(taskId);
-    }
-    query += ` ORDER BY ts.created_at DESC`;
-
-    const subsRes = await pool.query(query, params);
-    const submissions = subsRes.rows;
-
-    for (const sub of submissions) {
-      const memRes = await pool.query(`
-        SELECT tm.*, u.full_name, u.register_number, u.username
-        FROM team_members tm
-        JOIN users u ON tm.student_id = u.id
-        WHERE tm.team_id = $1 AND tm.status = 'ACCEPTED'
-      `, [sub.team_id]);
-      sub.members = memRes.rows;
-    }
-
-    res.json(submissions);
-  });
-
-  app.post('/api/team/review', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR', 'STUDENT']), async (req: any, res) => {
-    const { submissionId, status, feedback } = req.body;
-
-    const subRes = await pool.query('SELECT ts.*, t.task_id, t.team_name FROM team_submissions ts JOIN teams t ON ts.team_id = t.id WHERE ts.id = $1', [submissionId]);
-    const sub = subRes.rows[0];
-    if (!sub) return res.status(404).json({ error: 'Submission not found' });
-
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query(`
-        UPDATE team_submissions
-        SET status = $1, reviewed_by = $2, reviewed_at = NOW(), remarks = COALESCE($3, remarks)
-        WHERE id = $4
-      `, [status, req.user.id, feedback, submissionId]);
-
-      await client.query(`
-        UPDATE teams SET status = $1, updated_at = NOW() WHERE id = $2
-      `, [status, sub.team_id]);
-
-      if (status === 'APPROVED') {
-        const acceptedMembersRes = await client.query("SELECT student_id FROM team_members WHERE team_id = $1 AND status = 'ACCEPTED'", [sub.team_id]);
-        for (const mem of acceptedMembersRes.rows) {
-          await client.query(`
-            INSERT INTO task_submissions (task_id, user_id, status, screenshot_url, custom_field_value, verified_at, submitted_at)
-            VALUES ($1, $2, 'VERIFIED', $3, $4, NOW(), NOW())
-            ON CONFLICT (task_id, user_id) DO UPDATE
-            SET status = 'VERIFIED', screenshot_url = EXCLUDED.screenshot_url, custom_field_value = EXCLUDED.custom_field_value, verified_at = NOW(), updated_at = NOW()
-          `, [sub.task_id, mem.student_id, sub.proof_url, `Team: ${sub.team_name}`]);
-        }
-      }
-
-      await client.query('COMMIT');
-      res.json({ success: true, status });
-    } catch (err) {
-      await client.query('ROLLBACK');
-      res.status(500).json({ error: 'Failed to review team submission' });
-    } finally {
-      client.release();
-    }
-  });
-
   app.get('/api/team/report', authenticate, async (req: any, res) => {
     try {
       const teamsRes = await pool.query(`
@@ -3162,6 +2736,8 @@ async function startServer() {
           t.created_at,
           tk.id as task_id,
           tk.title as task_title,
+          tk.category as task_category,
+          tk.custom_field_label,
           leader.full_name as leader_name,
           leader.register_number as leader_regno,
           ts.status as submission_status,
