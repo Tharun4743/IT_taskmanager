@@ -3316,7 +3316,7 @@ export default function App() {
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-2 text-blue-600 hover:underline text-sm font-medium"
                           >
-                            <ExternalLink size={16} /> Visit External Link
+                            <ExternalLink size={16} /> Visit Apply Link
                           </a>
                         </div>
                       )}
@@ -4324,7 +4324,7 @@ export default function App() {
                         </div>
                         <div className="min-w-0">
                           <Input
-                            placeholder="External Link (Optional)"
+                            placeholder="Apply Link (Optional)"
                             value={newTask.external_link}
                             onChange={e => setNewTask(prev => ({ ...prev, external_link: e.target.value }))}
                           />
@@ -4824,7 +4824,7 @@ export default function App() {
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1.5 text-blue-600 hover:underline text-xs font-semibold bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100"
                             >
-                              <ExternalLink size={14} /> External Link
+                              <ExternalLink size={14} /> Apply Link
                             </a>
                           )}
                         </div>
