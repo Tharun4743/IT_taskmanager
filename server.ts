@@ -15,6 +15,7 @@ import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { pool, initDB } from './db.js';
+import { syncAndGenerateStudentDirectory, constantStudentByIdMap } from './studentDirectoryService.js';
 
 // ─── Async Route Error Wrapper ────────────────────────────────────────────────
 // Express 4 does not catch async errors automatically.
@@ -68,6 +69,7 @@ const upload = multer({
 async function startServer() {
   // Initialize PostgreSQL database schemas and tables
   await initDB();
+  await syncAndGenerateStudentDirectory().catch(err => console.error('[StudentDirectory] Startup sync warning:', err));
 
   const app = express();
 
@@ -118,19 +120,22 @@ async function startServer() {
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
     try {
       const decoded: any = jwt.verify(token, JWT_SECRET);
-      const dbUserRes = await pool.query('SELECT * FROM users WHERE id = $1 LIMIT 1', [decoded.id]);
-      const dbUser = dbUserRes.rows[0];
-      if (!dbUser) return res.status(401).json({ error: 'Unauthorized: User not found' });
+      let user: any = constantStudentByIdMap.get(decoded.id.toString());
+      if (!user) {
+        const dbUserRes = await pool.query('SELECT * FROM users WHERE id = $1 LIMIT 1', [decoded.id]);
+        user = dbUserRes.rows[0];
+      }
+      if (!user) return res.status(401).json({ error: 'Unauthorized: User not found' });
 
       req.user = {
-        id: dbUser.id,
-        username: dbUser.username,
-        role: dbUser.role,
-        department_id: dbUser.department_id,
-        class_id: dbUser.class_id,
-        is_coordinator: Boolean(dbUser.is_coordinator),
-        is_year_coordinator: Boolean(dbUser.is_year_coordinator),
-        year_scope: dbUser.year_scope,
+        id: user.id,
+        username: user.username || user.register_number,
+        role: user.role || 'STUDENT',
+        department_id: user.department_id,
+        class_id: user.class_id,
+        is_coordinator: Boolean(user.is_coordinator),
+        is_year_coordinator: Boolean(user.is_year_coordinator),
+        year_scope: user.year_scope,
       };
       next();
     } catch (e) {
@@ -584,6 +589,7 @@ async function startServer() {
         registrationNumber.trim(), hashed, deptId, clsId, fullName.trim(), registrationNumber.trim()
       ]);
       const u = newUserRes.rows[0];
+      await syncAndGenerateStudentDirectory().catch(err => console.error('[StudentDirectory] Sync on student create warning:', err));
       res.json({ id: u.id, username: u.username, role: u.role, department_id: u.department_id, class_id: u.class_id, full_name: u.full_name, register_number: u.register_number });
     } catch (e: any) {
       const isDuplicate = e.code === '23505';
@@ -766,7 +772,19 @@ async function startServer() {
     await pool.query('DELETE FROM task_submissions WHERE user_id = $1', [req.params.id]);
     await pool.query('DELETE FROM notifications WHERE user_id = $1', [req.params.id]);
     await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+    await syncAndGenerateStudentDirectory().catch(err => console.error('[StudentDirectory] Sync on delete warning:', err));
     res.json({ success: true });
+  });
+
+  // Export & Generate Year-Wise Folders & Section-Wise Files for Students
+  app.post('/api/admin/generate-student-directory', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), async (req: any, res) => {
+    try {
+      const result = await syncAndGenerateStudentDirectory();
+      res.json({ message: 'Student directory generated successfully', ...result });
+    } catch (err: any) {
+      console.error('[StudentDirectory] Failed to generate directory:', err);
+      res.status(500).json({ error: 'Failed to generate student directory', details: err.message });
+    }
   });
 
   // ── Tasks ─────────────────────────────────────────────────────────────────
