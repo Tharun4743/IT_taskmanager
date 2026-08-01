@@ -466,13 +466,44 @@ async function startServer() {
           ORDER BY c.name ASC, u.register_number ASC, u.full_name ASC
         `, [req.user.department_id, req.user.year_scope]);
       } else {
-        usersRes = await pool.query(`
-          SELECT u.*, c.name as class_name
-          FROM users u
-          LEFT JOIN classes c ON u.class_id = c.id
-          WHERE u.class_id = $1 AND u.role = 'STUDENT'
-          ORDER BY u.register_number ASC, u.full_name ASC
-        `, [req.user.class_id]);
+        const classIdStr = (req.user.class_id || '').toString();
+        const cachedStudents = constantStudentsByClassMap.get(classIdStr);
+
+        if (cachedStudents && cachedStudents.length > 0) {
+          const liveStatusRes = await pool.query('SELECT id, is_coordinator, is_active FROM users WHERE class_id = $1 AND role = \'STUDENT\'', [req.user.class_id]);
+          const liveCoordsMap = new Map<string, boolean>();
+          const liveActiveMap = new Map<string, boolean>();
+          liveStatusRes.rows.forEach(r => {
+            liveCoordsMap.set(r.id.toString(), Boolean(r.is_coordinator));
+            liveActiveMap.set(r.id.toString(), r.is_active !== false);
+          });
+
+          return res.json(cachedStudents.map(st => ({
+            id: st.id,
+            username: st.register_number,
+            role: 'STUDENT',
+            full_name: st.full_name,
+            email: st.email,
+            register_number: st.register_number,
+            gender: st.gender,
+            is_coordinator: liveCoordsMap.get(st.id.toString()) || false,
+            is_active: liveActiveMap.get(st.id.toString()) !== false,
+            department_id: st.department_id,
+            department_name: st.department_name,
+            class_id: st.class_id,
+            class_name: st.class_name,
+            is_year_coordinator: false,
+            year_scope: null,
+          })));
+        } else {
+          usersRes = await pool.query(`
+            SELECT u.*, c.name as class_name
+            FROM users u
+            LEFT JOIN classes c ON u.class_id = c.id
+            WHERE u.class_id = $1 AND u.role = 'STUDENT'
+            ORDER BY u.register_number ASC, u.full_name ASC
+          `, [req.user.class_id]);
+        }
       }
     } else {
       return res.status(403).json({ error: 'Forbidden' });
