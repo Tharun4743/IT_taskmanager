@@ -2023,6 +2023,19 @@ export default function App() {
     }
   };
 
+  const handleDeleteScreenshot = (taskId: number) => {
+    setSelectedFiles(prev => {
+      const next = { ...prev };
+      delete next[taskId];
+      return next;
+    });
+    const fileInput = document.getElementById(`file-${taskId}`) as HTMLInputElement | null;
+    if (fileInput) {
+      fileInput.value = '';
+    }
+    addToast('Screenshot removed.', 'info');
+  };
+
   const toggleTaskStatus = async (id: number | string, currentStatus: string) => {
     const newStatus = currentStatus === 'OPEN' ? 'CLOSED' : 'OPEN';
     setTasks(prev => prev.map(t => t.id.toString() === id.toString() ? { ...t, status: newStatus as any } : t));
@@ -5035,40 +5048,79 @@ export default function App() {
                                               <span className="text-[10px] font-medium text-zinc-400 ml-1">(Required)</span>
                                             </label>
                                             <div className="flex flex-col gap-3">
+                                              <input
+                                                type="file"
+                                                accept="image/*"
+                                                id={`file-${task.id}`}
+                                                className="hidden"
+                                                onChange={e => handleFileUpload(task.id, e.target.files?.[0] || null)}
+                                              />
                                               <div className="flex items-center gap-3">
-                                                <input
-                                                  type="file"
-                                                  accept="image/*"
-                                                  id={`file-${task.id}`}
-                                                  className="hidden"
-                                                  onChange={e => handleFileUpload(task.id, e.target.files?.[0] || null)}
-                                                />
                                                 <div className="flex-1 w-full">
-                                                  <div
-                                                    className={cn(
-                                                      'relative w-full border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center transition-all cursor-pointer group',
-                                                      selectedFiles[task.id] ? 'border-emerald-500 bg-emerald-50 text-emerald-600' : isDraggingScreenshot === task.id ? 'border-blue-500 bg-blue-50 scale-105' : 'border-red-200 bg-white text-zinc-400 hover:border-black hover:text-black'
-                                                    )}
-                                                    onDragOver={e => { e.preventDefault(); setIsDraggingScreenshot(task.id); }}
-                                                    onDragLeave={() => setIsDraggingScreenshot(null)}
-                                                    onDrop={e => { e.preventDefault(); setIsDraggingScreenshot(null); handleFileUpload(task.id, e.dataTransfer.files[0]); }}
-                                                    onClick={() => document.getElementById(`file-${task.id}`)?.click()}
-                                                  >
-                                                    <input type="file" id={`file-${task.id}`} className="hidden" accept="image/*" onChange={e => handleFileUpload(task.id, e.target.files?.[0] || null)} />
-                                                    {selectedFiles[task.id] ? (
-                                                      <>
-                                                        <CheckCircle2 size={24} className="mb-2 text-emerald-500" />
-                                                        <p className="font-bold text-center text-emerald-700 text-[10px] md:text-sm uppercase tracking-wide">Image Loaded</p>
-                                                        <p className="text-[10px] text-emerald-600/70 truncate w-full max-w-[200px] text-center">{selectedFiles[task.id].name}</p>
-                                                      </>
-                                                    ) : (
-                                                      <>
-                                                        <Upload size={24} className="mb-2 group-hover:-translate-y-1 transition-transform" />
-                                                        <p className="font-bold text-center text-[10px] md:text-sm uppercase tracking-wide">Upload Screenshot</p>
-                                                        <p className="text-[10px] opacity-60 text-center">Drag or Click to upload</p>
-                                                      </>
-                                                    )}
-                                                  </div>
+                                                  {selectedFiles[task.id] ? (
+                                                    <div className="relative w-full border-2 border-emerald-400 bg-emerald-50/80 rounded-xl p-3 md:p-4 flex flex-col md:flex-row items-center justify-between gap-3 shadow-xs">
+                                                      <div className="flex items-center gap-3 min-w-0 flex-1 w-full">
+                                                        <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-emerald-300 bg-white shrink-0 shadow-sm flex items-center justify-center">
+                                                          <img
+                                                            src={URL.createObjectURL(selectedFiles[task.id])}
+                                                            alt="Screenshot preview"
+                                                            className="w-full h-full object-cover"
+                                                          />
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                          <div className="flex items-center gap-1 text-emerald-700 font-bold text-xs md:text-sm">
+                                                            <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
+                                                            <span>Screenshot Loaded</span>
+                                                          </div>
+                                                          <p className="text-xs text-zinc-700 font-semibold truncate mt-0.5" title={selectedFiles[task.id].name}>
+                                                            {selectedFiles[task.id].name}
+                                                          </p>
+                                                          <p className="text-[10px] text-emerald-700/70 font-medium">
+                                                            {(selectedFiles[task.id].size / (1024 * 1024)).toFixed(2)} MB
+                                                          </p>
+                                                        </div>
+                                                      </div>
+                                                      <div className="flex items-center gap-2 shrink-0 w-full md:w-auto justify-end">
+                                                        <button
+                                                          type="button"
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            document.getElementById(`file-${task.id}`)?.click();
+                                                          }}
+                                                          className="text-xs font-semibold text-zinc-700 hover:text-zinc-900 bg-white hover:bg-zinc-100 px-2.5 py-1.5 rounded-lg border border-zinc-200 transition-colors flex items-center gap-1 shadow-xs"
+                                                          title="Change screenshot"
+                                                        >
+                                                          <Upload size={13} /> Change
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDeleteScreenshot(task.id);
+                                                          }}
+                                                          className="text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg border border-red-200 transition-colors flex items-center gap-1.5 shadow-xs"
+                                                          title="Delete screenshot if wrongly uploaded before submission"
+                                                        >
+                                                          <Trash2 size={14} /> Delete
+                                                        </button>
+                                                      </div>
+                                                    </div>
+                                                  ) : (
+                                                    <div
+                                                      className={cn(
+                                                        'relative w-full border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center transition-all cursor-pointer group',
+                                                        isDraggingScreenshot === task.id ? 'border-blue-500 bg-blue-50 scale-105' : 'border-red-200 bg-white text-zinc-400 hover:border-black hover:text-black'
+                                                      )}
+                                                      onDragOver={e => { e.preventDefault(); setIsDraggingScreenshot(task.id); }}
+                                                      onDragLeave={() => setIsDraggingScreenshot(null)}
+                                                      onDrop={e => { e.preventDefault(); setIsDraggingScreenshot(null); handleFileUpload(task.id, e.dataTransfer.files[0]); }}
+                                                      onClick={() => document.getElementById(`file-${task.id}`)?.click()}
+                                                    >
+                                                      <Upload size={24} className="mb-2 group-hover:-translate-y-1 transition-transform" />
+                                                      <p className="font-bold text-center text-[10px] md:text-sm uppercase tracking-wide">Upload Screenshot</p>
+                                                      <p className="text-[10px] opacity-60 text-center">Drag or Click to upload (Max 5MB)</p>
+                                                    </div>
+                                                  )}
                                                 </div>
                                                 <Button
                                                   onClick={() => submitTask(task.id)}
@@ -6498,15 +6550,30 @@ export default function App() {
                           <div>
                             <label className="text-xs font-bold text-zinc-700 mb-1.5 block">Proof Screenshot <span className="text-red-500">*</span></label>
                             {teamProofFile ? (
-                              <div className="bg-white p-3 rounded-xl border border-indigo-200 flex items-center justify-between">
-                                <div className="flex items-center gap-2 overflow-hidden">
-                                  <FileImage size={18} className="text-indigo-600 shrink-0" />
-                                  <span className="text-xs font-medium text-zinc-800 truncate">{teamProofFile.name}</span>
+                              <div className="bg-white p-3 rounded-xl border border-indigo-200 flex items-center justify-between gap-3 shadow-xs">
+                                <div className="flex items-center gap-3 overflow-hidden min-w-0">
+                                  <div className="w-12 h-12 rounded-lg overflow-hidden border border-indigo-100 bg-zinc-50 shrink-0 flex items-center justify-center">
+                                    <img
+                                      src={URL.createObjectURL(teamProofFile)}
+                                      alt="Team proof preview"
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-semibold text-zinc-800 truncate" title={teamProofFile.name}>{teamProofFile.name}</p>
+                                    <p className="text-[10px] text-zinc-400 font-medium">{(teamProofFile.size / (1024 * 1024)).toFixed(2)} MB</p>
+                                  </div>
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => setTeamProofFile(null)}
-                                  className="text-xs font-bold text-red-600 hover:text-red-800 flex items-center gap-1 bg-red-50 px-2.5 py-1 rounded-lg border border-red-200 shrink-0 ml-2"
+                                  onClick={() => {
+                                    setTeamProofFile(null);
+                                    const teamInput = document.getElementById('team-proof-file-input') as HTMLInputElement | null;
+                                    if (teamInput) teamInput.value = '';
+                                    addToast('Team proof screenshot removed', 'info');
+                                  }}
+                                  className="text-xs font-bold text-red-600 hover:text-red-800 flex items-center gap-1 bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg border border-red-200 shrink-0 ml-2 transition-colors"
+                                  title="Delete screenshot before submission"
                                 >
                                   <Trash2 size={13} /> Delete / Change
                                 </button>
@@ -6514,6 +6581,7 @@ export default function App() {
                             ) : (
                               <input
                                 type="file"
+                                id="team-proof-file-input"
                                 accept="image/*"
                                 onChange={e => setTeamProofFile(e.target.files?.[0] || null)}
                                 className="w-full text-xs text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer"
