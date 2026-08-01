@@ -5030,10 +5030,14 @@ export default function App() {
                                   return (
                                     <div className="space-y-4">
                                       {submission?.status === 'REJECTED' && (
-                                        <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600">
-                                          <p className="font-bold mb-1">Status: Rejected</p>
-                                          <p className="mb-1 font-semibold">Reason: {submission.rejection_reason}</p>
-                                          <p>Please correct your work and resubmit proof below.</p>
+                                        <div className="p-4 bg-red-50 border-2 border-red-200 rounded-xl text-xs text-red-700 shadow-sm space-y-2">
+                                          <p className="font-extrabold text-sm mb-1 flex items-center gap-1.5 text-red-800">
+                                            <XCircle size={16} className="text-red-500" /> Submission Rejected by Advisor / HOD
+                                          </p>
+                                          <p className="font-medium bg-white/80 p-2.5 rounded-lg border border-red-200 text-zinc-900">
+                                            <strong>Note / Reason:</strong> "{submission.rejection_reason || submission.verification_note || 'No specific note provided'}"
+                                          </p>
+                                          <p className="font-bold text-red-700">Please review the reason above, update your proof, and resubmit below.</p>
                                         </div>
                                       )}
 
