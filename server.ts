@@ -114,17 +114,17 @@ async function startServer() {
     res.status(200).json({ status: 'ok' });
   });
 
-  // Auth Middleware
+  // Auth Middleware - Fetches dynamic permissions (is_coordinator, role, class_id) live from database
   const authenticate = async (req: any, res: any, next: any) => {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
     try {
       const decoded: any = jwt.verify(token, JWT_SECRET);
-      let user: any = constantStudentByIdMap.get(decoded.id.toString());
-      if (!user) {
-        const dbUserRes = await pool.query('SELECT * FROM users WHERE id = $1 LIMIT 1', [decoded.id]);
-        user = dbUserRes.rows[0];
-      }
+      const dbUserRes = await pool.query(
+        'SELECT id, username, role, department_id, class_id, is_coordinator, is_year_coordinator, year_scope, register_number FROM users WHERE id = $1 LIMIT 1',
+        [decoded.id]
+      );
+      const user = dbUserRes.rows[0];
       if (!user) return res.status(401).json({ error: 'Unauthorized: User not found' });
 
       req.user = {
@@ -698,6 +698,12 @@ async function startServer() {
     }
 
     await pool.query('UPDATE users SET is_coordinator = $1, updated_at = NOW() WHERE id = $2', [is_coordinator, req.params.id]);
+
+    const cached = constantStudentByIdMap.get(req.params.id.toString());
+    if (cached) {
+      (cached as any).is_coordinator = Boolean(is_coordinator);
+    }
+
     res.json({ success: true });
   });
 
