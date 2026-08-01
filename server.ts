@@ -1307,7 +1307,7 @@ async function startServer() {
 
   // ── Team Tasks Management APIs ─────────────────────────────────────────────
   
-  // 1. Get eligible classmates for team task (excluding current user and already grouped students)
+  // 1. Get eligible classmates for team task (excluding current user and already ACCEPTED team members/leaders)
   app.get('/api/team/classmates/:taskId', authenticate, authorize(['STUDENT']), async (req: any, res) => {
     const student = req.user;
     if (!student.class_id) return res.status(400).json({ error: 'You are not assigned to any class.' });
@@ -1323,7 +1323,7 @@ async function startServer() {
             SELECT tm.student_id 
             FROM team_members tm
             JOIN teams t ON tm.team_id = t.id
-            WHERE t.task_id = $3 AND tm.status IN ('PENDING', 'ACCEPTED') AND t.status != 'REJECTED'
+            WHERE t.task_id = $3 AND tm.status = 'ACCEPTED' AND t.status != 'REJECTED'
           )
           AND u.id NOT IN (
             SELECT leader_id FROM teams WHERE task_id = $3 AND status != 'REJECTED'
@@ -1355,12 +1355,12 @@ async function startServer() {
     const existingTeamRes = await pool.query(`
       SELECT t.id FROM teams t
       JOIN team_members tm ON tm.team_id = t.id
-      WHERE t.task_id = $1 AND tm.student_id = $2 AND tm.status IN ('PENDING', 'ACCEPTED') AND t.status != 'REJECTED'
+      WHERE t.task_id = $1 AND tm.student_id = $2 AND tm.status = 'ACCEPTED' AND t.status != 'REJECTED'
       LIMIT 1
     `, [taskId, student.id]);
 
     if (existingTeamRes.rowCount && existingTeamRes.rowCount > 0) {
-      return res.status(400).json({ error: 'You are already part of a team for this task' });
+      return res.status(400).json({ error: 'You have already accepted a team for this task' });
     }
 
     const memberIds: string[] = Array.isArray(members) ? members.filter((m: string) => m && m !== student.id) : [];
@@ -1379,13 +1379,16 @@ async function startServer() {
       }
 
       const busyMembersRes = await pool.query(`
-        SELECT tm.student_id FROM team_members tm
+        SELECT u.full_name FROM team_members tm
         JOIN teams t ON tm.team_id = t.id
-        WHERE t.task_id = $1 AND tm.student_id = ANY($2) AND tm.status IN ('PENDING', 'ACCEPTED') AND t.status != 'REJECTED'
+        JOIN users u ON tm.student_id = u.id
+        WHERE t.task_id = $1 AND tm.student_id = ANY($2) AND tm.status = 'ACCEPTED' AND t.status != 'REJECTED'
+        LIMIT 1
       `, [taskId, memberIds]);
 
       if (busyMembersRes.rowCount && busyMembersRes.rowCount > 0) {
-        return res.status(400).json({ error: 'One or more invited members are already in another team for this task' });
+        const busyName = busyMembersRes.rows[0].full_name || 'One or more invited members';
+        return res.status(400).json({ error: `${busyName} has already accepted an invitation for another team for this task.` });
       }
     }
 
@@ -1459,6 +1462,22 @@ async function startServer() {
 
     if (currentMemberCount + newStudentIds.length > maxTeamSize) {
       return res.status(400).json({ error: `Inviting these members exceeds maximum team limit of ${maxTeamSize}` });
+    }
+
+    // Check if any target student has already ACCEPTED another team for this task
+    if (newStudentIds.length > 0) {
+      const busyMembersRes = await pool.query(`
+        SELECT u.full_name FROM team_members tm
+        JOIN teams t ON tm.team_id = t.id
+        JOIN users u ON tm.student_id = u.id
+        WHERE t.task_id = $1 AND tm.student_id = ANY($2) AND tm.status = 'ACCEPTED' AND t.status != 'REJECTED'
+        LIMIT 1
+      `, [team.task_id, newStudentIds]);
+
+      if (busyMembersRes.rowCount && busyMembersRes.rowCount > 0) {
+        const busyName = busyMembersRes.rows[0].full_name || 'One or more invited members';
+        return res.status(400).json({ error: `${busyName} has already accepted an invitation for another team for this task.` });
+      }
     }
 
     const client = await pool.connect();
@@ -2824,20 +2843,51 @@ async function startServer() {
         query += ` AND leader.department_id = $${params.length}`;
       }
 
+      // Optional filters passed from UI report generator (HOD / Year Coordinator / Advisor filters)
+      if (req.query.class_ids) {
+        const cids = String(req.query.class_ids).split(',').map(s => s.trim()).filter(Boolean);
+        if (cids.length > 0) {
+          params.push(cids);
+          query += ` AND (t.class_id = ANY($${params.length}) OR leader.class_id = ANY($${params.length}))`;
+        }
+      }
+
+      if (req.query.task_id) {
+        params.push(req.query.task_id);
+        query += ` AND tk.id = $${params.length}`;
+      }
+
       query += ' ORDER BY tk.title ASC, t.team_name ASC';
       const teamsRes = await pool.query(query, params);
 
       const teams = teamsRes.rows;
+      const teamIds = teams.map(t => t.team_id);
 
-      for (const team of teams) {
+      if (teamIds.length > 0) {
         const membersRes = await pool.query(`
-          SELECT u.full_name, u.register_number, tm.status
+          SELECT tm.team_id, u.full_name, u.register_number, tm.status
           FROM team_members tm
           JOIN users u ON tm.student_id = u.id
-          WHERE tm.team_id = $1
+          WHERE tm.team_id = ANY($1)
           ORDER BY tm.joined_at ASC
-        `, [team.team_id]);
-        team.members = membersRes.rows;
+        `, [teamIds]);
+
+        const membersByTeam = new Map<string, any[]>();
+        membersRes.rows.forEach(m => {
+          const key = m.team_id.toString();
+          if (!membersByTeam.has(key)) membersByTeam.set(key, []);
+          membersByTeam.get(key)!.push({
+            full_name: m.full_name,
+            register_number: m.register_number,
+            status: m.status
+          });
+        });
+
+        teams.forEach(team => {
+          team.members = membersByTeam.get(team.team_id.toString()) || [];
+        });
+      } else {
+        teams.forEach(team => { team.members = []; });
       }
 
       res.json(teams);

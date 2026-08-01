@@ -2145,18 +2145,24 @@ export default function App() {
     // 1. Scope students by role and optional classIds filter
     const targetStudents = users.filter(u => {
       if (u.role !== 'STUDENT') return false;
+
+      let inScope = true;
       if (isClsRole && !isAdminRole && !isHODRole && !isYearCoordRole) {
         const cid = (user?.class_id || myClass?.id)?.toString();
-        return cid ? u.class_id?.toString() === cid : false;
-      }
-      if (selectedClassIds.length > 0) return selectedClassIds.includes(u.class_id?.toString() || '');
-      if (isYearCoordRole && !isAdminRole && !isHODRole) {
+        inScope = cid ? u.class_id?.toString() === cid : false;
+      } else if (isYearCoordRole && !isAdminRole && !isHODRole) {
         const sc = classes.find(c => c.id.toString() === u.class_id?.toString());
-        return u.department_id?.toString() === user?.department_id?.toString() && Number(sc?.year) === Number(user?.year_scope);
+        inScope = u.department_id?.toString() === user?.department_id?.toString() && Number(sc?.year) === Number(user?.year_scope);
+      } else if (isHODRole && !isAdminRole) {
+        inScope = u.department_id?.toString() === user?.department_id?.toString();
       }
-      if (isHODRole && !isAdminRole) {
-        return u.department_id?.toString() === user?.department_id?.toString();
+
+      if (!inScope) return false;
+
+      if (selectedClassIds.length > 0) {
+        return selectedClassIds.includes(u.class_id?.toString() || '');
       }
+
       return true;
     });
 
@@ -2338,7 +2344,9 @@ export default function App() {
     // ── SHEET 3: Team Wise Report ──────────────────────────────────────────────
     const teamRows: any[] = [];
     try {
-      const teamRes = await fetch(`${API_URL}/api/team/report`, {
+      const classQuery = selectedClassIds.length > 0 ? `?class_ids=${encodeURIComponent(selectedClassIds.join(','))}` : '';
+      const taskQuery = filters?.taskId ? `${classQuery ? '&' : '?'}task_id=${encodeURIComponent(filters.taskId)}` : '';
+      const teamRes = await fetch(`${API_URL}/api/team/report${classQuery}${taskQuery}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (teamRes.ok) {
@@ -5914,22 +5922,56 @@ export default function App() {
                     );
                   })()}
 
-                  {/* Year Coordinator: single class dropdown */}
-                  {user?.is_year_coordinator && !isAdmin && !isHOD && (
+                  {/* Year Coordinator: multi-class checkbox picker */}
+                  {user?.is_year_coordinator && !isAdmin && !isHOD && (() => {
+                    const availableClasses = classes.filter(c => Number(c.year) === Number(user?.year_scope) && c.department_id?.toString() === user?.department_id?.toString());
+                    return (
+                      <div>
+                        <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5">
+                          <Users size={11} />
+                          Select Classes <span className="normal-case text-zinc-300 font-medium">(pick multiple)</span>
+                        </label>
+                        <div className="max-h-40 overflow-y-auto border border-zinc-100 rounded-2xl bg-zinc-50 p-3 flex flex-col gap-2">
+                          {availableClasses.slice().sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' })).map((c: any) => {
+                            const cid = c.id.toString();
+                            const checked = reportFilters.classIds.includes(cid);
+                            return (
+                              <label key={cid} className="flex items-center gap-3 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => setReportFilters(prev => ({
+                                    ...prev,
+                                    classIds: checked
+                                      ? prev.classIds.filter(id => id !== cid)
+                                      : [...prev.classIds, cid]
+                                  }))}
+                                  className="w-4 h-4 rounded accent-blue-600 cursor-pointer"
+                                />
+                                <span className={`text-sm font-bold transition-colors ${checked ? 'text-blue-700' : 'text-zinc-700 group-hover:text-zinc-900'}`}>{c.name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        {reportFilters.classIds.length > 0 && (
+                          <p className="text-[10px] font-bold text-blue-600 mt-1.5">
+                            {reportFilters.classIds.length} class{reportFilters.classIds.length > 1 ? 'es' : ''} selected — report will combine all selected classes
+                          </p>
+                        )}
+                        {reportFilters.classIds.length === 0 && (
+                          <p className="text-[10px] font-medium text-zinc-400 mt-1.5">No class selected — will include all year classes</p>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Class Advisor & Student Coordinator: assigned class indicator */}
+                  {isClsRole && !isAdmin && !isHOD && !user?.is_year_coordinator && (
                     <div>
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 block">Target Class</label>
-                      <select
-                        className="w-full p-3 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                        value={reportFilters.classIds[0] || ''}
-                        onChange={(e) => setReportFilters(prev => ({ ...prev, classIds: e.target.value ? [e.target.value] : [] }))}
-                      >
-                        <option value="">All Year Classes</option>
-                        {classes
-                          .filter(c => Number(c.year) === Number(user?.year_scope) && c.department_id?.toString() === user?.department_id?.toString())
-                          .map(c => (
-                            <option key={c.id} value={c.id.toString()}>{c.name}</option>
-                          ))}
-                      </select>
+                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 block">Assigned Class</label>
+                      <div className="p-3 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold text-zinc-800">
+                        {myClass?.name || classes.find(c => c.id.toString() === user?.class_id?.toString())?.name || 'My Class'}
+                      </div>
                     </div>
                   )}
 
