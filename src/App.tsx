@@ -5952,7 +5952,7 @@ export default function App() {
                                   )}
                                 </div>
 
-                                {(isHOD || isAdmin) && sub.status === 'SUBMITTED' && (
+                                {(isHOD || isAdmin || isAdvisor || isCoordinator) && sub.status === 'SUBMITTED' && (
                                   <div className="flex gap-2 mt-4">
                                     <Button
                                       variant="success"
