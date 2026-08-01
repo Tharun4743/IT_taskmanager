@@ -1674,7 +1674,59 @@ async function startServer() {
     }
   });
 
-  // 6. GET /api/team/task/:taskId
+  // 6. DELETE /api/team/:teamId (Leader disbands team before final submission)
+  app.delete('/api/team/:teamId', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    const teamId = req.params.teamId;
+    const student = req.user;
+
+    const teamRes = await pool.query('SELECT * FROM teams WHERE id = $1 LIMIT 1', [teamId]);
+    const team = teamRes.rows[0];
+    if (!team) return res.status(404).json({ error: 'Team not found' });
+    if (team.leader_id.toString() !== student.id.toString()) {
+      return res.status(403).json({ error: 'Only the team leader can disband the team' });
+    }
+    if (['SUBMITTED', 'APPROVED'].includes(team.status)) {
+      return res.status(400).json({ error: 'Cannot disband team after proof submission' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM team_invitations WHERE team_id = $1', [teamId]);
+      await client.query('DELETE FROM team_members WHERE team_id = $1', [teamId]);
+      await client.query('DELETE FROM team_submissions WHERE team_id = $1', [teamId]);
+      await client.query('DELETE FROM teams WHERE id = $1', [teamId]);
+      await client.query('COMMIT');
+      res.json({ success: true });
+    } catch (err: any) {
+      await client.query('ROLLBACK');
+      res.status(500).json({ error: 'Failed to disband team' });
+    } finally {
+      client.release();
+    }
+  });
+
+  // 7. POST /api/team/leave (Member leaves team before final submission)
+  app.post('/api/team/leave', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    const { teamId } = req.body;
+    const student = req.user;
+
+    const teamRes = await pool.query('SELECT * FROM teams WHERE id = $1 LIMIT 1', [teamId]);
+    const team = teamRes.rows[0];
+    if (!team) return res.status(404).json({ error: 'Team not found' });
+    if (team.leader_id.toString() === student.id.toString()) {
+      return res.status(400).json({ error: 'Team leaders cannot leave. Use disband team instead.' });
+    }
+    if (['SUBMITTED', 'APPROVED'].includes(team.status)) {
+      return res.status(400).json({ error: 'Cannot leave team after proof submission' });
+    }
+
+    await pool.query('DELETE FROM team_members WHERE team_id = $1 AND student_id = $2', [teamId, student.id]);
+    await pool.query('UPDATE team_invitations SET status = \'EXPIRED\' WHERE team_id = $1 AND student_id = $2', [teamId, student.id]);
+    res.json({ success: true });
+  });
+
+  // 8. GET /api/team/task/:taskId
   app.get('/api/team/task/:taskId', authenticate, async (req: any, res) => {
     const taskId = req.params.taskId;
     const userId = req.user.id;
