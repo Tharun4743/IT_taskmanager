@@ -2614,6 +2614,26 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  app.post('/api/submissions/batch-verify', authenticate, authorize(['HOD', 'SUPREME_ADMIN', 'STUDENT', 'CLASS_ADVISOR']), async (req: any, res) => {
+    const { submission_ids, verification_note } = req.body;
+    if (!Array.isArray(submission_ids) || submission_ids.length === 0) {
+      return res.status(400).json({ error: 'submission_ids array is required' });
+    }
+
+    if (req.user.role === 'STUDENT' && !req.user.is_coordinator) {
+      return res.status(403).json({ error: 'Only student coordinators can verify' });
+    }
+
+    const note = verification_note || 'Batch verified';
+    await pool.query(`
+      UPDATE task_submissions
+      SET status = 'VERIFIED', verification_note = $1, verified_at = CURRENT_TIMESTAMP, updated_at = NOW()
+      WHERE id = ANY($2) AND status != 'VERIFIED'
+    `, [note, submission_ids]);
+
+    res.json({ success: true, count: submission_ids.length });
+  });
+
   app.patch('/api/submissions/:id/verify', authenticate, authorize(['HOD', 'SUPREME_ADMIN', 'STUDENT', 'CLASS_ADVISOR']), async (req: any, res) => {
     const { status, verification_note, rejection_reason } = req.body;
 

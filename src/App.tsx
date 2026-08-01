@@ -961,6 +961,8 @@ export default function App() {
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
   const [isUploadingPoster, setIsUploadingPoster] = useState(false);
   const [selectedPosterModal, setSelectedPosterModal] = useState<string | null>(null);
+  const [studentTaskFilter, setStudentTaskFilter] = useState<'ALL' | 'PENDING_ACTION' | 'UNDER_REVIEW' | 'VERIFIED' | 'OVERDUE'>('ALL');
+  const [selectedBatchSubmissions, setSelectedBatchSubmissions] = useState<string[]>([]);
   const [sharedTaskModal, setSharedTaskModal] = useState<Task | null>(null);
   const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
 
@@ -4726,7 +4728,73 @@ export default function App() {
                       ))}
                     </div>
                   )}
-                  {tasks.map(task => {
+                  {isStudent && (
+                    <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar mb-4">
+                      <button
+                        type="button"
+                        onClick={() => setStudentTaskFilter('ALL')}
+                        className={cn(
+                          "px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border cursor-pointer",
+                          studentTaskFilter === 'ALL' ? "bg-black text-white border-black shadow-sm" : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
+                        )}
+                      >
+                        All Tasks ({tasks.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStudentTaskFilter('PENDING_ACTION')}
+                        className={cn(
+                          "px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border cursor-pointer flex items-center gap-1.5",
+                          studentTaskFilter === 'PENDING_ACTION' ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                        )}
+                      >
+                        <Clock size={14} /> Pending Action
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStudentTaskFilter('UNDER_REVIEW')}
+                        className={cn(
+                          "px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border cursor-pointer flex items-center gap-1.5",
+                          studentTaskFilter === 'UNDER_REVIEW' ? "bg-amber-600 text-white border-amber-600 shadow-sm" : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
+                        )}
+                      >
+                        <Clock size={14} /> Under Review
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStudentTaskFilter('VERIFIED')}
+                        className={cn(
+                          "px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border cursor-pointer flex items-center gap-1.5",
+                          studentTaskFilter === 'VERIFIED' ? "bg-emerald-600 text-white border-emerald-600 shadow-sm" : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                        )}
+                      >
+                        <CheckCircle2 size={14} /> Verified
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStudentTaskFilter('OVERDUE')}
+                        className={cn(
+                          "px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border cursor-pointer flex items-center gap-1.5",
+                          studentTaskFilter === 'OVERDUE' ? "bg-rose-600 text-white border-rose-600 shadow-sm" : "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
+                        )}
+                      >
+                        <AlertTriangle size={14} /> Overdue / Closed
+                      </button>
+                    </div>
+                  )}
+
+                  {tasks.filter(task => {
+                    if (!isStudent || studentTaskFilter === 'ALL') return true;
+                    const sub = submissions.find(s => String(s.task_id) === String(task.id) && String(s.user_id) === String(user?.id));
+                    const isDeadlinePassed = task.deadline && new Date(task.deadline) < new Date();
+                    const isClosed = task.status === 'CLOSED' || isDeadlinePassed;
+
+                    if (studentTaskFilter === 'PENDING_ACTION') return !sub && !isClosed;
+                    if (studentTaskFilter === 'UNDER_REVIEW') return sub?.status === 'SUBMITTED';
+                    if (studentTaskFilter === 'VERIFIED') return sub?.status === 'VERIFIED';
+                    if (studentTaskFilter === 'OVERDUE') return (!sub && isClosed) || sub?.status === 'REJECTED';
+                    return true;
+                  }).map(task => {
                     const submission = submissions.find(s => s.task_id === task.id && s.user_id?.toString() === user?.id?.toString());
                     const isDeadlinePassed = task.deadline && new Date(task.deadline) < new Date();
                     const isWithin24h = task.deadline && !isDeadlinePassed && (new Date(task.deadline).getTime() - new Date().getTime()) < 24 * 60 * 60 * 1000;

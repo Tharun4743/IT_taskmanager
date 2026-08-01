@@ -1,0 +1,16 @@
+{
+  "short_name": "VSBEC IT",
+  "name": "VSBEC IT Academic Task Management System",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#ffffff",
+  "theme_color": "#09090b",
+  "display": "standalone",
+  "orientation": "portrait"
+}
