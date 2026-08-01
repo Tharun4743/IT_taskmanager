@@ -5967,7 +5967,7 @@ export default function App() {
                   })()}
 
                   {/* Class Advisor & Student Coordinator: assigned class indicator */}
-                  {isClsRole && !isAdmin && !isHOD && !user?.is_year_coordinator && (
+                  {(isAdvisor || isCoordinator) && !isAdmin && !isHOD && !user?.is_year_coordinator && (
                     <div>
                       <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 block">Assigned Class</label>
                       <div className="p-3 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold text-zinc-800">
