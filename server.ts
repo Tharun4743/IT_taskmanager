@@ -15,7 +15,7 @@ import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { pool, initDB } from './db.js';
-import { syncAndGenerateStudentDirectory, constantStudentByIdMap } from './studentDirectoryService.js';
+import { syncAndGenerateStudentDirectory, constantStudentByIdMap, constantStudentsByClassMap } from './studentDirectoryService.js';
 
 // ─── Async Route Error Wrapper ────────────────────────────────────────────────
 // Express 4 does not catch async errors automatically.
