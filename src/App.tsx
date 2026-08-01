@@ -276,6 +276,68 @@ const getCloudinaryThumbnail = (url: string | undefined | null, width = 400) => 
   return url;
 };
 
+const getStudentTaskStatusBadge = (task: any, user: any, submissions: any[]) => {
+  if (user?.role !== 'STUDENT') {
+    return (
+      <span className={cn(
+        "px-3 py-1 rounded-full text-xs font-bold border",
+        task.status === 'OPEN' ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-zinc-100 text-zinc-600 border-zinc-200"
+      )}>
+        {task.status}
+      </span>
+    );
+  }
+
+  const sub = submissions.find(s => String(s.task_id) === String(task.id) && String(s.user_id) === String(user?.id));
+  if (sub) {
+    if (sub.status === 'VERIFIED') {
+      return (
+        <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 inline-flex items-center gap-1">
+          <CheckCircle2 size={12} /> VERIFIED
+        </span>
+      );
+    }
+    if (sub.status === 'SUBMITTED') {
+      return (
+        <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-600 border border-amber-200 inline-flex items-center gap-1">
+          <Clock size={12} /> PENDING VERIFICATION
+        </span>
+      );
+    }
+    if (sub.status === 'REJECTED') {
+      return (
+        <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-600 border border-red-200 inline-flex items-center gap-1">
+          <XCircle size={12} /> REJECTED
+        </span>
+      );
+    }
+    if (sub.status === 'NOT_PARTICIPATING') {
+      return (
+        <span className="px-3 py-1 rounded-full text-xs font-bold bg-orange-50 text-orange-600 border border-orange-200 inline-flex items-center gap-1">
+          <AlertTriangle size={12} /> NOT INTERESTED
+        </span>
+      );
+    }
+  }
+
+  const isDeadlinePassed = task.deadline && new Date(task.deadline) < new Date();
+  const isClosed = task.status === 'CLOSED' || isDeadlinePassed;
+
+  if (isClosed) {
+    return (
+      <span className="px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-600 border border-rose-200 inline-flex items-center gap-1">
+        <Clock size={12} /> INCOMPLETE (CLOSED)
+      </span>
+    );
+  }
+
+  return (
+    <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-600 border border-blue-200 inline-flex items-center gap-1">
+      <Clock size={12} /> PENDING SUBMISSION
+    </span>
+  );
+};
+
 interface StudentStats {
   total_tasks: number;
   verified_tasks: number;
@@ -3730,12 +3792,7 @@ export default function App() {
                             } • {new Date(task.created_at).toLocaleDateString()}
                           </p>
                         </div>
-                        <span className={cn(
-                          "px-3 py-1 rounded-full text-xs font-medium",
-                          task.status === 'OPEN' ? "bg-emerald-50 text-emerald-600" : "bg-zinc-200 text-zinc-600"
-                        )}>
-                          {task.status}
-                        </span>
+                        {getStudentTaskStatusBadge(task, user, submissions)}
                       </div>
                     ))}
                   </div>
