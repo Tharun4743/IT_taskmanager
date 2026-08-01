@@ -268,6 +268,14 @@ interface AdvisorStats {
   }[];
 }
 
+const getCloudinaryThumbnail = (url: string | undefined | null, width = 400) => {
+  if (!url) return '';
+  if (url.includes('res.cloudinary.com') && url.includes('/upload/')) {
+    return url.replace('/upload/', `/upload/w_${width},c_scale,q_auto,f_auto/`);
+  }
+  return url;
+};
+
 interface StudentStats {
   total_tasks: number;
   verified_tasks: number;
@@ -5618,7 +5626,7 @@ export default function App() {
                                       {s.screenshot_url ? (
                                         <div className="relative group/img">
                                           <img
-                                            src={s.screenshot_url}
+                                            src={getCloudinaryThumbnail(s.screenshot_url, 150)}
                                             className="w-12 h-12 object-cover rounded-lg border-2 border-zinc-200 hover:border-black transition-all cursor-zoom-in"
                                             onClick={() => window.open(s.screenshot_url, '_blank')}
                                             alt="Thumbnail"
@@ -5781,7 +5789,7 @@ export default function App() {
                                 <div className="w-full md:w-48 h-48 bg-zinc-100 rounded-xl overflow-hidden border border-zinc-200 shrink-0">
                                   {sub.screenshot_url ? (
                                     <img
-                                      src={sub.screenshot_url}
+                                      src={getCloudinaryThumbnail(sub.screenshot_url, 400)}
                                       alt="Submission"
                                       className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
                                       onClick={() => window.open(sub.screenshot_url, '_blank')}
