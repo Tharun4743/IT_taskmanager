@@ -2899,8 +2899,15 @@ async function startServer() {
 
   // ── Stats: Advisor ────────────────────────────────────────────────────────
   app.get('/api/stats/advisor', authenticate, authorize(['CLASS_ADVISOR']), async (req: any, res) => {
-    const classId = req.user.class_id;
+    let classId = req.user.class_id;
     const deptId = req.user.department_id;
+
+    if (!classId) {
+      const clsRes = await pool.query('SELECT id FROM classes WHERE advisor_id = $1 LIMIT 1', [req.user.id]);
+      if (clsRes.rows.length > 0) {
+        classId = clsRes.rows[0].id;
+      }
+    }
 
     if (!classId) {
       return res.json({

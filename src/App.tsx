@@ -3605,95 +3605,101 @@ export default function App() {
                       </div>
                     )}
                   </div>
-                ) : isAdvisor ? (
-                  <div className="flex flex-col gap-10">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                      <StatCard title="Class Students" value={advisorStats?.total_students || 0} icon={<Users />} color="bg-blue-500" />
-                      <StatCard
-                        title="Responded Students"
-                        value={new Set(submissions.filter(s => {
-                          const std = users.find(u => u.id === s.user_id);
-                          const cid = s.class_id || std?.class_id;
-                          return cid && String(cid) === String(user?.class_id);
-                        }).map(s => s.user_id)).size}
-                        icon={<CheckCircle2 />}
-                        color="bg-indigo-500"
-                      />
-                      <StatCard
-                        title="Pending Verification"
-                        value={new Set(submissions.filter(s => {
-                          const std = users.find(u => u.id === s.user_id);
-                          const cid = s.class_id || std?.class_id;
-                          return s.status === 'SUBMITTED' && cid && String(cid) === String(user?.class_id);
-                        }).map(s => s.user_id)).size || advisorStats?.submitted_tasks_count || 0}
-                        icon={<Clock />}
-                        color="bg-orange-500"
-                      />
-                      <StatCard title="Verified Students" value={advisorStats?.verified_tasks_count || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
+                ) : isAdvisor ? (() => {
+                  const activeClassId = user?.class_id || myClass?.id;
+                  const myClassStudentsCount = users.filter(u => u.role === 'STUDENT' && (activeClassId ? String(u.class_id) === String(activeClassId) : true)).length;
+                  const totalClassStudents = myClassStudentsCount || advisorStats?.total_students || 0;
+                  const respondedCount = new Set(submissions.filter(s => {
+                    const std = users.find(u => u.id === s.user_id);
+                    const cid = s.class_id || std?.class_id;
+                    return activeClassId ? String(cid) === String(activeClassId) : true;
+                  }).map(s => s.user_id)).size;
+                  const pendingCount = new Set(submissions.filter(s => {
+                    const std = users.find(u => u.id === s.user_id);
+                    const cid = s.class_id || std?.class_id;
+                    return s.status === 'SUBMITTED' && (activeClassId ? String(cid) === String(activeClassId) : true);
+                  }).map(s => s.user_id)).size || advisorStats?.submitted_tasks_count || 0;
+                  const verifiedCount = new Set(submissions.filter(s => {
+                    const std = users.find(u => u.id === s.user_id);
+                    const cid = s.class_id || std?.class_id;
+                    return s.status === 'VERIFIED' && (activeClassId ? String(cid) === String(activeClassId) : true);
+                  }).map(s => s.user_id)).size || advisorStats?.verified_tasks_count || 0;
+
+                  return (
+                    <div className="flex flex-col gap-10">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <StatCard title="Class Students" value={totalClassStudents} icon={<Users />} color="bg-blue-500" />
+                        <StatCard title="Responded Students" value={respondedCount} icon={<CheckCircle2 />} color="bg-indigo-500" />
+                        <StatCard title="Pending Verification" value={pendingCount} icon={<Clock />} color="bg-orange-500" />
+                        <StatCard title="Verified Students" value={verifiedCount} icon={<CheckCircle2 />} color="bg-emerald-500" />
+                      </div>
+                      <UnifiedAnalyzer role="CLASS_ADVISOR" title="Class Performance Analyzer" />
                     </div>
-                    <UnifiedAnalyzer role="CLASS_ADVISOR" title="Class Performance Analyzer" />
-                  </div>
-                ) : (
+                  );
+                })() : (
                     <div className="flex flex-col gap-8">
-                      {isCoordinator ? (
-                        <>
-                          <div>
-                            <div className="flex items-center gap-3 mb-4">
-                              <div className="w-1.5 h-6 bg-zinc-900 rounded-full" />
-                              <h3 className="text-xl font-bold text-zinc-900 tracking-tight">My Class Summary</h3>
+                      {isCoordinator ? (() => {
+                        const activeClassId = user?.class_id || myClass?.id;
+                        const myClassStudentsCount = users.filter(u => u.role === 'STUDENT' && (activeClassId ? String(u.class_id) === String(activeClassId) : true)).length;
+                        const totalClassStudents = myClassStudentsCount || coordinatorStats?.class_student_count || coordinatorStats?.total_students || 0;
+                        const respondedCount = new Set(submissions.filter(s => {
+                          const std = users.find(u => u.id === s.user_id);
+                          const cid = s.class_id || std?.class_id;
+                          return activeClassId ? String(cid) === String(activeClassId) : true;
+                        }).map(s => s.user_id)).size;
+                        const pendingCount = new Set(submissions.filter(s => {
+                          const std = users.find(u => u.id === s.user_id);
+                          const cid = s.class_id || std?.class_id;
+                          return s.status === 'SUBMITTED' && (activeClassId ? String(cid) === String(activeClassId) : true);
+                        }).map(s => s.user_id)).size || coordinatorStats?.pending_reviews || 0;
+                        const verifiedCount = new Set(submissions.filter(s => {
+                          const std = users.find(u => u.id === s.user_id);
+                          const cid = s.class_id || std?.class_id;
+                          return s.status === 'VERIFIED' && (activeClassId ? String(cid) === String(activeClassId) : true);
+                        }).map(s => s.user_id)).size || coordinatorStats?.verified_submissions || 0;
+
+                        return (
+                          <>
+                            <div>
+                              <div className="flex items-center gap-3 mb-4">
+                                <div className="w-1.5 h-6 bg-zinc-900 rounded-full" />
+                                <h3 className="text-xl font-bold text-zinc-900 tracking-tight">My Class Summary</h3>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <StatCard title="Class Students" value={totalClassStudents} icon={<Users />} color="bg-blue-500" />
+                                <StatCard title="Responded Students" value={respondedCount} icon={<CheckCircle2 />} color="bg-indigo-500" />
+                                <StatCard title="Pending Verification" value={pendingCount} icon={<Clock />} color="bg-orange-500" />
+                                <StatCard title="Verified Students" value={verifiedCount} icon={<CheckCircle2 />} color="bg-emerald-500" />
+                              </div>
                             </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                              <StatCard title="Class Students" value={coordinatorStats?.class_student_count || coordinatorStats?.total_students || 0} icon={<Users />} color="bg-blue-500" />
-                              <StatCard
-                                title="Responded Students"
-                                value={new Set(submissions.filter(s => {
-                                  const std = users.find(u => u.id === s.user_id);
-                                  const cid = s.class_id || std?.class_id;
-                                  return cid && String(cid) === String(user?.class_id);
-                                }).map(s => s.user_id)).size}
-                                icon={<CheckCircle2 />}
-                                color="bg-indigo-500"
-                              />
-                              <StatCard
-                                title="Pending Verification"
-                                value={new Set(submissions.filter(s => {
+
+                            <div
+                              className="bg-zinc-900 rounded-3xl p-8 text-white flex flex-col md:flex-row items-center justify-between gap-6 cursor-pointer hover:bg-black transition-all group shadow-md"
+                              onClick={() => setView('verifications')}
+                            >
+                              <div className="flex items-center gap-6 text-center md:text-left">
+                                <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                                  <ShieldCheck size={32} className="text-white" />
+                                </div>
+                                <div>
+                                  <h3 className="text-2xl font-bold">Coordinator Workspace</h3>
+                                  <p className="text-zinc-400">Manage and verify peer submissions for your class.</p>
+                                </div>
+                              </div>
+                              <div className="flex flex-col items-center md:items-end">
+                                <span className="text-4xl font-black">{submissions.filter(s => {
                                   const std = users.find(u => u.id === s.user_id);
                                   const cid = s.class_id || std?.class_id;
                                   return s.status === 'SUBMITTED' && cid && String(cid) === String(user?.class_id);
-                                }).map(s => s.user_id)).size || coordinatorStats?.pending_reviews || 0}
-                                icon={<Clock />}
-                                color="bg-orange-500"
-                              />
-                              <StatCard title="Verified Students" value={coordinatorStats?.verified_submissions || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
-                            </div>
-                          </div>
-
-                          <div
-                            className="bg-zinc-900 rounded-3xl p-8 text-white flex flex-col md:flex-row items-center justify-between gap-6 cursor-pointer hover:bg-black transition-all group shadow-md"
-                            onClick={() => setView('verifications')}
-                          >
-                            <div className="flex items-center gap-6 text-center md:text-left">
-                              <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                                <ShieldCheck size={32} className="text-white" />
-                              </div>
-                              <div>
-                                <h3 className="text-2xl font-bold">Coordinator Workspace</h3>
-                                <p className="text-zinc-400">Manage and verify peer submissions for your class.</p>
+                                }).length}</span>
+                                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Pending Tasks</span>
                               </div>
                             </div>
-                            <div className="flex flex-col items-center md:items-end">
-                              <span className="text-4xl font-black">{submissions.filter(s => {
-                                const std = users.find(u => u.id === s.user_id);
-                                const cid = s.class_id || std?.class_id;
-                                return s.status === 'SUBMITTED' && cid && String(cid) === String(user?.class_id);
-                              }).length}</span>
-                              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Pending Tasks</span>
-                            </div>
-                          </div>
 
-                          <UnifiedAnalyzer role="COORDINATOR" title="Class Achievement Analyzer" />
-                        </>
-                      ) : (
+                            <UnifiedAnalyzer role="COORDINATOR" title="Class Achievement Analyzer" />
+                          </>
+                        );
+                      })() : (
                         <div>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <StatCard title="Total Assigned Tasks" value={studentStats?.total_tasks || 0} icon={<ClipboardList />} color="bg-blue-500" />
