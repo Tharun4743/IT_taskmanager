@@ -456,7 +456,7 @@ async function startServer() {
         WHERE u.department_id = $1 AND u.role != 'SUPREME_ADMIN'
         ORDER BY u.role ASC, c.year ASC NULLS LAST, c.name ASC NULLS LAST, u.register_number ASC NULLS LAST, u.full_name ASC
       `, [req.user.department_id]);
-    } else if (req.user.role === 'CLASS_ADVISOR' || (req.user.role === 'STUDENT' && req.user.is_coordinator)) {
+    } else if (req.user.role === 'CLASS_ADVISOR' || req.user.role === 'STUDENT') {
       if (req.user.role === 'CLASS_ADVISOR' && req.user.is_year_coordinator) {
         usersRes = await pool.query(`
           SELECT u.*, c.name as class_name, c.year as class_year

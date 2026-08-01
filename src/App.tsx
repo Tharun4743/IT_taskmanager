@@ -1001,16 +1001,11 @@ export default function App() {
 
       const savedUserStr = localStorage.getItem('user');
       const savedUser = savedUserStr ? JSON.parse(savedUserStr) : null;
-      const canViewUsers = savedUser && (
-        ['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR'].includes(savedUser.role) ||
-        (savedUser.role === 'STUDENT' && savedUser.is_coordinator)
-      );
-
       // Fire all requests in parallel
       const [deptsRes, classesRes, usersRes, tasksRes, submissionsRes, notificationsRes] = await Promise.all([
         fetch(`${API_URL}/api/departments`, { headers }),
         fetch(`${API_URL}/api/classes`, { headers }),
-        canViewUsers ? fetch(`${API_URL}/api/users`, { headers }) : Promise.resolve(null),
+        fetch(`${API_URL}/api/users`, { headers }),
         fetch(`${API_URL}/api/tasks`, { headers }),
         fetch(`${API_URL}/api/submissions`, { headers }),
         fetch(`${API_URL}/api/notifications`, { headers })
