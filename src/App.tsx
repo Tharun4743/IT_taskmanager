@@ -2536,9 +2536,9 @@ export default function App() {
 
                  <form onSubmit={handleLogin} className="space-y-4">
                   <div>
-                    <label className="text-sm font-medium text-zinc-700 mb-1 block">Email / Register Number / Username</label>
+                    <label className="text-sm font-medium text-zinc-700 mb-1 block">Mail ID / Username</label>
                     <Input
-                      placeholder="Enter Register No, Email or Username"
+                      placeholder="student@gmail.com"
                       value={loginData.username}
                       onChange={e => setLoginData(prev => ({ ...prev, username: e.target.value }))}
                       required
@@ -2546,11 +2546,11 @@ export default function App() {
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-zinc-700 mb-1 block">Password</label>
+                    <label className="text-sm font-medium text-zinc-700 mb-1 block">Password (Default: Register Number)</label>
                     <div className="relative">
                       <Input
                         type={showPassword ? 'text' : 'password'}
-                        placeholder="Password"
+                        placeholder="Enter Register Number"
                         value={loginData.password}
                         onChange={e => setLoginData(prev => ({ ...prev, password: e.target.value }))}
                         required
