@@ -2536,9 +2536,9 @@ export default function App() {
 
                  <form onSubmit={handleLogin} className="space-y-4">
                   <div>
-                    <label className="text-sm font-medium text-zinc-700 mb-1 block">Email</label>
+                    <label className="text-sm font-medium text-zinc-700 mb-1 block">Email / Register Number / Username</label>
                     <Input
-                      placeholder="it@gmail.com"
+                      placeholder="Enter Register No, Email or Username"
                       value={loginData.username}
                       onChange={e => setLoginData(prev => ({ ...prev, username: e.target.value }))}
                       required

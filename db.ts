@@ -277,6 +277,10 @@ export async function initDB() {
       console.log('Supreme Admin seeded: admin / admin123');
     }
 
+    // Update batch definitions for Year 2 (2025-2029) and Year 3 (2024-2028)
+    await client.query(`UPDATE classes SET batch = '2025-2029', updated_at = NOW() WHERE year = 2;`);
+    await client.query(`UPDATE classes SET batch = '2024-2028', updated_at = NOW() WHERE year = 3;`);
+
   } catch (err) {
     console.error('Error initializing PostgreSQL tables:', err);
     throw err;

@@ -15,7 +15,7 @@ import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { pool, initDB } from './db.js';
-import { syncAndGenerateStudentDirectory, constantStudentByIdMap, constantStudentsByClassMap } from './studentDirectoryService.js';
+import { syncAndGenerateStudentDirectory, constantStudentByIdMap, constantStudentByRegNoMap, constantStudentByEmailMap, constantStudentsByClassMap } from './studentDirectoryService.js';
 
 // ─── Async Route Error Wrapper ────────────────────────────────────────────────
 // Express 4 does not catch async errors automatically.
@@ -161,23 +161,119 @@ async function startServer() {
 
     const cleanPassword = (password || '').trim();
 
-    const userRes = await pool.query(
+    let userRes = await pool.query(
       'SELECT * FROM users WHERE LOWER(TRIM(username)) = LOWER($1) OR LOWER(TRIM(register_number)) = LOWER($1) OR LOWER(TRIM(email)) = LOWER($1) LIMIT 1',
       [loginId]
     );
-    const user = userRes.rows[0];
+    let user = userRes.rows[0];
+
+    // Secondary DB search removing space differences (e.g. accidental spaces in inputs or DB records)
+    if (!user) {
+      const cleanLoginIdNoSpaces = loginId.replace(/\s+/g, '').toLowerCase();
+      userRes = await pool.query(
+        "SELECT * FROM users WHERE REPLACE(LOWER(username), ' ', '') = $1 OR REPLACE(LOWER(register_number), ' ', '') = $1 OR REPLACE(LOWER(email), ' ', '') = $1 LIMIT 1",
+        [cleanLoginIdNoSpaces]
+      );
+      user = userRes.rows[0];
+    }
+
+    // 1. Check Student Directory first for authoritative student records
+    const dirKey = loginId.replace(/\s+/g, '').toLowerCase();
+    const directoryStudent = constantStudentByEmailMap.get(dirKey) || constantStudentByRegNoMap.get(dirKey);
+
+    let isPasswordValid = false;
+
+    if (directoryStudent) {
+      const expectedRegNo = directoryStudent.register_number ? directoryStudent.register_number.trim().toLowerCase() : '';
+      const enteredPassClean = cleanPassword.toLowerCase().replace(/\s+/g, '');
+      const isDefaultPassMatch = expectedRegNo && (enteredPassClean === expectedRegNo);
+
+      try {
+        const defaultPassHash = await bcrypt.hash(directoryStudent.register_number.trim(), 10);
+        let validClassId = (directoryStudent.class_id && directoryStudent.class_id !== 'unassigned') ? directoryStudent.class_id : null;
+        let validDeptId = (directoryStudent.department_id && directoryStudent.department_id !== 'unassigned') ? directoryStudent.department_id : null;
+
+        if (!validClassId && directoryStudent.class_name) {
+          const matchedClassRes = await pool.query('SELECT id, department_id FROM classes WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1', [directoryStudent.class_name]);
+          if (matchedClassRes.rows[0]) {
+            validClassId = matchedClassRes.rows[0].id;
+            if (!validDeptId) validDeptId = matchedClassRes.rows[0].department_id;
+          }
+        }
+
+        const studentUsername = (directoryStudent.email || directoryStudent.register_number).trim();
+
+        const syncedUserRes = await pool.query(`
+          INSERT INTO users (
+            username, password, role, department_id, class_id, full_name, email, register_number, gender
+          ) VALUES ($1, $2, 'STUDENT', $3, $4, $5, $6, $7, $8)
+          ON CONFLICT (register_number) DO UPDATE SET
+            username = EXCLUDED.username,
+            email = EXCLUDED.email,
+            full_name = EXCLUDED.full_name,
+            class_id = COALESCE(users.class_id, EXCLUDED.class_id),
+            department_id = COALESCE(users.department_id, EXCLUDED.department_id),
+            updated_at = NOW()
+          RETURNING *
+        `, [
+          studentUsername,
+          defaultPassHash,
+          validDeptId,
+          validClassId,
+          directoryStudent.full_name || 'Student',
+          directoryStudent.email || null,
+          directoryStudent.register_number.trim(),
+          directoryStudent.gender || 'Not Specified'
+        ]);
+
+        user = syncedUserRes.rows[0];
+        if (isDefaultPassMatch) {
+          isPasswordValid = true;
+        }
+      } catch (syncErr) {
+        console.error('[Auth] Error syncing student from directory:', syncErr);
+      }
+    }
 
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-    let isPasswordValid = false;
-    try {
-      if (user.password && (user.password.startsWith('$2a$') || user.password.startsWith('$2b$') || user.password.startsWith('$2y$'))) {
-        isPasswordValid = await bcrypt.compare(cleanPassword, user.password) || (password && await bcrypt.compare(password, user.password));
-      } else {
-        isPasswordValid = (cleanPassword === user.password) || (password === user.password);
+    if (!isPasswordValid) {
+      try {
+        if (user.password && (user.password.startsWith('$2a$') || user.password.startsWith('$2b$') || user.password.startsWith('$2y$'))) {
+          isPasswordValid = await bcrypt.compare(cleanPassword, user.password) ||
+                            (password && await bcrypt.compare(password, user.password)) ||
+                            await bcrypt.compare(cleanPassword.toLowerCase(), user.password) ||
+                            await bcrypt.compare(cleanPassword.toUpperCase(), user.password);
+        } else {
+          isPasswordValid = (cleanPassword === user.password) || (password === user.password);
+        }
+      } catch {
+        isPasswordValid = false;
       }
-    } catch {
-      isPasswordValid = false;
+    }
+
+    // Fallback for Student login with default credentials (e.g. Register Number, Username, or Email)
+    if (!isPasswordValid && user.role === 'STUDENT') {
+      const regNo = user.register_number ? user.register_number.trim().toLowerCase() : '';
+      const uName = user.username ? user.username.trim().toLowerCase() : '';
+      const uEmail = user.email ? user.email.trim().toLowerCase() : '';
+      const enteredClean = cleanPassword.toLowerCase();
+      const enteredRaw = (password || '').trim().toLowerCase();
+      const enteredLogin = loginId.toLowerCase();
+
+      if (
+        (regNo && (enteredClean === regNo || enteredRaw === regNo || enteredLogin === regNo)) ||
+        (uName && (enteredClean === uName || enteredRaw === uName || enteredLogin === uName)) ||
+        (uEmail && (enteredClean === uEmail || enteredRaw === uEmail || enteredLogin === uEmail))
+      ) {
+        isPasswordValid = true;
+        try {
+          const newHash = await bcrypt.hash((cleanPassword || user.register_number || loginId).trim(), 10);
+          await pool.query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [newHash, user.id]);
+        } catch (err) {
+          console.error('[Auth] Error auto-updating student password hash:', err);
+        }
+      }
     }
 
     if (!isPasswordValid) {
@@ -607,7 +703,7 @@ async function startServer() {
       deptId = targetClass.department_id;
     }
 
-    const finalPassword = password || registrationNumber;
+    const finalPassword = (password || registrationNumber || '').trim();
     const hashed = await bcrypt.hash(finalPassword, 10);
 
     try {

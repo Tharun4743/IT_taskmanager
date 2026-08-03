@@ -19,8 +19,44 @@ export interface ConstantStudent {
 // In-Memory Constant Caches
 export const constantStudentByIdMap = new Map<string, ConstantStudent>();
 export const constantStudentByRegNoMap = new Map<string, ConstantStudent>();
+export const constantStudentByEmailMap = new Map<string, ConstantStudent>();
 export const constantStudentsByClassMap = new Map<string, ConstantStudent[]>();
 export const constantStudentsByYearMap = new Map<string, ConstantStudent[]>();
+
+export function loadDirectoryFromDisk() {
+  try {
+    const baseDir = path.join(process.cwd(), 'students_directory');
+    if (!fs.existsSync(baseDir)) return;
+
+    function scan(dir: string) {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          scan(fullPath);
+        } else if (entry.isFile() && entry.name.endsWith('.json')) {
+          try {
+            const data = JSON.parse(fs.readFileSync(fullPath, 'utf-8')) as ConstantStudent[];
+            if (Array.isArray(data)) {
+              for (const s of data) {
+                if (s.id) constantStudentByIdMap.set(s.id.toString(), s);
+                if (s.register_number) constantStudentByRegNoMap.set(s.register_number.toLowerCase().trim(), s);
+                if (s.email) constantStudentByEmailMap.set(s.email.toLowerCase().trim(), s);
+              }
+            }
+          } catch (e) {
+            console.error(`[StudentDirectory] Failed to parse ${fullPath}:`, e);
+          }
+        }
+      }
+    }
+
+    scan(baseDir);
+    console.log(`[StudentDirectory] Loaded ${constantStudentByRegNoMap.size} students across all classes from disk.`);
+  } catch (err) {
+    console.error('[StudentDirectory] Error loading directory from disk:', err);
+  }
+}
 
 /**
  * Fetches all constant student details from Supabase/PostgreSQL,
@@ -57,6 +93,9 @@ export async function syncAndGenerateStudentDirectory() {
     constantStudentByRegNoMap.clear();
     constantStudentsByClassMap.clear();
     constantStudentsByYearMap.clear();
+
+    // Load from disk first so disk cache is available
+    loadDirectoryFromDisk();
 
     const outputBaseDir = path.join(process.cwd(), 'students_directory');
     if (!fs.existsSync(outputBaseDir)) {
