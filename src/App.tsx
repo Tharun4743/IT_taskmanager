@@ -42,7 +42,32 @@ import {
   User,
   Trophy,
   BookOpen,
-  Briefcase
+  Briefcase,
+  Mail,
+  Phone,
+  Shield,
+  Edit3,
+  Save,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Sparkles,
+  Percent,
+  Award,
+  Activity,
+  Check,
+  Github,
+  Linkedin,
+  Globe,
+  Code,
+  Layers,
+  Calendar,
+  MapPin,
+  FileUp,
+  Languages,
+  Compass,
+  Lock,
+  Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
@@ -83,11 +108,19 @@ interface User {
   class_name?: string;
   email?: string;
   register_number?: string;
-  gender?: 'MALE' | 'FEMALE';
+  gender?: 'MALE' | 'FEMALE' | 'OTHER' | 'Not Specified' | string;
+  phone?: string;
+  bio?: string;
+  github_url?: string;
+  linkedin_url?: string;
+  avatar_url?: string;
+  year?: number | string;
+  batch?: string;
   is_coordinator?: boolean;
   is_year_coordinator?: boolean;
   year_scope?: number | null;
   is_active?: boolean;
+  created_at?: string;
 }
 
 interface Department {
@@ -815,10 +848,1809 @@ const EmptyState = ({ icon: Icon, title, description }: { icon: any, title: stri
   </div>
 );
 
+function StudentProfileView({
+  user,
+  token,
+  addToast
+}: {
+  user: User | null;
+  token: string | null;
+  addToast: (message: string, type: 'success' | 'error' | 'info') => void;
+}) {
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [activeSection, setActiveSection] = useState<string>('personal');
+
+  // Form states for Personal & Avatar Photo
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [mobileNumber, setMobileNumber] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [semester, setSemester] = useState<number>(1);
+  const [cgpa, setCgpa] = useState<number | string>(0);
+  const [currentArrears, setCurrentArrears] = useState<number>(0);
+  const [historyOfArrears, setHistoryOfArrears] = useState<number>(0);
+  const [aboutMe, setAboutMe] = useState('');
+  const [savingPersonal, setSavingPersonal] = useState(false);
+
+  // Form states for Skills
+  const [newSkillName, setNewSkillName] = useState('');
+  const [newSkillCategory, setNewSkillCategory] = useState('Technical');
+  const [newSkillLevel, setNewSkillLevel] = useState('Intermediate');
+  const [addingSkill, setAddingSkill] = useState(false);
+
+  // Form states for Projects
+  const [newProjName, setNewProjName] = useState('');
+  const [newProjDesc, setNewProjDesc] = useState('');
+  const [newProjTech, setNewProjTech] = useState('');
+  const [newProjGithub, setNewProjGithub] = useState('');
+  const [newProjDemo, setNewProjDemo] = useState('');
+  const [addingProject, setAddingProject] = useState(false);
+
+  // Form states for Internships
+  const [newInternCompany, setNewInternCompany] = useState('');
+  const [newInternRole, setNewInternRole] = useState('');
+  const [newInternDuration, setNewInternDuration] = useState('');
+  const [newInternMode, setNewInternMode] = useState('Offline');
+  const [newInternCertUrl, setNewInternCertUrl] = useState('');
+  const [addingInternship, setAddingInternship] = useState(false);
+
+  // Form states for Certifications
+  const [newCertName, setNewCertName] = useState('');
+  const [newCertProvider, setNewCertProvider] = useState('');
+  const [newCertIssueDate, setNewCertIssueDate] = useState('');
+  const [newCertCredentialId, setNewCertCredentialId] = useState('');
+  const [newCertUrl, setNewCertUrl] = useState('');
+  const [addingCert, setAddingCert] = useState(false);
+
+  // Form states for Coding Profiles
+  const [codingGithub, setCodingGithub] = useState('');
+  const [codingLeetcode, setCodingLeetcode] = useState('');
+  const [codingHackerrank, setCodingHackerrank] = useState('');
+  const [codingCodechef, setCodingCodechef] = useState('');
+  const [codingGfg, setCodingGfg] = useState('');
+  const [codingLinkedin, setCodingLinkedin] = useState('');
+  const [codingPortfolio, setCodingPortfolio] = useState('');
+  const [savingCoding, setSavingCoding] = useState(false);
+
+  // Form states for Resume
+  const [resumeUrl, setResumeUrl] = useState('');
+  const [resumeFileName, setResumeFileName] = useState('');
+  const [savingResume, setSavingResume] = useState(false);
+
+  // Form states for Achievements
+  const [newAchTitle, setNewAchTitle] = useState('');
+  const [newAchCategory, setNewAchCategory] = useState('Hackathons');
+  const [newAchDesc, setNewAchDesc] = useState('');
+  const [newAchDate, setNewAchDate] = useState('');
+  const [addingAch, setAddingAch] = useState(false);
+
+  // Form states for Languages
+  const [newLangName, setNewLangName] = useState('');
+  const [newLangProf, setNewLangProf] = useState('Fluent');
+  const [addingLang, setAddingLang] = useState(false);
+
+  // Form states for Career Preferences
+  const [prefRole, setPrefRole] = useState('');
+  const [prefDomain, setPrefDomain] = useState('');
+  const [prefLocation, setPrefLocation] = useState('');
+  const [prefRelocate, setPrefRelocate] = useState(true);
+  const [prefWorkMode, setPrefWorkMode] = useState('Hybrid');
+  const [savingCareer, setSavingCareer] = useState(false);
+
+  const fetchProfileData = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${API_URL}/api/student/profile`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setProfile(data);
+        if (data.academic && data.academic.avatar_url) {
+          setAvatarUrl(data.academic.avatar_url);
+        }
+        if (data.personal) {
+          setMobileNumber(data.personal.mobile_number || '');
+          setDateOfBirth(data.personal.date_of_birth || '');
+          setSemester(data.personal.semester || 1);
+          setCgpa(data.personal.cgpa || 0);
+          setCurrentArrears(data.personal.current_arrears || 0);
+          setHistoryOfArrears(data.personal.history_of_arrears || 0);
+          setAboutMe(data.personal.about_me || '');
+        }
+        if (data.coding_profiles) {
+          setCodingGithub(data.coding_profiles.github || '');
+          setCodingLeetcode(data.coding_profiles.leetcode || '');
+          setCodingHackerrank(data.coding_profiles.hackerrank || '');
+          setCodingCodechef(data.coding_profiles.codechef || '');
+          setCodingGfg(data.coding_profiles.geeksforgeeks || '');
+          setCodingLinkedin(data.coding_profiles.linkedin || '');
+          setCodingPortfolio(data.coding_profiles.portfolio || '');
+        }
+        if (data.resume) {
+          setResumeUrl(data.resume.resume_url || '');
+          setResumeFileName(data.resume.file_name || 'Resume.pdf');
+        }
+        if (data.career_preferences) {
+          setPrefRole(data.career_preferences.preferred_role || '');
+          setPrefDomain(data.career_preferences.preferred_domain || '');
+          setPrefLocation(data.career_preferences.preferred_location || '');
+          setPrefRelocate(data.career_preferences.willing_to_relocate ?? true);
+          setPrefWorkMode(data.career_preferences.work_mode || 'Hybrid');
+        }
+      }
+    } catch (e) {
+      addToast('Error loading profile data', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (token) fetchProfileData();
+  }, [token]);
+
+  // Avatar Photo Handlers
+  const handleAvatarFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    setUploadingAvatar(true);
+    try {
+      const res = await fetch(`${API_URL}/api/student/profile/avatar`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAvatarUrl(data.avatar_url);
+        addToast('Profile photo updated successfully!', 'success');
+        fetchProfileData();
+      } else {
+        addToast(data.error || 'Failed to upload photo', 'error');
+      }
+    } catch {
+      addToast('Error uploading photo', 'error');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handleAvatarUrlSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUploadingAvatar(true);
+    try {
+      const res = await fetch(`${API_URL}/api/student/profile/avatar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ avatar_url: avatarUrl })
+      });
+      if (res.ok) {
+        addToast('Profile photo URL saved!', 'success');
+        fetchProfileData();
+      }
+    } catch {
+      addToast('Error saving photo URL', 'error');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    setUploadingAvatar(true);
+    try {
+      const res = await fetch(`${API_URL}/api/student/profile/avatar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ remove: true })
+      });
+      if (res.ok) {
+        setAvatarUrl('');
+        addToast('Profile photo removed', 'info');
+        fetchProfileData();
+      }
+    } catch {
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  // Submit Handlers
+  const handleSavePersonal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingPersonal(true);
+    try {
+      const res = await fetch(`${API_URL}/api/student/profile/personal`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          mobile_number: mobileNumber,
+          date_of_birth: dateOfBirth,
+          semester: Number(semester),
+          cgpa: Number(cgpa),
+          current_arrears: Number(currentArrears),
+          history_of_arrears: Number(historyOfArrears),
+          about_me: aboutMe
+        })
+      });
+      if (res.ok) {
+        addToast('Personal information updated!', 'success');
+        fetchProfileData();
+      } else {
+        addToast('Failed to update personal info', 'error');
+      }
+    } catch {
+      addToast('Network error saving personal details', 'error');
+    } finally {
+      setSavingPersonal(false);
+    }
+  };
+
+  const handleAddSkill = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSkillName.trim()) return;
+    setAddingSkill(true);
+    try {
+      const res = await fetch(`${API_URL}/api/student/profile/skills`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ skill_name: newSkillName, category: newSkillCategory, level: newSkillLevel })
+      });
+      if (res.ok) {
+        addToast('Skill added!', 'success');
+        setNewSkillName('');
+        fetchProfileData();
+      }
+    } catch {
+      addToast('Failed to add skill', 'error');
+    } finally {
+      setAddingSkill(false);
+    }
+  };
+
+  const handleDeleteSkill = async (id: string) => {
+    try {
+      const res = await fetch(`${API_URL}/api/student/profile/skills/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        addToast('Skill removed', 'info');
+        fetchProfileData();
+      }
+    } catch { }
+  };
+
+  const handleAddProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProjName.trim()) return;
+    setAddingProject(true);
+    try {
+      const res = await fetch(`${API_URL}/api/student/profile/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          project_name: newProjName,
+          description: newProjDesc,
+          tech_stack: newProjTech,
+          github_url: newProjGithub,
+          live_demo_url: newProjDemo
+        })
+      });
+      if (res.ok) {
+        addToast('Project added!', 'success');
+        setNewProjName(''); setNewProjDesc(''); setNewProjTech(''); setNewProjGithub(''); setNewProjDemo('');
+        fetchProfileData();
+      }
+    } catch {
+      addToast('Failed to add project', 'error');
+    } finally {
+      setAddingProject(false);
+    }
+  };
+
+  const handleDeleteProject = async (id: string) => {
+    try {
+      await fetch(`${API_URL}/api/student/profile/projects/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      addToast('Project removed', 'info');
+      fetchProfileData();
+    } catch { }
+  };
+
+  const handleAddInternship = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newInternCompany.trim()) return;
+    setAddingInternship(true);
+    try {
+      const res = await fetch(`${API_URL}/api/student/profile/internships`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          company: newInternCompany,
+          role: newInternRole,
+          duration: newInternDuration,
+          mode: newInternMode,
+          certificate_url: newInternCertUrl
+        })
+      });
+      if (res.ok) {
+        addToast('Internship added!', 'success');
+        setNewInternCompany(''); setNewInternRole(''); setNewInternDuration(''); setNewInternCertUrl('');
+        fetchProfileData();
+      }
+    } catch {
+      addToast('Failed to add internship', 'error');
+    } finally {
+      setAddingInternship(false);
+    }
+  };
+
+  const handleDeleteInternship = async (id: string) => {
+    try {
+      await fetch(`${API_URL}/api/student/profile/internships/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      addToast('Internship removed', 'info');
+      fetchProfileData();
+    } catch { }
+  };
+
+  const handleAddCertification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCertName.trim()) return;
+    setAddingCert(true);
+    try {
+      const res = await fetch(`${API_URL}/api/student/profile/certifications`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          certificate_name: newCertName,
+          provider: newCertProvider,
+          issue_date: newCertIssueDate,
+          credential_id: newCertCredentialId,
+          certificate_url: newCertUrl
+        })
+      });
+      if (res.ok) {
+        addToast('Certification added!', 'success');
+        setNewCertName(''); setNewCertProvider(''); setNewCertIssueDate(''); setNewCertCredentialId(''); setNewCertUrl('');
+        fetchProfileData();
+      }
+    } catch {
+      addToast('Failed to add certification', 'error');
+    } finally {
+      setAddingCert(false);
+    }
+  };
+
+  const handleDeleteCert = async (id: string) => {
+    try {
+      await fetch(`${API_URL}/api/student/profile/certifications/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      addToast('Certification removed', 'info');
+      fetchProfileData();
+    } catch { }
+  };
+
+  const handleSaveCodingProfiles = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingCoding(true);
+    try {
+      const res = await fetch(`${API_URL}/api/student/profile/coding-profiles`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          github: codingGithub,
+          leetcode: codingLeetcode,
+          hackerrank: codingHackerrank,
+          codechef: codingCodechef,
+          geeksforgeeks: codingGfg,
+          linkedin: codingLinkedin,
+          portfolio: codingPortfolio
+        })
+      });
+      if (res.ok) {
+        addToast('Coding profiles saved!', 'success');
+        fetchProfileData();
+      }
+    } catch {
+      addToast('Failed to save coding profiles', 'error');
+    } finally {
+      setSavingCoding(false);
+    }
+  };
+
+  const handleSaveResume = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resumeUrl.trim()) return;
+    setSavingResume(true);
+    try {
+      const res = await fetch(`${API_URL}/api/student/profile/resume`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ resume_url: resumeUrl, file_name: resumeFileName || 'Resume.pdf' })
+      });
+      if (res.ok) {
+        addToast('Resume updated!', 'success');
+        fetchProfileData();
+      }
+    } catch {
+      addToast('Failed to update resume', 'error');
+    } finally {
+      setSavingResume(false);
+    }
+  };
+
+  const handleAddAchievement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAchTitle.trim()) return;
+    setAddingAch(true);
+    try {
+      const res = await fetch(`${API_URL}/api/student/profile/achievements`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          title: newAchTitle,
+          category: newAchCategory,
+          description: newAchDesc,
+          event_date: newAchDate
+        })
+      });
+      if (res.ok) {
+        addToast('Achievement added!', 'success');
+        setNewAchTitle(''); setNewAchDesc(''); setNewAchDate('');
+        fetchProfileData();
+      }
+    } catch {
+      addToast('Failed to add achievement', 'error');
+    } finally {
+      setAddingAch(false);
+    }
+  };
+
+  const handleDeleteAchievement = async (id: string) => {
+    try {
+      await fetch(`${API_URL}/api/student/profile/achievements/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      addToast('Achievement removed', 'info');
+      fetchProfileData();
+    } catch { }
+  };
+
+  const handleAddLanguage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLangName.trim()) return;
+    setAddingLang(true);
+    try {
+      const res = await fetch(`${API_URL}/api/student/profile/languages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ language: newLangName, proficiency: newLangProf })
+      });
+      if (res.ok) {
+        addToast('Language added!', 'success');
+        setNewLangName('');
+        fetchProfileData();
+      }
+    } catch {
+      addToast('Failed to add language', 'error');
+    } finally {
+      setAddingLang(false);
+    }
+  };
+
+  const handleDeleteLanguage = async (id: string) => {
+    try {
+      await fetch(`${API_URL}/api/student/profile/languages/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      addToast('Language removed', 'info');
+      fetchProfileData();
+    } catch { }
+  };
+
+  const handleSaveCareer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingCareer(true);
+    try {
+      const res = await fetch(`${API_URL}/api/student/profile/career-preferences`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          preferred_role: prefRole,
+          preferred_domain: prefDomain,
+          preferred_location: prefLocation,
+          willing_to_relocate: prefRelocate,
+          work_mode: prefWorkMode
+        })
+      });
+      if (res.ok) {
+        addToast('Career preferences saved!', 'success');
+        fetchProfileData();
+      }
+    } catch {
+      addToast('Failed to save career preferences', 'error');
+    } finally {
+      setSavingCareer(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <PageLayout>
+        <Card className="flex flex-col items-center justify-center py-20 text-zinc-500">
+          <Loader2 size={40} className="animate-spin text-black mb-4" />
+          <p className="font-semibold text-sm">Loading Student Profile...</p>
+        </Card>
+      </PageLayout>
+    );
+  }
+
+  const sections = [
+    { id: 'personal', label: '1. Personal Information', icon: User },
+    { id: 'skills', label: '2. Skills', icon: Code },
+    { id: 'projects', label: '3. Projects', icon: Layers },
+    { id: 'internships', label: '4. Internships', icon: Briefcase },
+    { id: 'certifications', label: '5. Certifications', icon: Award },
+    { id: 'coding', label: '6. Coding Profiles', icon: Globe },
+    { id: 'resume', label: '7. Resume', icon: FileText },
+    { id: 'achievements', label: '8. Achievements', icon: Sparkles },
+    { id: 'languages', label: '9. Languages', icon: Languages },
+    { id: 'career', label: '10. Career Preferences', icon: Compass },
+  ];
+
+  const acad = {
+    full_name: profile?.academic?.full_name || user?.full_name || 'N/A',
+    register_number: profile?.academic?.register_number || user?.register_number || user?.username || 'N/A',
+    email: profile?.academic?.email || user?.email || 'N/A',
+    department_name: profile?.academic?.department_name || user?.department_name || 'Information Technology',
+    class_name: profile?.academic?.class_name || user?.class_name || 'Unassigned Section',
+    batch: profile?.academic?.batch || user?.batch || '2023 - 2027',
+    year: profile?.academic?.year ? (String(profile.academic.year).startsWith('Year') ? profile.academic.year : `Year ${profile.academic.year}`) : (user?.year ? `Year ${user.year}` : 'N/A'),
+    gender: profile?.academic?.gender || user?.gender || 'Not Specified',
+    avatar_url: profile?.academic?.avatar_url || user?.avatar_url || ''
+  };
+
+  return (
+    <PageLayout>
+      <div className="space-y-6 pb-12">
+        {/* Title Header */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-zinc-200">
+          <div>
+            <h1 className="text-2xl font-extrabold text-zinc-900 tracking-tight flex items-center gap-2">
+              <GraduationCap size={28} className="text-indigo-600" /> Student Academic Profile
+            </h1>
+            <p className="text-xs text-zinc-500 font-semibold">
+              Official records for {acad.full_name} ({acad.register_number})
+            </p>
+          </div>
+
+          {/* Section Pill Selectors */}
+          <div className="flex items-center gap-1.5 overflow-x-auto max-w-full pb-1 custom-scrollbar">
+            {sections.map(s => {
+              const SIcon = s.icon;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setActiveSection(s.id)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 shrink-0",
+                    activeSection === s.id
+                      ? "bg-black text-white shadow-md"
+                      : "bg-white text-zinc-600 hover:bg-zinc-100 border border-zinc-200"
+                  )}
+                >
+                  <SIcon size={13} />
+                  <span>{s.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 1. PERSONAL INFORMATION */}
+        {activeSection === 'personal' && (
+          <div className="space-y-6">
+            {/* Student Profile Photo Card */}
+            <Card className="p-5 md:p-6 bg-white border-zinc-200">
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-zinc-100">
+                <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider flex items-center gap-2">
+                  <Camera size={16} className="text-indigo-600" /> Student Profile Photo
+                </h3>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center gap-6">
+                {/* Photo Display Avatar */}
+                <div className="relative group shrink-0">
+                  <div className="w-24 h-24 rounded-2xl bg-zinc-900 p-1 shadow-md border border-zinc-200 flex items-center justify-center overflow-hidden">
+                    {avatarUrl ? (
+                      <img src={avatarUrl} alt={acad.full_name || 'Profile'} className="w-full h-full object-cover rounded-xl" />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center text-white text-2xl font-black">
+                        {(acad.full_name || 'ST').substring(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Upload & URL Controls */}
+                <div className="space-y-3 flex-1 w-full">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="cursor-pointer px-4 py-2 bg-black text-white rounded-xl text-xs font-bold hover:bg-zinc-800 transition-all flex items-center gap-2">
+                      {uploadingAvatar ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                      <span>Upload Image File</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleAvatarFileUpload}
+                        disabled={uploadingAvatar}
+                        className="hidden"
+                      />
+                    </label>
+
+                    {avatarUrl && (
+                      <Button type="button" onClick={handleRemoveAvatar} disabled={uploadingAvatar} variant="secondary" className="text-xs text-red-600 hover:text-red-700">
+                        <Trash2 size={14} /> Remove Photo
+                      </Button>
+                    )}
+                  </div>
+
+                  <form onSubmit={handleAvatarUrlSave} className="flex gap-2">
+                    <Input
+                      type="url"
+                      placeholder="Or paste image URL (https://...)"
+                      value={avatarUrl}
+                      onChange={e => setAvatarUrl(e.target.value)}
+                      className="text-xs flex-1"
+                    />
+                    <Button type="submit" disabled={uploadingAvatar} variant="secondary" className="text-xs shrink-0">
+                      <Save size={14} /> Save Link
+                    </Button>
+                  </form>
+                </div>
+              </div>
+            </Card>
+
+            {/* Read Only Academic Info */}
+            <Card className="p-5 md:p-6 bg-white border-zinc-200">
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-zinc-100">
+                <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider flex items-center gap-2">
+                  <Shield size={16} className="text-indigo-600" /> Read-Only Academic Identity
+                </h3>
+                <span className="text-[11px] text-zinc-400 font-semibold flex items-center gap-1">
+                  <Lock size={12} /> Institutional Record
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Full Name</p>
+                  <p className="text-sm font-bold text-zinc-900 truncate">{acad.full_name}</p>
+                </div>
+                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Register Number</p>
+                  <p className="text-sm font-bold text-zinc-900 truncate">{acad.register_number}</p>
+                </div>
+                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase">College Email</p>
+                  <p className="text-sm font-bold text-zinc-900 truncate">{acad.email}</p>
+                </div>
+                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Department</p>
+                  <p className="text-sm font-bold text-zinc-900 truncate">{acad.department_name}</p>
+                </div>
+                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Section</p>
+                  <p className="text-sm font-bold text-zinc-900 truncate">{acad.class_name}</p>
+                </div>
+                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Batch</p>
+                  <p className="text-sm font-bold text-zinc-900 truncate">{acad.batch}</p>
+                </div>
+                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Year</p>
+                  <p className="text-sm font-bold text-zinc-900 truncate">{acad.year}</p>
+                </div>
+                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Gender</p>
+                  <p className="text-sm font-bold text-zinc-900 truncate">{acad.gender}</p>
+                </div>
+              </div>
+            </Card>
+
+            {/* Editable Personal Form */}
+            <Card className="p-5 md:p-6 bg-white border-zinc-200">
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-zinc-100">
+                <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider flex items-center gap-2">
+                  <Edit3 size={16} className="text-indigo-600" /> Editable Personal Information
+                </h3>
+              </div>
+
+              <form onSubmit={handleSavePersonal} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">Mobile Number</label>
+                    <Input
+                      type="tel"
+                      value={mobileNumber}
+                      onChange={e => setMobileNumber(e.target.value)}
+                      placeholder="+91 9876543210"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">Date of Birth</label>
+                    <Input
+                      type="date"
+                      value={dateOfBirth}
+                      onChange={e => setDateOfBirth(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">Semester</label>
+                    <Select value={semester} onChange={e => setSemester(Number(e.target.value))}>
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
+                        <option key={s} value={s}>Semester {s}</option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">CGPA</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="10"
+                      value={cgpa}
+                      onChange={e => setCgpa(e.target.value)}
+                      placeholder="e.g. 8.50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">Current Arrears</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={currentArrears}
+                      onChange={e => setCurrentArrears(Number(e.target.value))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">History of Arrears</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={historyOfArrears}
+                      onChange={e => setHistoryOfArrears(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">About Me</label>
+                  <Textarea
+                    value={aboutMe}
+                    onChange={e => setAboutMe(e.target.value)}
+                    placeholder="Brief intro about your academic focus, career goals, or technical interests..."
+                    rows={3}
+                  />
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <Button type="submit" disabled={savingPersonal} variant="primary" className="px-6">
+                    {savingPersonal ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                    <span>Save Personal Information</span>
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          </div>
+        )}
+
+        {/* 2. SKILLS */}
+        {activeSection === 'skills' && (
+          <Card className="p-5 md:p-6 bg-white border-zinc-200">
+            <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <Code size={16} className="text-indigo-600" /> Technical & Soft Skills
+            </h3>
+
+            {/* Add Skill Form */}
+            <form onSubmit={handleAddSkill} className="flex flex-col sm:flex-row gap-3 mb-6 p-3 bg-zinc-50 rounded-xl border border-zinc-200">
+              <Input
+                type="text"
+                placeholder="Skill name (e.g. React, Python, Communication)"
+                value={newSkillName}
+                onChange={e => setNewSkillName(e.target.value)}
+                required
+                className="flex-1"
+              />
+              <Select value={newSkillCategory} onChange={e => setNewSkillCategory(e.target.value)} className="sm:w-40">
+                <option value="Technical">Technical</option>
+                <option value="Soft Skill">Soft Skill</option>
+                <option value="Tool">Tool</option>
+                <option value="Domain">Domain</option>
+              </Select>
+              <Select value={newSkillLevel} onChange={e => setNewSkillLevel(e.target.value)} className="sm:w-40">
+                <option value="Beginner">Beginner</option>
+                <option value="Intermediate">Intermediate</option>
+                <option value="Advanced">Advanced</option>
+              </Select>
+              <Button type="submit" disabled={addingSkill} variant="primary" className="shrink-0">
+                {addingSkill ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                <span>Add Skill</span>
+              </Button>
+            </form>
+
+            {/* Skills Pills List */}
+            <div className="flex flex-wrap gap-2">
+              {(profile?.skills || []).length === 0 ? (
+                <p className="text-xs text-zinc-400 py-4">No skills added yet.</p>
+              ) : (
+                profile.skills.map((sk: any) => (
+                  <div key={sk.id} className="flex items-center gap-2 px-3 py-1.5 bg-zinc-100 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-900">
+                    <span>{sk.skill_name}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 text-zinc-700 font-bold uppercase">{sk.level}</span>
+                    <button type="button" onClick={() => handleDeleteSkill(sk.id)} className="text-zinc-400 hover:text-red-600 transition-colors ml-1">
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+        )}
+
+        {/* 3. PROJECTS */}
+        {activeSection === 'projects' && (
+          <Card className="p-5 md:p-6 bg-white border-zinc-200 space-y-6">
+            <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider flex items-center gap-2">
+              <Layers size={16} className="text-indigo-600" /> Academic & Personal Projects
+            </h3>
+
+            <form onSubmit={handleAddProject} className="space-y-3 p-4 bg-zinc-50 rounded-xl border border-zinc-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input placeholder="Project Name *" value={newProjName} onChange={e => setNewProjName(e.target.value)} required />
+                <Input placeholder="Tech Stack (e.g. React, Node.js, PostgreSQL)" value={newProjTech} onChange={e => setNewProjTech(e.target.value)} />
+                <Input type="url" placeholder="GitHub Repository URL" value={newProjGithub} onChange={e => setNewProjGithub(e.target.value)} />
+                <Input type="url" placeholder="Live Demo URL" value={newProjDemo} onChange={e => setNewProjDemo(e.target.value)} />
+              </div>
+              <Textarea placeholder="Project Description..." value={newProjDesc} onChange={e => setNewProjDesc(e.target.value)} rows={2} />
+              <div className="flex justify-end">
+                <Button type="submit" disabled={addingProject} variant="primary">
+                  {addingProject ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                  <span>Add Project</span>
+                </Button>
+              </div>
+            </form>
+
+            <div className="space-y-3">
+              {(profile?.projects || []).length === 0 ? (
+                <p className="text-xs text-zinc-400 py-4 text-center">No projects added yet.</p>
+              ) : (
+                profile.projects.map((p: any) => (
+                  <div key={p.id} className="p-4 bg-white border border-zinc-200 rounded-xl flex items-start justify-between gap-4">
+                    <div className="space-y-1 min-w-0">
+                      <h4 className="text-sm font-bold text-zinc-900">{p.project_name}</h4>
+                      {p.tech_stack && <p className="text-xs font-semibold text-indigo-600">{p.tech_stack}</p>}
+                      {p.description && <p className="text-xs text-zinc-600">{p.description}</p>}
+                      <div className="flex gap-3 pt-1 text-xs">
+                        {p.github_url && <a href={p.github_url} target="_blank" rel="noreferrer" className="text-blue-600 font-bold hover:underline flex items-center gap-1"><Github size={12} /> GitHub</a>}
+                        {p.live_demo_url && <a href={p.live_demo_url} target="_blank" rel="noreferrer" className="text-emerald-600 font-bold hover:underline flex items-center gap-1"><Globe size={12} /> Live Demo</a>}
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => handleDeleteProject(p.id)} className="text-zinc-400 hover:text-red-600 p-1">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+        )}
+
+        {/* 4. INTERNSHIPS */}
+        {activeSection === 'internships' && (
+          <Card className="p-5 md:p-6 bg-white border-zinc-200 space-y-6">
+            <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider flex items-center gap-2">
+              <Briefcase size={16} className="text-indigo-600" /> Internship & Work Experience
+            </h3>
+
+            <form onSubmit={handleAddInternship} className="space-y-3 p-4 bg-zinc-50 rounded-xl border border-zinc-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                <Input placeholder="Company / Organization *" value={newInternCompany} onChange={e => setNewInternCompany(e.target.value)} required />
+                <Input placeholder="Role (e.g. Web Dev Intern)" value={newInternRole} onChange={e => setNewInternRole(e.target.value)} />
+                <Input placeholder="Duration (e.g. 3 Months, Jun-Aug 2025)" value={newInternDuration} onChange={e => setNewInternDuration(e.target.value)} />
+                <Select value={newInternMode} onChange={e => setNewInternMode(e.target.value)}>
+                  <option value="Offline">Offline / On-site</option>
+                  <option value="Online">Online / Remote</option>
+                  <option value="Hybrid">Hybrid</option>
+                </Select>
+                <Input type="url" placeholder="Certificate Link / URL" value={newInternCertUrl} onChange={e => setNewInternCertUrl(e.target.value)} className="sm:col-span-2" />
+              </div>
+              <div className="flex justify-end">
+                <Button type="submit" disabled={addingInternship} variant="primary">
+                  {addingInternship ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                  <span>Add Internship</span>
+                </Button>
+              </div>
+            </form>
+
+            <div className="space-y-3">
+              {(profile?.internships || []).length === 0 ? (
+                <p className="text-xs text-zinc-400 py-4 text-center">No internships added yet.</p>
+              ) : (
+                profile.internships.map((intern: any) => (
+                  <div key={intern.id} className="p-4 bg-white border border-zinc-200 rounded-xl flex items-start justify-between gap-4">
+                    <div>
+                      <h4 className="text-sm font-bold text-zinc-900">{intern.company}</h4>
+                      <p className="text-xs font-semibold text-zinc-600">{intern.role} • {intern.duration} ({intern.mode})</p>
+                      {intern.certificate_url && (
+                        <a href={intern.certificate_url} target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-600 hover:underline flex items-center gap-1 mt-1">
+                          <ExternalLink size={12} /> View Certificate
+                        </a>
+                      )}
+                    </div>
+                    <button type="button" onClick={() => handleDeleteInternship(intern.id)} className="text-zinc-400 hover:text-red-600 p-1">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+        )}
+
+        {/* 5. CERTIFICATIONS */}
+        {activeSection === 'certifications' && (
+          <Card className="p-5 md:p-6 bg-white border-zinc-200 space-y-6">
+            <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider flex items-center gap-2">
+              <Award size={16} className="text-indigo-600" /> Certifications & Courses
+            </h3>
+
+            <form onSubmit={handleAddCertification} className="space-y-3 p-4 bg-zinc-50 rounded-xl border border-zinc-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input placeholder="Certificate Name *" value={newCertName} onChange={e => setNewCertName(e.target.value)} required />
+                <Input placeholder="Provider (e.g. Coursera, NPTEL, AWS)" value={newCertProvider} onChange={e => setNewCertProvider(e.target.value)} />
+                <Input type="date" placeholder="Issue Date" value={newCertIssueDate} onChange={e => setNewCertIssueDate(e.target.value)} />
+                <Input placeholder="Credential ID" value={newCertCredentialId} onChange={e => setNewCertCredentialId(e.target.value)} />
+                <Input type="url" placeholder="Certificate URL / Link" value={newCertUrl} onChange={e => setNewCertUrl(e.target.value)} className="sm:col-span-2" />
+              </div>
+              <div className="flex justify-end">
+                <Button type="submit" disabled={addingCert} variant="primary">
+                  {addingCert ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                  <span>Add Certification</span>
+                </Button>
+              </div>
+            </form>
+
+            <div className="space-y-3">
+              {(profile?.certifications || []).length === 0 ? (
+                <p className="text-xs text-zinc-400 py-4 text-center">No certifications added yet.</p>
+              ) : (
+                profile.certifications.map((c: any) => (
+                  <div key={c.id} className="p-4 bg-white border border-zinc-200 rounded-xl flex items-start justify-between gap-4">
+                    <div>
+                      <h4 className="text-sm font-bold text-zinc-900">{c.certificate_name}</h4>
+                      <p className="text-xs font-semibold text-zinc-600">{c.provider} {c.issue_date ? `• Issued ${c.issue_date}` : ''}</p>
+                      {c.credential_id && <p className="text-[11px] text-zinc-400">Credential ID: {c.credential_id}</p>}
+                      {c.certificate_url && (
+                        <a href={c.certificate_url} target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-600 hover:underline flex items-center gap-1 mt-1">
+                          <ExternalLink size={12} /> View Credential
+                        </a>
+                      )}
+                    </div>
+                    <button type="button" onClick={() => handleDeleteCert(c.id)} className="text-zinc-400 hover:text-red-600 p-1">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+        )}
+
+        {/* 6. CODING PROFILES */}
+        {activeSection === 'coding' && (
+          <Card className="p-5 md:p-6 bg-white border-zinc-200">
+            <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <Globe size={16} className="text-indigo-600" /> Coding & Professional Profiles
+            </h3>
+
+            <form onSubmit={handleSaveCodingProfiles} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">GitHub</label>
+                  <Input type="url" placeholder="https://github.com/username" value={codingGithub} onChange={e => setCodingGithub(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">LeetCode</label>
+                  <Input type="url" placeholder="https://leetcode.com/username" value={codingLeetcode} onChange={e => setCodingLeetcode(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">HackerRank</label>
+                  <Input type="url" placeholder="https://hackerrank.com/username" value={codingHackerrank} onChange={e => setCodingHackerrank(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">CodeChef</label>
+                  <Input type="url" placeholder="https://codechef.com/users/username" value={codingCodechef} onChange={e => setCodingCodechef(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">GeeksforGeeks</label>
+                  <Input type="url" placeholder="https://geeksforgeeks.org/user/username" value={codingGfg} onChange={e => setCodingGfg(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">LinkedIn</label>
+                  <Input type="url" placeholder="https://linkedin.com/in/username" value={codingLinkedin} onChange={e => setCodingLinkedin(e.target.value)} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">Personal Portfolio / Website</label>
+                  <Input type="url" placeholder="https://yourportfolio.com" value={codingPortfolio} onChange={e => setCodingPortfolio(e.target.value)} />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <Button type="submit" disabled={savingCoding} variant="primary" className="px-6">
+                  {savingCoding ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  <span>Save Coding Profiles</span>
+                </Button>
+              </div>
+            </form>
+          </Card>
+        )}
+
+        {/* 7. RESUME */}
+        {activeSection === 'resume' && (
+          <Card className="p-5 md:p-6 bg-white border-zinc-200">
+            <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <FileText size={16} className="text-indigo-600" /> Student Resume & CV
+            </h3>
+
+            <form onSubmit={handleSaveResume} className="space-y-4 max-w-lg">
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">Resume File Link / PDF URL</label>
+                <Input
+                  type="url"
+                  placeholder="https://drive.google.com/... or Cloudinary PDF URL"
+                  value={resumeUrl}
+                  onChange={e => setResumeUrl(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">Display File Name</label>
+                <Input
+                  type="text"
+                  placeholder="e.g. John_Doe_Resume_2026.pdf"
+                  value={resumeFileName}
+                  onChange={e => setResumeFileName(e.target.value)}
+                />
+              </div>
+
+              {profile?.resume && (
+                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 flex items-center justify-between text-xs">
+                  <div>
+                    <p className="font-bold text-zinc-900">{profile.resume.file_name || 'Resume.pdf'}</p>
+                    <p className="text-[10px] text-zinc-400">Last Updated: {new Date(profile.resume.last_updated).toLocaleString()}</p>
+                  </div>
+                  <a href={profile.resume.resume_url} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-black text-white rounded-lg font-bold hover:bg-zinc-800 flex items-center gap-1">
+                    <ExternalLink size={12} /> View Resume
+                  </a>
+                </div>
+              )}
+
+              <div className="pt-2">
+                <Button type="submit" disabled={savingResume} variant="primary" className="px-6">
+                  {savingResume ? <Loader2 size={16} className="animate-spin" /> : <FileUp size={16} />}
+                  <span>Save Resume</span>
+                </Button>
+              </div>
+            </form>
+          </Card>
+        )}
+
+        {/* 8. ACHIEVEMENTS */}
+        {activeSection === 'achievements' && (
+          <Card className="p-5 md:p-6 bg-white border-zinc-200 space-y-6">
+            <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider flex items-center gap-2">
+              <Sparkles size={16} className="text-indigo-600" /> Honors, Hackathons & Achievements
+            </h3>
+
+            <form onSubmit={handleAddAchievement} className="space-y-3 p-4 bg-zinc-50 rounded-xl border border-zinc-200">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Input placeholder="Achievement / Event Title *" value={newAchTitle} onChange={e => setNewAchTitle(e.target.value)} required className="sm:col-span-2" />
+                <Select value={newAchCategory} onChange={e => setNewAchCategory(e.target.value)}>
+                  <option value="Hackathons">Hackathons</option>
+                  <option value="SIH">Smart India Hackathon (SIH)</option>
+                  <option value="Coding Competitions">Coding Competitions</option>
+                  <option value="Paper Presentations">Paper Presentations</option>
+                  <option value="Awards">Awards & Honors</option>
+                </Select>
+                <Input placeholder="Date / Year (e.g. Feb 2026)" value={newAchDate} onChange={e => setNewAchDate(e.target.value)} />
+              </div>
+              <Textarea placeholder="Description / Details of your achievement..." value={newAchDesc} onChange={e => setNewAchDesc(e.target.value)} rows={2} />
+              <div className="flex justify-end">
+                <Button type="submit" disabled={addingAch} variant="primary">
+                  {addingAch ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                  <span>Add Achievement</span>
+                </Button>
+              </div>
+            </form>
+
+            <div className="space-y-3">
+              {(profile?.achievements || []).length === 0 ? (
+                <p className="text-xs text-zinc-400 py-4 text-center">No achievements added yet.</p>
+              ) : (
+                profile.achievements.map((ach: any) => (
+                  <div key={ach.id} className="p-4 bg-white border border-zinc-200 rounded-xl flex items-start justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-zinc-900">{ach.title}</h4>
+                        <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-extrabold uppercase">{ach.category}</span>
+                      </div>
+                      {ach.event_date && <p className="text-[11px] text-zinc-400">{ach.event_date}</p>}
+                      {ach.description && <p className="text-xs text-zinc-600 mt-1">{ach.description}</p>}
+                    </div>
+                    <button type="button" onClick={() => handleDeleteAchievement(ach.id)} className="text-zinc-400 hover:text-red-600 p-1">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+        )}
+
+        {/* 9. LANGUAGES */}
+        {activeSection === 'languages' && (
+          <Card className="p-5 md:p-6 bg-white border-zinc-200">
+            <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <Languages size={16} className="text-indigo-600" /> Languages Spoken
+            </h3>
+
+            <form onSubmit={handleAddLanguage} className="flex flex-col sm:flex-row gap-3 mb-6 p-3 bg-zinc-50 rounded-xl border border-zinc-200">
+              <Input placeholder="Language (e.g. English, Tamil, Hindi)" value={newLangName} onChange={e => setNewLangName(e.target.value)} required className="flex-1" />
+              <Select value={newLangProf} onChange={e => setNewLangProf(e.target.value)} className="sm:w-44">
+                <option value="Basic">Basic</option>
+                <option value="Conversational">Conversational</option>
+                <option value="Fluent">Fluent</option>
+                <option value="Native">Native / Bilingual</option>
+              </Select>
+              <Button type="submit" disabled={addingLang} variant="primary">
+                {addingLang ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                <span>Add Language</span>
+              </Button>
+            </form>
+
+            <div className="flex flex-wrap gap-2">
+              {(profile?.languages || []).length === 0 ? (
+                <p className="text-xs text-zinc-400 py-4">No languages added yet.</p>
+              ) : (
+                profile.languages.map((l: any) => (
+                  <div key={l.id} className="flex items-center gap-2 px-3.5 py-1.5 bg-zinc-100 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-900">
+                    <span>{l.language}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 text-zinc-700 font-bold uppercase">{l.proficiency}</span>
+                    <button type="button" onClick={() => handleDeleteLanguage(l.id)} className="text-zinc-400 hover:text-red-600 ml-1">
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+        )}
+
+        {/* 10. CAREER PREFERENCES */}
+        {activeSection === 'career' && (
+          <Card className="p-5 md:p-6 bg-white border-zinc-200">
+            <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <Compass size={16} className="text-indigo-600" /> Career Preferences
+            </h3>
+
+            <form onSubmit={handleSaveCareer} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">Preferred Role</label>
+                  <Input placeholder="e.g. Software Engineer, Data Analyst" value={prefRole} onChange={e => setPrefRole(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">Preferred Domain</label>
+                  <Input placeholder="e.g. Web Development, AI/ML, Cloud" value={prefDomain} onChange={e => setPrefDomain(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">Preferred Location</label>
+                  <Input placeholder="e.g. Chennai, Bangalore, Hyderabad" value={prefLocation} onChange={e => setPrefLocation(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1">Work Mode Preference</label>
+                  <Select value={prefWorkMode} onChange={e => setPrefWorkMode(e.target.value)}>
+                    <option value="On-site">On-site</option>
+                    <option value="Remote">Remote</option>
+                    <option value="Hybrid">Hybrid</option>
+                  </Select>
+                </div>
+                <div className="sm:col-span-2 flex items-center gap-3 pt-1">
+                  <input
+                    type="checkbox"
+                    id="relocateCheck"
+                    checked={prefRelocate}
+                    onChange={e => setPrefRelocate(e.target.checked)}
+                    className="w-4 h-4 rounded border-zinc-300 text-black focus:ring-black"
+                  />
+                  <label htmlFor="relocateCheck" className="text-xs font-bold text-zinc-800 cursor-pointer">
+                    Willing to Relocate to job location
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <Button type="submit" disabled={savingCareer} variant="primary" className="px-6">
+                  {savingCareer ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  <span>Save Career Preferences</span>
+                </Button>
+              </div>
+            </form>
+          </Card>
+        )}
+      </div>
+    </PageLayout>
+  );
+}
+
+function SettingsView({
+  user,
+  token,
+  addToast
+}: {
+  user: User | null;
+  token: string | null;
+  addToast: (message: string, type: 'success' | 'error' | 'info') => void;
+}) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPass, setShowCurrentPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError('');
+    if (!currentPassword) {
+      setPasswordError('Please enter your current password');
+      return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+      setPasswordError('New password must be at least 6 characters long');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New password and confirmation do not match');
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const res = await fetch(`${API_URL}/api/settings/change-password`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast('Password changed successfully!', 'success');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        setPasswordError(data.error || 'Failed to change password');
+        addToast(data.error || 'Failed to change password', 'error');
+      }
+    } catch (err) {
+      setPasswordError('Error connecting to server');
+      addToast('Error changing password', 'error');
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  return (
+    <PageLayout>
+      <div className="space-y-6 max-w-4xl mx-auto pb-12">
+        <div className="flex items-center justify-between pb-4 border-b border-zinc-200">
+          <div>
+            <h1 className="text-2xl font-extrabold text-zinc-900 tracking-tight flex items-center gap-2">
+              <Settings size={24} className="text-zinc-900" /> Account Settings
+            </h1>
+            <p className="text-xs text-zinc-500 font-medium">Manage your account security and preferences</p>
+          </div>
+        </div>
+
+        {/* Account Details Overview */}
+        <Card className="p-6 bg-white border-zinc-200">
+          <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <User size={16} className="text-indigo-600" /> Account Identity Summary
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+              <p className="text-[10px] font-bold text-zinc-400 uppercase">Full Name</p>
+              <p className="text-sm font-bold text-zinc-900 truncate">{user?.full_name}</p>
+            </div>
+            <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+              <p className="text-[10px] font-bold text-zinc-400 uppercase">Role</p>
+              <p className="text-sm font-bold text-zinc-900 truncate">{user?.role}</p>
+            </div>
+            <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+              <p className="text-[10px] font-bold text-zinc-400 uppercase">Username / ID</p>
+              <p className="text-sm font-bold text-zinc-900 truncate">{user?.register_number || user?.username}</p>
+            </div>
+            <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+              <p className="text-[10px] font-bold text-zinc-400 uppercase">Email</p>
+              <p className="text-sm font-bold text-zinc-900 truncate">{user?.email || 'N/A'}</p>
+            </div>
+          </div>
+        </Card>
+
+        {/* Change Password Card */}
+        <Card className="p-6 bg-white border-zinc-200">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-zinc-100">
+            <div>
+              <h3 className="text-base font-bold text-zinc-900 flex items-center gap-2">
+                <KeyRound size={18} className="text-amber-600" /> Change Password
+              </h3>
+              <p className="text-xs text-zinc-500">Update your login security credentials</p>
+            </div>
+          </div>
+
+          {passwordError && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2">
+              <AlertTriangle size={16} className="shrink-0" />
+              <span>{passwordError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleChangePassword} className="space-y-4 max-w-lg">
+            <div>
+              <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1.5">
+                Current Password <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <Input
+                  type={showCurrentPass ? 'text' : 'password'}
+                  value={currentPassword}
+                  onChange={e => setCurrentPassword(e.target.value)}
+                  required
+                  placeholder="Enter current password"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCurrentPass(!showCurrentPass)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700"
+                >
+                  {showCurrentPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1.5">
+                New Password <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <Input
+                  type={showNewPass ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  placeholder="Minimum 6 characters"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPass(!showNewPass)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700"
+                >
+                  {showNewPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-1.5">
+                Confirm New Password <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <Input
+                  type={showConfirmPass ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  placeholder="Re-enter new password"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPass(!showConfirmPass)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700"
+                >
+                  {showConfirmPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <Button type="submit" disabled={changingPassword} variant="primary" className="px-6 flex items-center gap-2">
+                {changingPassword ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
+                <span>Update Password</span>
+              </Button>
+            </div>
+          </form>
+        </Card>
+      </div>
+    </PageLayout>
+  );
+}
+
+function StaffStudentProfileModal({
+  studentId,
+  token,
+  onClose
+}: {
+  studentId: string;
+  token: string | null;
+  onClose: () => void;
+}) {
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [activeSection, setActiveSection] = useState('personal');
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch(`${API_URL}/api/student/profile/${studentId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setProfile(data);
+        } else {
+          const err = await res.json();
+          setError(err.error || 'Failed to load student profile');
+        }
+      } catch {
+        setError('Error connecting to server');
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (studentId) fetchProfile();
+  }, [studentId, token]);
+
+  const acad = profile?.academic || {};
+
+  const sections = [
+    { id: 'personal', label: '1. Personal & Academic', icon: User },
+    { id: 'skills', label: '2. Skills', icon: Code },
+    { id: 'projects', label: '3. Projects', icon: Layers },
+    { id: 'internships', label: '4. Internships', icon: Briefcase },
+    { id: 'certifications', label: '5. Certifications', icon: Award },
+    { id: 'coding', label: '6. Coding Profiles', icon: Globe },
+    { id: 'resume', label: '7. Resume', icon: FileText },
+    { id: 'achievements', label: '8. Achievements', icon: Sparkles },
+    { id: 'languages', label: '9. Languages', icon: Languages },
+    { id: 'career', label: '10. Career Preferences', icon: Compass },
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-3xl p-6 md:p-8 w-full max-w-4xl shadow-2xl relative max-h-[90vh] flex flex-col overflow-hidden border border-zinc-100"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between pb-4 border-b border-zinc-200 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-zinc-900 overflow-hidden flex items-center justify-center text-white font-bold shrink-0">
+              {acad.avatar_url ? (
+                <img src={acad.avatar_url} alt={acad.full_name} className="w-full h-full object-cover" />
+              ) : (
+                (acad.full_name || 'ST').substring(0, 2).toUpperCase()
+              )}
+            </div>
+            <div>
+              <h2 className="text-xl font-extrabold text-zinc-900 flex items-center gap-2">
+                {acad.full_name || 'Student Profile'}
+              </h2>
+              <p className="text-xs text-zinc-500 font-semibold">
+                Reg No: {acad.register_number} • Section: {acad.class_name || 'N/A'} • Dept: {acad.department_name || 'IT'}
+              </p>
+            </div>
+          </div>
+
+          <button onClick={onClose} className="p-2 hover:bg-zinc-100 rounded-full text-zinc-400 hover:text-zinc-900 transition-colors">
+            <XCircle size={24} />
+          </button>
+        </div>
+
+        {/* Section Pill Selectors */}
+        <div className="flex items-center gap-1.5 overflow-x-auto max-w-full py-3 custom-scrollbar shrink-0 border-b border-zinc-100">
+          {sections.map(s => {
+            const SIcon = s.icon;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setActiveSection(s.id)}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 shrink-0",
+                  activeSection === s.id
+                    ? "bg-black text-white shadow-sm"
+                    : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                )}
+              >
+                <SIcon size={13} />
+                <span>{s.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Content Area */}
+        <div className="flex-1 overflow-y-auto pt-4 space-y-4 pr-1">
+          {loading ? (
+            <div className="py-20 text-center text-zinc-500">
+              <Loader2 size={32} className="animate-spin mx-auto mb-2 text-black" />
+              <p className="text-xs font-semibold">Loading student details...</p>
+            </div>
+          ) : error ? (
+            <div className="p-4 bg-red-50 text-red-700 text-xs font-semibold rounded-xl border border-red-200">
+              {error}
+            </div>
+          ) : (
+            <>
+              {activeSection === 'personal' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">College Email</p>
+                      <p className="text-xs font-bold text-zinc-900 truncate">{acad.email || 'N/A'}</p>
+                    </div>
+                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Gender</p>
+                      <p className="text-xs font-bold text-zinc-900 truncate">{acad.gender || 'N/A'}</p>
+                    </div>
+                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Mobile Number</p>
+                      <p className="text-xs font-bold text-zinc-900 truncate">{profile.personal?.mobile_number || 'N/A'}</p>
+                    </div>
+                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Date of Birth</p>
+                      <p className="text-xs font-bold text-zinc-900 truncate">{profile.personal?.date_of_birth || 'N/A'}</p>
+                    </div>
+                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Semester</p>
+                      <p className="text-xs font-bold text-zinc-900 truncate">{profile.personal?.semester ? `Semester ${profile.personal.semester}` : 'N/A'}</p>
+                    </div>
+                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">CGPA</p>
+                      <p className="text-xs font-bold text-emerald-600 truncate">{profile.personal?.cgpa || 'N/A'}</p>
+                    </div>
+                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Current Arrears</p>
+                      <p className="text-xs font-bold text-rose-600 truncate">{profile.personal?.current_arrears ?? 0}</p>
+                    </div>
+                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase">History of Arrears</p>
+                      <p className="text-xs font-bold text-zinc-900 truncate">{profile.personal?.history_of_arrears ?? 0}</p>
+                    </div>
+                  </div>
+
+                  {profile.personal?.about_me && (
+                    <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase mb-1">About Student</p>
+                      <p className="text-xs text-zinc-700 leading-relaxed">{profile.personal.about_me}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeSection === 'skills' && (
+                <div className="flex flex-wrap gap-2">
+                  {(profile.skills || []).length === 0 ? (
+                    <p className="text-xs text-zinc-400 py-4">No skills recorded.</p>
+                  ) : (
+                    profile.skills.map((sk: any) => (
+                      <div key={sk.id} className="px-3 py-1.5 bg-zinc-100 rounded-xl border border-zinc-200 text-xs font-semibold flex items-center gap-2">
+                        <span>{sk.skill_name}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 text-zinc-700 font-bold uppercase">{sk.level}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {activeSection === 'projects' && (
+                <div className="space-y-3">
+                  {(profile.projects || []).length === 0 ? (
+                    <p className="text-xs text-zinc-400 py-4 text-center">No projects recorded.</p>
+                  ) : (
+                    profile.projects.map((p: any) => (
+                      <div key={p.id} className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl space-y-1">
+                        <h4 className="text-sm font-bold text-zinc-900">{p.project_name}</h4>
+                        {p.tech_stack && <p className="text-xs text-indigo-600 font-semibold">{p.tech_stack}</p>}
+                        {p.description && <p className="text-xs text-zinc-600">{p.description}</p>}
+                        <div className="flex gap-3 pt-1 text-xs">
+                          {p.github_url && <a href={p.github_url} target="_blank" rel="noreferrer" className="text-blue-600 font-bold hover:underline flex items-center gap-1"><Github size={12} /> GitHub</a>}
+                          {p.live_demo_url && <a href={p.live_demo_url} target="_blank" rel="noreferrer" className="text-emerald-600 font-bold hover:underline flex items-center gap-1"><Globe size={12} /> Live Demo</a>}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {activeSection === 'internships' && (
+                <div className="space-y-3">
+                  {(profile.internships || []).length === 0 ? (
+                    <p className="text-xs text-zinc-400 py-4 text-center">No internships recorded.</p>
+                  ) : (
+                    profile.internships.map((intern: any) => (
+                      <div key={intern.id} className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl">
+                        <h4 className="text-sm font-bold text-zinc-900">{intern.company}</h4>
+                        <p className="text-xs font-semibold text-zinc-600">{intern.role} • {intern.duration} ({intern.mode})</p>
+                        {intern.certificate_url && (
+                          <a href={intern.certificate_url} target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-600 hover:underline flex items-center gap-1 mt-1">
+                            <ExternalLink size={12} /> View Certificate
+                          </a>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {activeSection === 'certifications' && (
+                <div className="space-y-3">
+                  {(profile.certifications || []).length === 0 ? (
+                    <p className="text-xs text-zinc-400 py-4 text-center">No certifications recorded.</p>
+                  ) : (
+                    profile.certifications.map((c: any) => (
+                      <div key={c.id} className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl">
+                        <h4 className="text-sm font-bold text-zinc-900">{c.certificate_name}</h4>
+                        <p className="text-xs font-semibold text-zinc-600">{c.provider} {c.issue_date ? `• Issued ${c.issue_date}` : ''}</p>
+                        {c.certificate_url && (
+                          <a href={c.certificate_url} target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-600 hover:underline flex items-center gap-1 mt-1">
+                            <ExternalLink size={12} /> View Credential
+                          </a>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {activeSection === 'coding' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {profile.coding_profiles?.github && <a href={profile.coding_profiles.github} target="_blank" rel="noreferrer" className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-blue-600 flex items-center gap-2"><Github size={16} /> GitHub Profile</a>}
+                  {profile.coding_profiles?.leetcode && <a href={profile.coding_profiles.leetcode} target="_blank" rel="noreferrer" className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-amber-600 flex items-center gap-2"><Globe size={16} /> LeetCode Profile</a>}
+                  {profile.coding_profiles?.hackerrank && <a href={profile.coding_profiles.hackerrank} target="_blank" rel="noreferrer" className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-emerald-600 flex items-center gap-2"><Globe size={16} /> HackerRank Profile</a>}
+                  {profile.coding_profiles?.codechef && <a href={profile.coding_profiles.codechef} target="_blank" rel="noreferrer" className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-purple-600 flex items-center gap-2"><Globe size={16} /> CodeChef Profile</a>}
+                  {profile.coding_profiles?.geeksforgeeks && <a href={profile.coding_profiles.geeksforgeeks} target="_blank" rel="noreferrer" className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-green-600 flex items-center gap-2"><Globe size={16} /> GeeksforGeeks Profile</a>}
+                  {profile.coding_profiles?.linkedin && <a href={profile.coding_profiles.linkedin} target="_blank" rel="noreferrer" className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-blue-700 flex items-center gap-2"><Linkedin size={16} /> LinkedIn Profile</a>}
+                  {profile.coding_profiles?.portfolio && <a href={profile.coding_profiles.portfolio} target="_blank" rel="noreferrer" className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-indigo-600 flex items-center gap-2"><Globe size={16} /> Portfolio Website</a>}
+                </div>
+              )}
+
+              {activeSection === 'resume' && (
+                <div>
+                  {profile.resume ? (
+                    <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-bold text-zinc-900">{profile.resume.file_name || 'Resume.pdf'}</p>
+                        <p className="text-[10px] text-zinc-400">Last updated: {new Date(profile.resume.last_updated).toLocaleString()}</p>
+                      </div>
+                      <a href={profile.resume.resume_url} target="_blank" rel="noreferrer" className="px-4 py-2 bg-black text-white text-xs font-bold rounded-xl flex items-center gap-1">
+                        <ExternalLink size={14} /> Open Resume PDF
+                      </a>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-zinc-400 py-4 text-center">No resume uploaded.</p>
+                  )}
+                </div>
+              )}
+
+              {activeSection === 'achievements' && (
+                <div className="space-y-3">
+                  {(profile.achievements || []).length === 0 ? (
+                    <p className="text-xs text-zinc-400 py-4 text-center">No achievements recorded.</p>
+                  ) : (
+                    profile.achievements.map((ach: any) => (
+                      <div key={ach.id} className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-zinc-900">{ach.title}</h4>
+                          <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-extrabold uppercase">{ach.category}</span>
+                        </div>
+                        {ach.event_date && <p className="text-[11px] text-zinc-400">{ach.event_date}</p>}
+                        {ach.description && <p className="text-xs text-zinc-600 mt-1">{ach.description}</p>}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {activeSection === 'languages' && (
+                <div className="flex flex-wrap gap-2">
+                  {(profile.languages || []).length === 0 ? (
+                    <p className="text-xs text-zinc-400 py-4">No languages recorded.</p>
+                  ) : (
+                    profile.languages.map((l: any) => (
+                      <div key={l.id} className="px-3 py-1.5 bg-zinc-100 rounded-xl border border-zinc-200 text-xs font-semibold flex items-center gap-2">
+                        <span>{l.language}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 text-zinc-700 font-bold uppercase">{l.proficiency}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {activeSection === 'career' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase">Preferred Role</p>
+                    <p className="text-xs font-bold text-zinc-900">{profile.career_preferences?.preferred_role || 'N/A'}</p>
+                  </div>
+                  <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase">Preferred Domain</p>
+                    <p className="text-xs font-bold text-zinc-900">{profile.career_preferences?.preferred_domain || 'N/A'}</p>
+                  </div>
+                  <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase">Preferred Location</p>
+                    <p className="text-xs font-bold text-zinc-900">{profile.career_preferences?.preferred_location || 'N/A'}</p>
+                  </div>
+                  <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase">Work Mode & Relocation</p>
+                    <p className="text-xs font-bold text-zinc-900">{profile.career_preferences?.work_mode || 'Hybrid'} • {profile.career_preferences?.willing_to_relocate ? 'Willing to Relocate' : 'No Relocation'}</p>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [view, setView] = useState<string>('dashboard');
+  const [viewingStudentProfileId, setViewingStudentProfileId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [isServerAwake, setIsServerAwake] = useState(false);
@@ -2536,9 +4368,9 @@ export default function App() {
 
                  <form onSubmit={handleLogin} className="space-y-4">
                   <div>
-                    <label className="text-sm font-medium text-zinc-700 mb-1 block">Mail ID / Username</label>
+                    <label className="text-sm font-medium text-zinc-700 mb-1 block">Mail ID </label>
                     <Input
-                      placeholder="student@gmail.com"
+                      placeholder="it@gmail.com"
                       value={loginData.username}
                       onChange={e => setLoginData(prev => ({ ...prev, username: e.target.value }))}
                       required
@@ -2546,11 +4378,11 @@ export default function App() {
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-zinc-700 mb-1 block">Password (Default: Register Number)</label>
+                    <label className="text-sm font-medium text-zinc-700 mb-1 block">Password </label>
                     <div className="relative">
                       <Input
                         type={showPassword ? 'text' : 'password'}
-                        placeholder="Enter Register Number"
+                        placeholder="Enter Password"
                         value={loginData.password}
                         onChange={e => setLoginData(prev => ({ ...prev, password: e.target.value }))}
                         required
@@ -3250,8 +5082,21 @@ export default function App() {
               active={view === 'submissions'}
               onClick={() => { setView('submissions'); setIsMobileSidebarOpen(false); }}
             />
+            <SidebarItem
+              icon={<User size={20} />}
+              label="Profile"
+              active={view === 'profile'}
+              onClick={() => { setView('profile'); setIsMobileSidebarOpen(false); }}
+            />
           </>
         )}
+
+        <SidebarItem
+          icon={<Settings size={20} />}
+          label="Settings"
+          active={view === 'settings'}
+          onClick={() => { setView('settings'); setIsMobileSidebarOpen(false); }}
+        />
       </nav>
 
       <div className="p-4 border-t border-zinc-100 shrink-0 bg-white">
@@ -3303,6 +5148,15 @@ export default function App() {
                 </div>
               </motion.div>
             </div>
+          )}
+        </AnimatePresence>
+        <AnimatePresence>
+          {viewingStudentProfileId && (
+            <StaffStudentProfileModal
+              studentId={viewingStudentProfileId}
+              token={token}
+              onClose={() => setViewingStudentProfileId(null)}
+            />
           )}
         </AnimatePresence>
         <AnimatePresence>
@@ -4185,6 +6039,24 @@ export default function App() {
                                 )}
                                 <TD className="text-right">
                                   <div className="flex justify-end gap-2">
+                                     {u.role === 'STUDENT' && (
+                                       <Button
+                                         variant="ghost"
+                                         className="p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50"
+                                         onClick={() => {
+                                           const activeClassId = (user?.class_id || myClass?.id)?.toString();
+                                           const isMyClassStudent = activeClassId && u.class_id?.toString() === activeClassId;
+                                           if (isAdmin || isHOD || isMyClassStudent || user?.is_year_coordinator) {
+                                             setViewingStudentProfileId(u.id);
+                                           } else {
+                                             addToast('Class Advisors can only view profiles of students in their assigned class', 'error');
+                                           }
+                                         }}
+                                         title="View Full Student Profile"
+                                       >
+                                         <User size={18} />
+                                       </Button>
+                                     )}
                                     {(isAdvisor || isHOD || isAdmin) && u.role === 'STUDENT' && (
                                       <Button
                                         variant="ghost"
@@ -5986,6 +7858,50 @@ export default function App() {
                       )}
                     </div>
                   </PageLayout>
+                </motion.div>
+              )
+            }
+
+            {
+              view === 'profile' && (
+                <motion.div
+                  key="profile"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="w-full h-full flex flex-col min-h-0 overflow-y-auto"
+                >
+                  {isStudent ? (
+                    <StudentProfileView
+                      user={user}
+                      token={token}
+                      addToast={addToast}
+                    />
+                  ) : (
+                    <PageLayout>
+                      <Card className="p-8 text-center text-zinc-500">
+                        <Shield size={48} className="mx-auto mb-4 text-zinc-400" />
+                        <h3 className="text-lg font-bold text-zinc-900 mb-1">Student Profile Only</h3>
+                        <p className="text-sm">This profile module is exclusively available to logged-in student accounts.</p>
+                      </Card>
+                    </PageLayout>
+                  )}
+                </motion.div>
+              )
+            }
+
+            {
+              view === 'settings' && (
+                <motion.div
+                  key="settings"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="w-full h-full flex flex-col min-h-0 overflow-y-auto"
+                >
+                  <SettingsView
+                    user={user}
+                    token={token}
+                    addToast={addToast}
+                  />
                 </motion.div>
               )
             }

@@ -65,6 +65,11 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 
+const memoryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
+
 // ─── Express App ──────────────────────────────────────────────────────────────
 async function startServer() {
   // Initialize PostgreSQL database schemas and tables
@@ -181,13 +186,7 @@ async function startServer() {
     const dirKey = loginId.replace(/\s+/g, '').toLowerCase();
     const directoryStudent = constantStudentByEmailMap.get(dirKey) || constantStudentByRegNoMap.get(dirKey);
 
-    let isPasswordValid = false;
-
     if (directoryStudent) {
-      const expectedRegNo = directoryStudent.register_number ? directoryStudent.register_number.trim().toLowerCase() : '';
-      const enteredPassClean = cleanPassword.toLowerCase().replace(/\s+/g, '');
-      const isDefaultPassMatch = expectedRegNo && (enteredPassClean === expectedRegNo);
-
       try {
         const defaultPassHash = await bcrypt.hash(directoryStudent.register_number.trim(), 10);
         let validClassId = (directoryStudent.class_id && directoryStudent.class_id !== 'unassigned') ? directoryStudent.class_id : null;
@@ -203,32 +202,30 @@ async function startServer() {
 
         const studentUsername = (directoryStudent.email || directoryStudent.register_number).trim();
 
-        const syncedUserRes = await pool.query(`
-          INSERT INTO users (
-            username, password, role, department_id, class_id, full_name, email, register_number, gender
-          ) VALUES ($1, $2, 'STUDENT', $3, $4, $5, $6, $7, $8)
-          ON CONFLICT (register_number) DO UPDATE SET
-            username = EXCLUDED.username,
-            email = EXCLUDED.email,
-            full_name = EXCLUDED.full_name,
-            class_id = COALESCE(users.class_id, EXCLUDED.class_id),
-            department_id = COALESCE(users.department_id, EXCLUDED.department_id),
-            updated_at = NOW()
-          RETURNING *
-        `, [
-          studentUsername,
-          defaultPassHash,
-          validDeptId,
-          validClassId,
-          directoryStudent.full_name || 'Student',
-          directoryStudent.email || null,
-          directoryStudent.register_number.trim(),
-          directoryStudent.gender || 'Not Specified'
-        ]);
+        // Check if user already exists in database
+        const existingUserRes = await pool.query('SELECT * FROM users WHERE register_number = $1 OR username = $2', [directoryStudent.register_number.trim(), studentUsername]);
 
-        user = syncedUserRes.rows[0];
-        if (isDefaultPassMatch) {
-          isPasswordValid = true;
+        if (existingUserRes.rows.length === 0) {
+          // New student -> Insert with default password
+          const syncedUserRes = await pool.query(`
+            INSERT INTO users (
+              username, password, role, department_id, class_id, full_name, email, register_number, gender
+            ) VALUES ($1, $2, 'STUDENT', $3, $4, $5, $6, $7, $8)
+            RETURNING *
+          `, [
+            studentUsername,
+            defaultPassHash,
+            validDeptId,
+            validClassId,
+            directoryStudent.full_name || 'Student',
+            directoryStudent.email || null,
+            directoryStudent.register_number.trim(),
+            directoryStudent.gender || 'Not Specified'
+          ]);
+          user = syncedUserRes.rows[0];
+        } else {
+          // Existing student user -> preserve their updated DB password!
+          user = existingUserRes.rows[0];
         }
       } catch (syncErr) {
         console.error('[Auth] Error syncing student from directory:', syncErr);
@@ -237,43 +234,19 @@ async function startServer() {
 
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-    if (!isPasswordValid) {
-      try {
-        if (user.password && (user.password.startsWith('$2a$') || user.password.startsWith('$2b$') || user.password.startsWith('$2y$'))) {
-          isPasswordValid = await bcrypt.compare(cleanPassword, user.password) ||
-                            (password && await bcrypt.compare(password, user.password)) ||
-                            await bcrypt.compare(cleanPassword.toLowerCase(), user.password) ||
-                            await bcrypt.compare(cleanPassword.toUpperCase(), user.password);
-        } else {
-          isPasswordValid = (cleanPassword === user.password) || (password === user.password);
-        }
-      } catch {
-        isPasswordValid = false;
+    // Validate password strictly against user.password in DB
+    let isPasswordValid = false;
+    try {
+      if (user.password && (user.password.startsWith('$2a$') || user.password.startsWith('$2b$') || user.password.startsWith('$2y$'))) {
+        isPasswordValid = await bcrypt.compare(cleanPassword, user.password) ||
+                          (password && await bcrypt.compare(password, user.password)) ||
+                          await bcrypt.compare(cleanPassword.toLowerCase(), user.password) ||
+                          await bcrypt.compare(cleanPassword.toUpperCase(), user.password);
+      } else {
+        isPasswordValid = (cleanPassword === user.password) || (password === user.password);
       }
-    }
-
-    // Fallback for Student login with default credentials (e.g. Register Number, Username, or Email)
-    if (!isPasswordValid && user.role === 'STUDENT') {
-      const regNo = user.register_number ? user.register_number.trim().toLowerCase() : '';
-      const uName = user.username ? user.username.trim().toLowerCase() : '';
-      const uEmail = user.email ? user.email.trim().toLowerCase() : '';
-      const enteredClean = cleanPassword.toLowerCase();
-      const enteredRaw = (password || '').trim().toLowerCase();
-      const enteredLogin = loginId.toLowerCase();
-
-      if (
-        (regNo && (enteredClean === regNo || enteredRaw === regNo || enteredLogin === regNo)) ||
-        (uName && (enteredClean === uName || enteredRaw === uName || enteredLogin === uName)) ||
-        (uEmail && (enteredClean === uEmail || enteredRaw === uEmail || enteredLogin === uEmail))
-      ) {
-        isPasswordValid = true;
-        try {
-          const newHash = await bcrypt.hash((cleanPassword || user.register_number || loginId).trim(), 10);
-          await pool.query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [newHash, user.id]);
-        } catch (err) {
-          console.error('[Auth] Error auto-updating student password hash:', err);
-        }
-      }
+    } catch {
+      isPasswordValid = false;
     }
 
     if (!isPasswordValid) {
@@ -311,7 +284,17 @@ async function startServer() {
   });
 
   app.get('/api/auth/me', authenticate, async (req: any, res) => {
-    const userRes = await pool.query('SELECT * FROM users WHERE id = $1 LIMIT 1', [req.user.id]);
+    const userRes = await pool.query(`
+      SELECT 
+        u.id, u.username, u.role, u.full_name, u.email, u.register_number, u.gender,
+        u.phone, u.bio, u.github_url, u.linkedin_url, u.avatar_url,
+        u.department_id, u.class_id, u.is_coordinator, u.is_year_coordinator, u.year_scope,
+        d.name as department_name, c.name as class_name, c.year, c.batch
+      FROM users u
+      LEFT JOIN departments d ON u.department_id = d.id
+      LEFT JOIN classes c ON u.class_id = c.id
+      WHERE u.id = $1 LIMIT 1
+    `, [req.user.id]);
     const user = userRes.rows[0];
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({
@@ -322,12 +305,262 @@ async function startServer() {
       email: user.email,
       register_number: user.register_number,
       gender: user.gender,
+      phone: user.phone || '',
+      bio: user.bio || '',
+      github_url: user.github_url || '',
+      linkedin_url: user.linkedin_url || '',
+      avatar_url: user.avatar_url || '',
       department_id: user.department_id,
+      department_name: user.department_name,
       class_id: user.class_id,
+      class_name: user.class_name,
+      year: user.year,
+      batch: user.batch,
       is_coordinator: Boolean(user.is_coordinator),
       is_year_coordinator: Boolean(user.is_year_coordinator),
       year_scope: user.year_scope,
     });
+  });
+
+
+
+  // 1. Personal Info Update
+  app.put('/api/student/profile/personal', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    const userId = req.user.id;
+    const { mobile_number, date_of_birth, semester, cgpa, current_arrears, history_of_arrears, about_me } = req.body;
+
+    const result = await pool.query(`
+      INSERT INTO student_profiles (user_id, mobile_number, date_of_birth, semester, cgpa, current_arrears, history_of_arrears, about_me, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      ON CONFLICT (user_id) DO UPDATE SET
+        mobile_number = EXCLUDED.mobile_number,
+        date_of_birth = EXCLUDED.date_of_birth,
+        semester = EXCLUDED.semester,
+        cgpa = EXCLUDED.cgpa,
+        current_arrears = EXCLUDED.current_arrears,
+        history_of_arrears = EXCLUDED.history_of_arrears,
+        about_me = EXCLUDED.about_me,
+        updated_at = NOW()
+      RETURNING *
+    `, [userId, mobile_number || null, date_of_birth || null, semester || 1, cgpa || 0, current_arrears || 0, history_of_arrears || 0, about_me || null]);
+
+    res.json({ message: 'Personal details updated', personal: result.rows[0] });
+  });
+
+  // 2. Skills
+  app.post('/api/student/profile/skills', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    const userId = req.user.id;
+    const { skill_name, category, level } = req.body;
+    if (!skill_name || !skill_name.trim()) return res.status(400).json({ error: 'Skill name required' });
+
+    const result = await pool.query(`
+      INSERT INTO student_skills (user_id, skill_name, category, level)
+      VALUES ($1, $2, $3, $4) RETURNING *
+    `, [userId, skill_name.trim(), category || 'Technical', level || 'Intermediate']);
+    res.json(result.rows[0]);
+  });
+
+  app.delete('/api/student/profile/skills/:id', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    await pool.query('DELETE FROM student_skills WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ success: true });
+  });
+
+  // 3. Projects
+  app.post('/api/student/profile/projects', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    const userId = req.user.id;
+    const { project_name, description, tech_stack, github_url, live_demo_url } = req.body;
+    if (!project_name || !project_name.trim()) return res.status(400).json({ error: 'Project name required' });
+
+    const result = await pool.query(`
+      INSERT INTO student_projects (user_id, project_name, description, tech_stack, github_url, live_demo_url)
+      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
+    `, [userId, project_name.trim(), description || '', tech_stack || '', github_url || '', live_demo_url || '']);
+    res.json(result.rows[0]);
+  });
+
+  app.delete('/api/student/profile/projects/:id', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    await pool.query('DELETE FROM student_projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ success: true });
+  });
+
+  // 4. Internships
+  app.post('/api/student/profile/internships', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    const userId = req.user.id;
+    const { company, role, duration, mode, certificate_url } = req.body;
+    if (!company || !company.trim()) return res.status(400).json({ error: 'Company name required' });
+
+    const result = await pool.query(`
+      INSERT INTO student_internships (user_id, company, role, duration, mode, certificate_url)
+      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
+    `, [userId, company.trim(), role || '', duration || '', mode || 'Offline', certificate_url || '']);
+    res.json(result.rows[0]);
+  });
+
+  app.delete('/api/student/profile/internships/:id', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    await pool.query('DELETE FROM student_internships WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ success: true });
+  });
+
+  // 5. Certifications
+  app.post('/api/student/profile/certifications', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    const userId = req.user.id;
+    const { certificate_name, provider, issue_date, credential_id, certificate_url } = req.body;
+    if (!certificate_name || !certificate_name.trim()) return res.status(400).json({ error: 'Certificate name required' });
+
+    const result = await pool.query(`
+      INSERT INTO student_certifications (user_id, certificate_name, provider, issue_date, credential_id, certificate_url)
+      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
+    `, [userId, certificate_name.trim(), provider || '', issue_date || '', credential_id || '', certificate_url || '']);
+    res.json(result.rows[0]);
+  });
+
+  app.delete('/api/student/profile/certifications/:id', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    await pool.query('DELETE FROM student_certifications WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ success: true });
+  });
+
+  // 6. Coding Profiles
+  app.put('/api/student/profile/coding-profiles', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    const userId = req.user.id;
+    const { github, leetcode, hackerrank, codechef, geeksforgeeks, linkedin, portfolio } = req.body;
+
+    const result = await pool.query(`
+      INSERT INTO student_coding_profiles (user_id, github, leetcode, hackerrank, codechef, geeksforgeeks, linkedin, portfolio, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      ON CONFLICT (user_id) DO UPDATE SET
+        github = EXCLUDED.github,
+        leetcode = EXCLUDED.leetcode,
+        hackerrank = EXCLUDED.hackerrank,
+        codechef = EXCLUDED.codechef,
+        geeksforgeeks = EXCLUDED.geeksforgeeks,
+        linkedin = EXCLUDED.linkedin,
+        portfolio = EXCLUDED.portfolio,
+        updated_at = NOW()
+      RETURNING *
+    `, [userId, github || '', leetcode || '', hackerrank || '', codechef || '', geeksforgeeks || '', linkedin || '', portfolio || '']);
+    res.json(result.rows[0]);
+  });
+
+  // 7. Resume
+  app.post('/api/student/profile/resume', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    const userId = req.user.id;
+    const { resume_url, file_name } = req.body;
+    if (!resume_url) return res.status(400).json({ error: 'Resume URL / link required' });
+
+    const result = await pool.query(`
+      INSERT INTO student_resumes (user_id, resume_url, file_name, last_updated)
+      VALUES ($1, $2, $3, NOW())
+      ON CONFLICT (user_id) DO UPDATE SET
+        resume_url = EXCLUDED.resume_url,
+        file_name = EXCLUDED.file_name,
+        last_updated = NOW()
+      RETURNING *
+    `, [userId, resume_url, file_name || 'Resume.pdf']);
+    res.json(result.rows[0]);
+  });
+
+  // 8. Achievements
+  app.post('/api/student/profile/achievements', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    const userId = req.user.id;
+    const { title, category, description, event_date } = req.body;
+    if (!title || !title.trim()) return res.status(400).json({ error: 'Title required' });
+
+    const result = await pool.query(`
+      INSERT INTO student_achievements (user_id, title, category, description, event_date)
+      VALUES ($1, $2, $3, $4, $5) RETURNING *
+    `, [userId, title.trim(), category || 'Hackathons', description || '', event_date || '']);
+    res.json(result.rows[0]);
+  });
+
+  app.delete('/api/student/profile/achievements/:id', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    await pool.query('DELETE FROM student_achievements WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ success: true });
+  });
+
+  // 9. Languages
+  app.post('/api/student/profile/languages', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    const userId = req.user.id;
+    const { language, proficiency } = req.body;
+    if (!language || !language.trim()) return res.status(400).json({ error: 'Language name required' });
+
+    const result = await pool.query(`
+      INSERT INTO student_languages (user_id, language, proficiency)
+      VALUES ($1, $2, $3) RETURNING *
+    `, [userId, language.trim(), proficiency || 'Fluent']);
+    res.json(result.rows[0]);
+  });
+
+  app.delete('/api/student/profile/languages/:id', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    await pool.query('DELETE FROM student_languages WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ success: true });
+  });
+
+  // 10. Career Preferences
+  app.put('/api/student/profile/career-preferences', authenticate, authorize(['STUDENT']), async (req: any, res) => {
+    const userId = req.user.id;
+    const { preferred_role, preferred_domain, preferred_location, willing_to_relocate, work_mode } = req.body;
+
+    const result = await pool.query(`
+      INSERT INTO student_career_preferences (user_id, preferred_role, preferred_domain, preferred_location, willing_to_relocate, work_mode, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      ON CONFLICT (user_id) DO UPDATE SET
+        preferred_role = EXCLUDED.preferred_role,
+        preferred_domain = EXCLUDED.preferred_domain,
+        preferred_location = EXCLUDED.preferred_location,
+        willing_to_relocate = EXCLUDED.willing_to_relocate,
+        work_mode = EXCLUDED.work_mode,
+        updated_at = NOW()
+      RETURNING *
+    `, [userId, preferred_role || '', preferred_domain || '', preferred_location || '', willing_to_relocate ?? true, work_mode || 'Hybrid']);
+    res.json(result.rows[0]);
+  });
+
+  // ── Settings Module: Change Password ────────────────────────────────────
+  app.put('/api/settings/change-password', authenticate, async (req: any, res) => {
+    const userId = req.user.id;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Both current password and new password are required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters long' });
+    }
+
+    const userRes = await pool.query('SELECT * FROM users WHERE id = $1 LIMIT 1', [userId]);
+    const user = userRes.rows[0];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    let isCurrentValid = false;
+    const cleanCurrentPass = currentPassword.trim();
+
+    try {
+      if (user.password && (user.password.startsWith('$2a$') || user.password.startsWith('$2b$') || user.password.startsWith('$2y$'))) {
+        isCurrentValid = await bcrypt.compare(cleanCurrentPass, user.password) ||
+                         await bcrypt.compare(currentPassword, user.password);
+      } else {
+        isCurrentValid = (cleanCurrentPass === user.password) || (currentPassword === user.password);
+      }
+    } catch (e) {
+      isCurrentValid = false;
+    }
+
+    if (!isCurrentValid && user.role === 'STUDENT' && user.register_number) {
+      const regNo = user.register_number.trim().toLowerCase();
+      if (cleanCurrentPass.toLowerCase() === regNo || currentPassword.toLowerCase() === regNo) {
+        isCurrentValid = true;
+      }
+    }
+
+    if (!isCurrentValid) {
+      return res.status(400).json({ error: 'Incorrect current password' });
+    }
+
+    const hashedNewPassword = await bcrypt.hash(newPassword.trim(), 10);
+    await pool.query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [hashedNewPassword, userId]);
+
+    res.json({ message: 'Password changed successfully' });
   });
 
   // ── Departments ───────────────────────────────────────────────────────────
@@ -3337,6 +3570,414 @@ async function startServer() {
       rejected_tasks: subs.filter(s => s.status === 'REJECTED').length,
     });
   });
+
+  // ── Student Profile Module Endpoints ─────────────────────────────────────
+  app.get('/api/student/profile', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    const userId = req.user.id;
+    const client = await pool.connect();
+
+    try {
+      // Academic identity details from users table
+      const userRes = await client.query(`
+        SELECT u.id, u.full_name, u.register_number, u.email, u.gender, u.role, u.avatar_url,
+               d.name as department_name, c.name as class_name, c.batch, c.year
+        FROM users u
+        LEFT JOIN departments d ON u.department_id = d.id
+        LEFT JOIN classes c ON u.class_id = c.id
+        WHERE u.id = $1
+      `, [userId]);
+
+      let academic = userRes.rows[0] || {};
+
+      const dirStudent = (academic.register_number && constantStudentByRegNoMap.get(academic.register_number.toLowerCase().trim())) ||
+                         (academic.email && constantStudentByEmailMap.get(academic.email.toLowerCase().trim()));
+
+      if (dirStudent) {
+        academic.full_name = academic.full_name || dirStudent.full_name;
+        academic.register_number = academic.register_number || dirStudent.register_number;
+        academic.email = academic.email || dirStudent.email;
+        academic.gender = (academic.gender && academic.gender !== 'Not Specified') ? academic.gender : (dirStudent.gender || 'Not Specified');
+        academic.class_name = academic.class_name || dirStudent.class_name || 'Unassigned Section';
+        academic.department_name = academic.department_name || 'Information Technology';
+        academic.batch = academic.batch || '2023 - 2027';
+        academic.year = academic.year || dirStudent.year || 'III';
+      }
+
+      academic.full_name = academic.full_name || req.user.full_name || 'Student';
+      academic.register_number = academic.register_number || req.user.register_number || req.user.username || 'N/A';
+      academic.email = academic.email || req.user.email || 'N/A';
+      academic.gender = (academic.gender && academic.gender !== 'Not Specified') ? academic.gender : 'Not Specified';
+      academic.department_name = academic.department_name || 'Information Technology';
+      academic.class_name = academic.class_name || 'Unassigned Section';
+      academic.batch = academic.batch || '2023 - 2027';
+      academic.year = academic.year ? (String(academic.year).startsWith('Year') ? academic.year : `Year ${academic.year}`) : 'Year III';
+
+      const personalRes = await client.query('SELECT * FROM student_profiles WHERE user_id = $1', [userId]);
+      const skillsRes = await client.query('SELECT * FROM student_skills WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+      const projectsRes = await client.query('SELECT * FROM student_projects WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+      const internshipsRes = await client.query('SELECT * FROM student_internships WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+      const certsRes = await client.query('SELECT * FROM student_certifications WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+      const codingRes = await client.query('SELECT * FROM student_coding_profiles WHERE user_id = $1', [userId]);
+      const resumeRes = await client.query('SELECT * FROM student_resumes WHERE user_id = $1', [userId]);
+      const achieveRes = await client.query('SELECT * FROM student_achievements WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+      const langRes = await client.query('SELECT * FROM student_languages WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+      const careerRes = await client.query('SELECT * FROM student_career_preferences WHERE user_id = $1', [userId]);
+
+      res.json({
+        academic,
+        personal: personalRes.rows[0] || null,
+        skills: skillsRes.rows,
+        projects: projectsRes.rows,
+        internships: internshipsRes.rows,
+        certifications: certsRes.rows,
+        coding_profiles: codingRes.rows[0] || null,
+        resume: resumeRes.rows[0] || null,
+        achievements: achieveRes.rows,
+        languages: langRes.rows,
+        career_preferences: careerRes.rows[0] || null
+      });
+    } finally {
+      client.release();
+    }
+  }));
+
+  // View specific student's profile (HOD/Admin can view all, Advisor/Coordinator can view assigned class/year)
+  app.get('/api/student/profile/:studentId', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const targetUserId = req.params.studentId;
+    const currentUser = req.user;
+    const client = await pool.connect();
+
+    try {
+      // Fetch target student's academic record
+      const targetUserRes = await client.query(`
+        SELECT u.id, u.full_name, u.register_number, u.email, u.gender, u.role, u.avatar_url,
+               u.department_id, u.class_id, d.name as department_name, c.name as class_name, c.batch, c.year
+        FROM users u
+        LEFT JOIN departments d ON u.department_id = d.id
+        LEFT JOIN classes c ON u.class_id = c.id
+        WHERE u.id = $1 AND u.role = 'STUDENT'
+      `, [targetUserId]);
+
+      if (targetUserRes.rows.length === 0) {
+        return res.status(404).json({ error: 'Student not found' });
+      }
+
+      const academic = targetUserRes.rows[0];
+
+      // Authorization checks:
+      const isSelf = currentUser.id?.toString() === targetUserId.toString();
+      const isAdmin = currentUser.role === 'ADMIN';
+      const isHOD = currentUser.role === 'HOD';
+      const isAdvisorOrCoordinator = (currentUser.role === 'ADVISOR' || currentUser.role === 'COORDINATOR' || currentUser.is_coordinator) &&
+                                    currentUser.class_id?.toString() === academic.class_id?.toString();
+      const isYearCoordinator = currentUser.is_year_coordinator && currentUser.year_scope === academic.year;
+
+      if (!isSelf && !isAdmin && !isHOD && !isAdvisorOrCoordinator && !isYearCoordinator) {
+        return res.status(403).json({ error: 'You do not have permission to view this student profile' });
+      }
+
+      const personalRes = await client.query('SELECT * FROM student_profiles WHERE user_id = $1', [targetUserId]);
+      const skillsRes = await client.query('SELECT * FROM student_skills WHERE user_id = $1 ORDER BY created_at DESC', [targetUserId]);
+      const projectsRes = await client.query('SELECT * FROM student_projects WHERE user_id = $1 ORDER BY created_at DESC', [targetUserId]);
+      const internshipsRes = await client.query('SELECT * FROM student_internships WHERE user_id = $1 ORDER BY created_at DESC', [targetUserId]);
+      const certsRes = await client.query('SELECT * FROM student_certifications WHERE user_id = $1 ORDER BY created_at DESC', [targetUserId]);
+      const codingRes = await client.query('SELECT * FROM student_coding_profiles WHERE user_id = $1', [targetUserId]);
+      const resumeRes = await client.query('SELECT * FROM student_resumes WHERE user_id = $1', [targetUserId]);
+      const achieveRes = await client.query('SELECT * FROM student_achievements WHERE user_id = $1 ORDER BY created_at DESC', [targetUserId]);
+      const langRes = await client.query('SELECT * FROM student_languages WHERE user_id = $1 ORDER BY created_at DESC', [targetUserId]);
+      const careerRes = await client.query('SELECT * FROM student_career_preferences WHERE user_id = $1', [targetUserId]);
+
+      res.json({
+        academic,
+        personal: personalRes.rows[0] || null,
+        skills: skillsRes.rows,
+        projects: projectsRes.rows,
+        internships: internshipsRes.rows,
+        certifications: certsRes.rows,
+        coding_profiles: codingRes.rows[0] || null,
+        resume: resumeRes.rows[0] || null,
+        achievements: achieveRes.rows,
+        languages: langRes.rows,
+        career_preferences: careerRes.rows[0] || null
+      });
+    } finally {
+      client.release();
+    }
+  }));
+
+  // Avatar Upload / Update
+  app.post('/api/student/profile/avatar', authenticate, authorize(['STUDENT']), (req: any, res: Response, next: NextFunction) => {
+    memoryUpload.single('avatar')(req, res, (err: any) => {
+      if (err) {
+        return res.status(400).json({ error: err.message || 'File upload error' });
+      }
+      next();
+    });
+  }, asyncHandler(async (req: any, res: Response) => {
+    let avatarUrl = req.body?.avatar_url;
+
+    if (req.file) {
+      try {
+        const b64 = Buffer.from(req.file.buffer).toString('base64');
+        const dataURI = `data:${req.file.mimetype};base64,${b64}`;
+        const cloudRes = await cloudinary.uploader.upload(dataURI, {
+          folder: 'student-avatars',
+          resource_type: 'image'
+        });
+        avatarUrl = cloudRes.secure_url;
+      } catch (cloudErr) {
+        console.warn('[Avatar Upload] Cloudinary upload warning, falling back to data URI:', cloudErr);
+        avatarUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+      }
+    }
+
+    if (req.body?.remove === 'true' || req.body?.remove === true) {
+      avatarUrl = null;
+    }
+
+    if (!avatarUrl && !req.file && !req.body?.remove) {
+      return res.status(400).json({ error: 'Please select an image file or enter an image URL' });
+    }
+
+    const updatedUserRes = await pool.query(`
+      UPDATE users SET avatar_url = $1, updated_at = NOW() WHERE id = $2 RETURNING id, full_name, avatar_url
+    `, [avatarUrl, req.user.id]);
+
+    res.json({ message: 'Profile photo updated successfully', avatar_url: avatarUrl, user: updatedUserRes.rows[0] });
+  }));
+
+  // 1. Personal Information Update
+  app.put('/api/student/profile/personal', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    const userId = req.user.id;
+    const { mobile_number, date_of_birth, semester, cgpa, current_arrears, history_of_arrears, about_me } = req.body;
+
+    const result = await pool.query(`
+      INSERT INTO student_profiles (user_id, mobile_number, date_of_birth, semester, cgpa, current_arrears, history_of_arrears, about_me)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT (user_id) DO UPDATE SET
+        mobile_number = EXCLUDED.mobile_number,
+        date_of_birth = EXCLUDED.date_of_birth,
+        semester = EXCLUDED.semester,
+        cgpa = EXCLUDED.cgpa,
+        current_arrears = EXCLUDED.current_arrears,
+        history_of_arrears = EXCLUDED.history_of_arrears,
+        about_me = EXCLUDED.about_me,
+        updated_at = NOW()
+      RETURNING *
+    `, [userId, mobile_number, date_of_birth, semester, cgpa, current_arrears, history_of_arrears, about_me]);
+
+    res.json({ message: 'Personal profile updated', profile: result.rows[0] });
+  }));
+
+  // 2. Skills Add/Delete
+  app.post('/api/student/profile/skills', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    const userId = req.user.id;
+    const { skill_name, category, level } = req.body;
+    if (!skill_name) return res.status(400).json({ error: 'Skill name is required' });
+
+    const result = await pool.query(`
+      INSERT INTO student_skills (user_id, skill_name, category, level)
+      VALUES ($1, $2, $3, $4) RETURNING *
+    `, [userId, skill_name, category || 'Technical', level || 'Intermediate']);
+
+    res.json({ message: 'Skill added', skill: result.rows[0] });
+  }));
+
+  app.delete('/api/student/profile/skills/:id', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    await pool.query('DELETE FROM student_skills WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ message: 'Skill deleted' });
+  }));
+
+  // 3. Projects Add/Delete
+  app.post('/api/student/profile/projects', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    const userId = req.user.id;
+    const { project_name, description, tech_stack, github_url, live_demo_url } = req.body;
+    if (!project_name) return res.status(400).json({ error: 'Project name is required' });
+
+    const result = await pool.query(`
+      INSERT INTO student_projects (user_id, project_name, description, tech_stack, github_url, live_demo_url)
+      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
+    `, [userId, project_name, description, tech_stack, github_url, live_demo_url]);
+
+    res.json({ message: 'Project added', project: result.rows[0] });
+  }));
+
+  app.delete('/api/student/profile/projects/:id', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    await pool.query('DELETE FROM student_projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ message: 'Project deleted' });
+  }));
+
+  // 4. Internships Add/Delete
+  app.post('/api/student/profile/internships', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    const userId = req.user.id;
+    const { company, role, duration, mode, certificate_url } = req.body;
+    if (!company) return res.status(400).json({ error: 'Company name is required' });
+
+    const result = await pool.query(`
+      INSERT INTO student_internships (user_id, company, role, duration, mode, certificate_url)
+      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
+    `, [userId, company, role, duration, mode || 'Offline', certificate_url]);
+
+    res.json({ message: 'Internship added', internship: result.rows[0] });
+  }));
+
+  app.delete('/api/student/profile/internships/:id', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    await pool.query('DELETE FROM student_internships WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ message: 'Internship deleted' });
+  }));
+
+  // 5. Certifications Add/Delete
+  app.post('/api/student/profile/certifications', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    const userId = req.user.id;
+    const { certificate_name, provider, issue_date, credential_id, certificate_url } = req.body;
+    if (!certificate_name) return res.status(400).json({ error: 'Certificate name is required' });
+
+    const result = await pool.query(`
+      INSERT INTO student_certifications (user_id, certificate_name, provider, issue_date, credential_id, certificate_url)
+      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
+    `, [userId, certificate_name, provider, issue_date, credential_id, certificate_url]);
+
+    res.json({ message: 'Certification added', certification: result.rows[0] });
+  }));
+
+  app.delete('/api/student/profile/certifications/:id', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    await pool.query('DELETE FROM student_certifications WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ message: 'Certification deleted' });
+  }));
+
+  // 6. Coding Profiles Update
+  app.put('/api/student/profile/coding-profiles', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    const userId = req.user.id;
+    const { github, leetcode, hackerrank, codechef, geeksforgeeks, linkedin, portfolio } = req.body;
+
+    const result = await pool.query(`
+      INSERT INTO student_coding_profiles (user_id, github, leetcode, hackerrank, codechef, geeksforgeeks, linkedin, portfolio)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT (user_id) DO UPDATE SET
+        github = EXCLUDED.github,
+        leetcode = EXCLUDED.leetcode,
+        hackerrank = EXCLUDED.hackerrank,
+        codechef = EXCLUDED.codechef,
+        geeksforgeeks = EXCLUDED.geeksforgeeks,
+        linkedin = EXCLUDED.linkedin,
+        portfolio = EXCLUDED.portfolio,
+        updated_at = NOW()
+      RETURNING *
+    `, [userId, github, leetcode, hackerrank, codechef, geeksforgeeks, linkedin, portfolio]);
+
+    res.json({ message: 'Coding profiles updated', profiles: result.rows[0] });
+  }));
+
+  // 7. Resume Save
+  app.post('/api/student/profile/resume', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    const userId = req.user.id;
+    const { resume_url, file_name } = req.body;
+    if (!resume_url) return res.status(400).json({ error: 'Resume URL is required' });
+
+    const result = await pool.query(`
+      INSERT INTO student_resumes (user_id, resume_url, file_name)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (user_id) DO UPDATE SET
+        resume_url = EXCLUDED.resume_url,
+        file_name = EXCLUDED.file_name,
+        last_updated = NOW()
+      RETURNING *
+    `, [userId, resume_url, file_name || 'Resume.pdf']);
+
+    res.json({ message: 'Resume updated', resume: result.rows[0] });
+  }));
+
+  // 8. Achievements Add/Delete
+  app.post('/api/student/profile/achievements', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    const userId = req.user.id;
+    const { title, category, description, event_date } = req.body;
+    if (!title) return res.status(400).json({ error: 'Achievement title is required' });
+
+    const result = await pool.query(`
+      INSERT INTO student_achievements (user_id, title, category, description, event_date)
+      VALUES ($1, $2, $3, $4, $5) RETURNING *
+    `, [userId, title, category || 'Hackathons', description, event_date]);
+
+    res.json({ message: 'Achievement added', achievement: result.rows[0] });
+  }));
+
+  app.delete('/api/student/profile/achievements/:id', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    await pool.query('DELETE FROM student_achievements WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ message: 'Achievement deleted' });
+  }));
+
+  // 9. Languages Add/Delete
+  app.post('/api/student/profile/languages', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    const userId = req.user.id;
+    const { language, proficiency } = req.body;
+    if (!language) return res.status(400).json({ error: 'Language is required' });
+
+    const result = await pool.query(`
+      INSERT INTO student_languages (user_id, language, proficiency)
+      VALUES ($1, $2, $3) RETURNING *
+    `, [userId, language, proficiency || 'Fluent']);
+
+    res.json({ message: 'Language added', language: result.rows[0] });
+  }));
+
+  app.delete('/api/student/profile/languages/:id', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    await pool.query('DELETE FROM student_languages WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ message: 'Language deleted' });
+  }));
+
+  // 10. Career Preferences Update
+  app.put('/api/student/profile/career-preferences', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    const userId = req.user.id;
+    const { preferred_role, preferred_domain, preferred_location, willing_to_relocate, work_mode } = req.body;
+
+    const result = await pool.query(`
+      INSERT INTO student_career_preferences (user_id, preferred_role, preferred_domain, preferred_location, willing_to_relocate, work_mode)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (user_id) DO UPDATE SET
+        preferred_role = EXCLUDED.preferred_role,
+        preferred_domain = EXCLUDED.preferred_domain,
+        preferred_location = EXCLUDED.preferred_location,
+        willing_to_relocate = EXCLUDED.willing_to_relocate,
+        work_mode = EXCLUDED.work_mode,
+        updated_at = NOW()
+      RETURNING *
+    `, [userId, preferred_role, preferred_domain, preferred_location, willing_to_relocate ?? true, work_mode || 'Hybrid']);
+
+    res.json({ message: 'Career preferences updated', career: result.rows[0] });
+  }));
+
+  // ── Settings: Change Password ──────────────────────────────────────────────
+  app.put('/api/settings/change-password', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current password and new password are required' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters long' });
+    }
+
+    const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = userRes.rows[0];
+    let isMatch = false;
+    if (user.password && (user.password.startsWith('$2a$') || user.password.startsWith('$2b$') || user.password.startsWith('$2y$'))) {
+      isMatch = await bcrypt.compare(currentPassword, user.password);
+    } else {
+      isMatch = (currentPassword === user.password);
+    }
+
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Current password is incorrect' });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [newHash, req.user.id]);
+
+    res.json({ message: 'Password changed successfully in database' });
+  }));
 
   // ── API 404 Fallback ──────────────────────────────────────────────────────
   app.use('/api/*', (req, res) => {

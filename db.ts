@@ -91,8 +91,13 @@ export async function initDB() {
       );
     `);
 
-    // Ensure gender column exists if table was already created
+    // Ensure gender and profile columns exist if table was already created
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(20);`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS github_url VARCHAR(255);`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS linkedin_url VARCHAR(255);`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(1000);`);
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS tasks (
@@ -216,6 +221,137 @@ export async function initDB() {
         reviewed_by UUID REFERENCES users(id) ON DELETE SET NULL,
         reviewed_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // ─── Student Profile Module Tables ──────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS student_profiles (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID UNIQUE REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        mobile_number VARCHAR(50),
+        date_of_birth VARCHAR(50),
+        semester INT,
+        cgpa NUMERIC(4,2),
+        current_arrears INT DEFAULT 0,
+        history_of_arrears INT DEFAULT 0,
+        about_me TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS student_skills (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        skill_name VARCHAR(100) NOT NULL,
+        category VARCHAR(100) DEFAULT 'Technical',
+        level VARCHAR(50) DEFAULT 'Intermediate',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS student_projects (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        project_name VARCHAR(255) NOT NULL,
+        description TEXT,
+        tech_stack VARCHAR(500),
+        github_url VARCHAR(500),
+        live_demo_url VARCHAR(500),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS student_internships (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        company VARCHAR(255) NOT NULL,
+        role VARCHAR(255),
+        duration VARCHAR(100),
+        mode VARCHAR(50) DEFAULT 'Offline',
+        certificate_url VARCHAR(1000),
+        cloudinary_public_id VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS student_certifications (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        certificate_name VARCHAR(255) NOT NULL,
+        provider VARCHAR(255),
+        issue_date VARCHAR(50),
+        credential_id VARCHAR(255),
+        certificate_url VARCHAR(1000),
+        cloudinary_public_id VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS student_coding_profiles (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID UNIQUE REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        github VARCHAR(500),
+        leetcode VARCHAR(500),
+        hackerrank VARCHAR(500),
+        codechef VARCHAR(500),
+        geeksforgeeks VARCHAR(500),
+        linkedin VARCHAR(500),
+        portfolio VARCHAR(500),
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS student_resumes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID UNIQUE REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        resume_url VARCHAR(1000),
+        cloudinary_public_id VARCHAR(255),
+        file_name VARCHAR(255),
+        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS student_achievements (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        category VARCHAR(100) DEFAULT 'Hackathons',
+        description TEXT,
+        event_date VARCHAR(100),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS student_languages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        language VARCHAR(100) NOT NULL,
+        proficiency VARCHAR(50) DEFAULT 'Fluent',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS student_career_preferences (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID UNIQUE REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        preferred_role VARCHAR(255),
+        preferred_domain VARCHAR(255),
+        preferred_location VARCHAR(255),
+        willing_to_relocate BOOLEAN DEFAULT TRUE,
+        work_mode VARCHAR(50) DEFAULT 'Hybrid',
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
