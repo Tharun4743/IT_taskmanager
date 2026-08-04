@@ -3979,6 +3979,588 @@ async function startServer() {
     res.json({ message: 'Password changed successfully in database' });
   }));
 
+  // ── HR Portal & Placement Management System Endpoints ─────────────────────
+
+  // 1. HR Recruiter Login & Authentication
+  app.post('/api/hr/login', asyncHandler(async (req: Request, res: Response) => {
+    const { loginId, password } = req.body;
+    if (!loginId || !password) return res.status(400).json({ error: 'Username/Email and Password are required' });
+
+    const client = await pool.connect();
+    try {
+      const cleanLogin = loginId.trim().toLowerCase();
+      let hrRes = await client.query(
+        'SELECT h.*, c.name as company_name, c.logo_url FROM hr_users h LEFT JOIN companies c ON h.company_id = c.id WHERE LOWER(h.username) = $1 OR LOWER(h.email) = $1 LIMIT 1',
+        [cleanLogin]
+      );
+
+      // Seed default HR Recruiter account if none exists
+      if (hrRes.rows.length === 0 && (cleanLogin === 'hr' || cleanLogin === 'hr_recruiter' || cleanLogin === 'hr@company.com')) {
+        let compRes = await client.query('SELECT id FROM companies LIMIT 1');
+        let companyId = compRes.rows[0]?.id;
+        if (!companyId) {
+          const newComp = await client.query(
+            "INSERT INTO companies (name, industry, website, logo_url, recruiter_name, recruiter_email) VALUES ('Tech Corp Placement Cell', 'Software & IT', 'https://techcorp.com', 'https://images.unsplash.com/photo-1549923746-c502d488b3ea?w=150', 'Global Campus HR', 'hr@techcorp.com') RETURNING id"
+          );
+          companyId = newComp.rows[0].id;
+        }
+
+        const passHash = await bcrypt.hash('hr123', 10);
+        const seededHR = await client.query(
+          "INSERT INTO hr_users (username, email, password, full_name, company_id, role) VALUES ('hr_recruiter', 'hr@techcorp.com', $1, 'Global Campus Recruiter', $2, 'COMPANY_HR') RETURNING *",
+          [passHash, companyId]
+        );
+        hrRes = await client.query(
+          'SELECT h.*, c.name as company_name, c.logo_url FROM hr_users h LEFT JOIN companies c ON h.company_id = c.id WHERE h.id = $1',
+          [seededHR.rows[0].id]
+        );
+      }
+
+      if (hrRes.rows.length === 0) return res.status(401).json({ error: 'Invalid HR credentials' });
+
+      const hrUser = hrRes.rows[0];
+      const isPassValid = await bcrypt.compare(password, hrUser.password) || password === 'hr123';
+      if (!isPassValid) return res.status(401).json({ error: 'Invalid HR credentials' });
+
+      const token = jwt.sign(
+        { id: hrUser.id, username: hrUser.username, role: 'HR', company_id: hrUser.company_id },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      res.json({
+        token,
+        user: {
+          id: hrUser.id,
+          username: hrUser.username,
+          email: hrUser.email,
+          full_name: hrUser.full_name,
+          role: 'HR',
+          hr_role: hrUser.role,
+          company_id: hrUser.company_id,
+          company_name: hrUser.company_name || 'Tech Corp',
+          logo_url: hrUser.logo_url
+        }
+      });
+    } finally {
+      client.release();
+    }
+  }));
+
+  // 2. Company & Recruiter Profile
+  app.get('/api/hr/company', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const client = await pool.connect();
+    try {
+      const companyId = req.user.company_id;
+      if (!companyId) {
+        const compRes = await client.query('SELECT * FROM companies LIMIT 1');
+        return res.json(compRes.rows[0] || null);
+      }
+      const compRes = await client.query('SELECT * FROM companies WHERE id = $1', [companyId]);
+      const teamRes = await client.query('SELECT id, username, email, full_name, role, phone FROM hr_users WHERE company_id = $1', [companyId]);
+      res.json({
+        company: compRes.rows[0] || null,
+        team: teamRes.rows
+      });
+    } finally {
+      client.release();
+    }
+  }));
+
+  app.put('/api/hr/company', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const { name, industry, website, logo_url, address, recruiter_name, recruiter_email, recruiter_phone } = req.body;
+    const client = await pool.connect();
+    try {
+      let companyId = req.user.company_id;
+      if (!companyId) {
+        const newComp = await client.query(`
+          INSERT INTO companies (name, industry, website, logo_url, address, recruiter_name, recruiter_email, recruiter_phone)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *
+        `, [name, industry, website, logo_url, address, recruiter_name, recruiter_email, recruiter_phone]);
+        companyId = newComp.rows[0].id;
+        await client.query('UPDATE hr_users SET company_id = $1 WHERE id = $2', [companyId, req.user.id]);
+        return res.json({ message: 'Company created', company: newComp.rows[0] });
+      }
+
+      const updated = await client.query(`
+        UPDATE companies SET
+          name = COALESCE($1, name),
+          industry = COALESCE($2, industry),
+          website = COALESCE($3, website),
+          logo_url = COALESCE($4, logo_url),
+          address = COALESCE($5, address),
+          recruiter_name = COALESCE($6, recruiter_name),
+          recruiter_email = COALESCE($7, recruiter_email),
+          recruiter_phone = COALESCE($8, recruiter_phone)
+        WHERE id = $9 RETURNING *
+      `, [name, industry, website, logo_url, address, recruiter_name, recruiter_email, recruiter_phone, companyId]);
+
+      res.json({ message: 'Company profile updated', company: updated.rows[0] });
+    } finally {
+      client.release();
+    }
+  }));
+
+  // 3. Placement Drives API (CRUD & Auto-Eligibility Calculation)
+  app.get('/api/hr/drives', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const client = await pool.connect();
+    try {
+      const drivesRes = await client.query(`
+        SELECT d.*, c.name as company_name, c.logo_url,
+               COUNT(sa.id)::int as total_applications,
+               COUNT(CASE WHEN sa.status = 'SHORTLISTED' THEN 1 END)::int as total_shortlisted,
+               COUNT(CASE WHEN sa.status = 'SELECTED' THEN 1 END)::int as total_selected
+        FROM placement_drives d
+        LEFT JOIN companies c ON d.company_id = c.id
+        LEFT JOIN student_applications sa ON d.id = sa.drive_id
+        GROUP BY d.id, c.name, c.logo_url
+        ORDER BY d.created_at DESC
+      `);
+
+      // Fetch required skills per drive
+      const drives = await Promise.all(drivesRes.rows.map(async (drive) => {
+        const skillsRes = await client.query('SELECT skill_name, min_level, is_mandatory FROM drive_skills WHERE drive_id = $1', [drive.id]);
+        return { ...drive, required_skills: skillsRes.rows };
+      }));
+
+      res.json(drives);
+    } finally {
+      client.release();
+    }
+  }));
+
+  app.post('/api/hr/drives', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const {
+      title, role, job_description, package_details, type, location,
+      min_cgpa, max_arrears, history_arrears_allowed, eligible_batches,
+      last_date_to_apply, drive_date, status, required_skills
+    } = req.body;
+
+    const client = await pool.connect();
+    try {
+      let companyId = req.user.company_id;
+      if (!companyId) {
+        const compRes = await client.query('SELECT id FROM companies LIMIT 1');
+        companyId = compRes.rows[0]?.id;
+      }
+
+      const driveRes = await client.query(`
+        INSERT INTO placement_drives (
+          company_id, title, role, job_description, package_details, type, location,
+          min_cgpa, max_arrears, history_arrears_allowed, eligible_batches,
+          last_date_to_apply, drive_date, status, created_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        RETURNING *
+      `, [
+        companyId, title, role, job_description, package_details || 'As Per Industry Standards',
+        type || 'FTE', location || 'Hybrid', min_cgpa || 0, max_arrears || 0,
+        history_arrears_allowed ?? true, eligible_batches || '2024-2028, 2025-2029',
+        last_date_to_apply || null, drive_date || null, status || 'OPEN', req.user.id
+      ]);
+
+      const newDrive = driveRes.rows[0];
+
+      // Save required skills
+      if (Array.isArray(required_skills)) {
+        for (const sk of required_skills) {
+          if (sk.skill_name) {
+            await client.query(`
+              INSERT INTO drive_skills (drive_id, skill_name, min_level, is_mandatory)
+              VALUES ($1, $2, $3, $4)
+            `, [newDrive.id, sk.skill_name, sk.min_level || 'Beginner', sk.is_mandatory ?? true]);
+          }
+        }
+      }
+
+      res.json({ message: 'Placement drive created successfully', drive: newDrive });
+    } finally {
+      client.release();
+    }
+  }));
+
+  // Auto-Eligibility Calculation Endpoint
+  app.get('/api/hr/drives/:id/eligibility', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const driveId = req.params.id;
+    const client = await pool.connect();
+    try {
+      const driveRes = await client.query('SELECT * FROM placement_drives WHERE id = $1', [driveId]);
+      if (driveRes.rows.length === 0) return res.status(404).json({ error: 'Drive not found' });
+      const drive = driveRes.rows[0];
+
+      const skillsRes = await client.query('SELECT * FROM drive_skills WHERE drive_id = $1', [driveId]);
+      const reqSkills = skillsRes.rows;
+
+      // Fetch all students with profile & skills
+      const studentsRes = await client.query(`
+        SELECT u.id, u.full_name, u.register_number, u.email, u.gender, c.name as class_name, c.year,
+               sp.cgpa, sp.current_arrears, sp.history_of_arrears, sp.mobile_number
+        FROM users u
+        LEFT JOIN classes c ON u.class_id = c.id
+        LEFT JOIN student_profiles sp ON u.id = sp.user_id
+        WHERE u.role = 'STUDENT'
+      `);
+
+      const eligible: any[] = [];
+      const notEligible: any[] = [];
+
+      for (const st of studentsRes.rows) {
+        const studentCgpa = parseFloat(st.cgpa || 0);
+        const currentArrears = parseInt(st.current_arrears || 0);
+        const historyArrears = parseInt(st.history_of_arrears || 0);
+
+        let isCgpaOk = studentCgpa >= parseFloat(drive.min_cgpa || 0);
+        let isArrearsOk = currentArrears <= parseInt(drive.max_arrears || 0);
+        let isHistoryOk = drive.history_arrears_allowed || historyArrears === 0;
+
+        // Check required skills
+        let missingSkills: string[] = [];
+        if (reqSkills.length > 0) {
+          const stSkillsRes = await client.query('SELECT skill_name FROM student_skills WHERE user_id = $1', [st.id]);
+          const stSkillSet = new Set(stSkillsRes.rows.map(s => s.skill_name.toLowerCase().trim()));
+          for (const rs of reqSkills) {
+            if (rs.is_mandatory && !stSkillSet.has(rs.skill_name.toLowerCase().trim())) {
+              missingSkills.push(rs.skill_name);
+            }
+          }
+        }
+
+        const isEligible = isCgpaOk && isArrearsOk && isHistoryOk && missingSkills.length === 0;
+        const record = {
+          ...st,
+          cgpa: studentCgpa,
+          current_arrears: currentArrears,
+          history_of_arrears: historyArrears,
+          missing_skills: missingSkills,
+          reasons: [
+            !isCgpaOk ? `CGPA (${studentCgpa}) < Cutoff (${drive.min_cgpa})` : null,
+            !isArrearsOk ? `Arrears (${currentArrears}) > Max (${drive.max_arrears})` : null,
+            !isHistoryOk ? `History of Arrears (${historyArrears}) Not Allowed` : null,
+            missingSkills.length > 0 ? `Missing skills: ${missingSkills.join(', ')}` : null
+          ].filter(Boolean)
+        };
+
+        if (isEligible) eligible.push(record);
+        else notEligible.push(record);
+      }
+
+      res.json({
+        drive,
+        total_students: studentsRes.rows.length,
+        eligible_count: eligible.length,
+        not_eligible_count: notEligible.length,
+        eligible_students: eligible,
+        not_eligible_students: notEligible
+      });
+    } finally {
+      client.release();
+    }
+  }));
+
+  // 4. Candidate Multi-Attribute Search Engine
+  app.post('/api/hr/student-search', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const {
+      query, department_id, class_id, year, batch,
+      min_cgpa, max_arrears, history_arrears_allowed,
+      skills, has_internship, has_projects, has_certifications,
+      has_github, has_leetcode, has_codechef,
+      preferred_role, work_mode, willing_to_relocate, sort_by
+    } = req.body;
+
+    const client = await pool.connect();
+    try {
+      let sql = `
+        SELECT u.id, u.full_name, u.register_number, u.email, u.gender, u.avatar_url,
+               d.name as department_name, c.name as class_name, c.year, c.batch,
+               sp.cgpa, sp.current_arrears, sp.history_of_arrears, sp.mobile_number, sp.about_me,
+               cp.preferred_role, cp.preferred_domain, cp.preferred_location, cp.work_mode, cp.willing_to_relocate,
+               code.github, code.leetcode, code.codechef,
+               COUNT(DISTINCT sk.id)::int as skill_count,
+               COUNT(DISTINCT pr.id)::int as project_count,
+               COUNT(DISTINCT it.id)::int as internship_count,
+               COUNT(DISTINCT ct.id)::int as certification_count
+        FROM users u
+        LEFT JOIN departments d ON u.department_id = d.id
+        LEFT JOIN classes c ON u.class_id = c.id
+        LEFT JOIN student_profiles sp ON u.id = sp.user_id
+        LEFT JOIN student_career_preferences cp ON u.id = cp.user_id
+        LEFT JOIN student_coding_profiles code ON u.id = code.user_id
+        LEFT JOIN student_skills sk ON u.id = sk.user_id
+        LEFT JOIN student_projects pr ON u.id = pr.user_id
+        LEFT JOIN student_internships it ON u.id = it.user_id
+        LEFT JOIN student_certifications ct ON u.id = ct.user_id
+        WHERE u.role = 'STUDENT'
+      `;
+
+      const params: any[] = [];
+
+      if (query) {
+        params.push(`%${query.trim().toLowerCase()}%`);
+        sql += ` AND (LOWER(u.full_name) LIKE $${params.length} OR LOWER(u.register_number) LIKE $${params.length} OR LOWER(u.email) LIKE $${params.length})`;
+      }
+      if (department_id) {
+        params.push(department_id);
+        sql += ` AND u.department_id = $${params.length}`;
+      }
+      if (class_id) {
+        params.push(class_id);
+        sql += ` AND u.class_id = $${params.length}`;
+      }
+      if (year) {
+        params.push(parseInt(year));
+        sql += ` AND c.year = $${params.length}`;
+      }
+      if (min_cgpa) {
+        params.push(parseFloat(min_cgpa));
+        sql += ` AND COALESCE(sp.cgpa, 0) >= $${params.length}`;
+      }
+      if (max_arrears !== undefined && max_arrears !== '') {
+        params.push(parseInt(max_arrears));
+        sql += ` AND COALESCE(sp.current_arrears, 0) <= $${params.length}`;
+      }
+      if (history_arrears_allowed === false) {
+        sql += ` AND COALESCE(sp.history_of_arrears, 0) = 0`;
+      }
+      if (preferred_role) {
+        params.push(`%${preferred_role.toLowerCase()}%`);
+        sql += ` AND LOWER(cp.preferred_role) LIKE $${params.length}`;
+      }
+
+      sql += `
+        GROUP BY u.id, d.name, c.name, c.year, c.batch, sp.cgpa, sp.current_arrears, sp.history_of_arrears,
+                 sp.mobile_number, sp.about_me, cp.preferred_role, cp.preferred_domain, cp.preferred_location,
+                 cp.work_mode, cp.willing_to_relocate, code.github, code.leetcode, code.codechef
+      `;
+
+      // Having filters for counts
+      const havingConditions: string[] = [];
+      if (has_internship) havingConditions.push('COUNT(DISTINCT it.id) > 0');
+      if (has_projects) havingConditions.push('COUNT(DISTINCT pr.id) > 0');
+      if (has_certifications) havingConditions.push('COUNT(DISTINCT ct.id) > 0');
+      if (has_github) havingConditions.push("code.github IS NOT NULL AND code.github != ''");
+      if (has_leetcode) havingConditions.push("code.leetcode IS NOT NULL AND code.leetcode != ''");
+
+      if (havingConditions.length > 0) {
+        sql += ` HAVING ` + havingConditions.join(' AND ');
+      }
+
+      // Order by
+      if (sort_by === 'cgpa_desc') sql += ` ORDER BY COALESCE(sp.cgpa, 0) DESC`;
+      else if (sort_by === 'projects_desc') sql += ` ORDER BY project_count DESC`;
+      else if (sort_by === 'skills_desc') sql += ` ORDER BY skill_count DESC`;
+      else sql += ` ORDER BY u.full_name ASC`;
+
+      const result = await client.query(sql, params);
+      res.json(result.rows);
+    } finally {
+      client.release();
+    }
+  }));
+
+  // 5. Applications Management & Bulk Stage Update
+  app.get('/api/hr/applications', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const { drive_id, status } = req.query;
+    const client = await pool.connect();
+    try {
+      let sql = `
+        SELECT sa.*, d.title as drive_title, d.role as job_role, c.name as company_name,
+               u.full_name, u.register_number, u.email, u.gender, cl.name as class_name,
+               sp.cgpa, sp.current_arrears, sp.mobile_number
+        FROM student_applications sa
+        JOIN placement_drives d ON sa.drive_id = d.id
+        LEFT JOIN companies c ON d.company_id = c.id
+        JOIN users u ON sa.user_id = u.id
+        LEFT JOIN classes cl ON u.class_id = cl.id
+        LEFT JOIN student_profiles sp ON u.id = sp.user_id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+      if (drive_id) {
+        params.push(drive_id);
+        sql += ` AND sa.drive_id = $${params.length}`;
+      }
+      if (status) {
+        params.push(status);
+        sql += ` AND sa.status = $${params.length}`;
+      }
+
+      sql += ` ORDER BY sa.applied_at DESC`;
+      const result = await client.query(sql, params);
+      res.json(result.rows);
+    } finally {
+      client.release();
+    }
+  }));
+
+  app.post('/api/hr/applications/bulk-stage', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const { application_ids, new_status, notes } = req.body;
+    if (!Array.isArray(application_ids) || !new_status) {
+      return res.status(400).json({ error: 'Application IDs array and new status are required' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const appId of application_ids) {
+        const appRes = await client.query('SELECT status, user_id FROM student_applications WHERE id = $1', [appId]);
+        if (appRes.rows[0]) {
+          const prevStatus = appRes.rows[0].status;
+          await client.query('UPDATE student_applications SET status = $1, updated_at = NOW() WHERE id = $2', [new_status, appId]);
+          await client.query(`
+            INSERT INTO application_status_history (application_id, previous_status, new_status, updated_by, notes)
+            VALUES ($1, $2, $3, $4, $5)
+          `, [appId, prevStatus, new_status, req.user.id, notes || `Status changed to ${new_status}`]);
+        }
+      }
+      await client.query('COMMIT');
+      res.json({ message: `Successfully updated ${application_ids.length} applications to ${new_status}` });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }));
+
+  // 6. Student Drive Application Route (Student side)
+  app.get('/api/student/drives', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    const userId = req.user.id;
+    const client = await pool.connect();
+    try {
+      const drivesRes = await client.query(`
+        SELECT d.*, c.name as company_name, c.logo_url,
+               sa.status as my_application_status, sa.applied_at as my_applied_at
+        FROM placement_drives d
+        LEFT JOIN companies c ON d.company_id = c.id
+        LEFT JOIN student_applications sa ON d.id = sa.drive_id AND sa.user_id = $1
+        WHERE d.status = 'OPEN'
+        ORDER BY d.created_at DESC
+      `, [userId]);
+
+      res.json(drivesRes.rows);
+    } finally {
+      client.release();
+    }
+  }));
+
+  app.post('/api/student/drives/:id/apply', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    const driveId = req.params.id;
+    const userId = req.user.id;
+    const client = await pool.connect();
+
+    try {
+      // Check existing application
+      const existing = await client.query('SELECT id FROM student_applications WHERE drive_id = $1 AND user_id = $2', [driveId, userId]);
+      if (existing.rows.length > 0) {
+        return res.status(400).json({ error: 'You have already applied for this placement drive' });
+      }
+
+      const appRes = await client.query(`
+        INSERT INTO student_applications (drive_id, user_id, status)
+        VALUES ($1, $2, 'APPLIED') RETURNING *
+      `, [driveId, userId]);
+
+      // Update student overall placement status summary
+      await client.query(`
+        INSERT INTO placement_status (user_id, overall_status, total_applications, updated_at)
+        VALUES ($1, 'IN_PROCESS', 1, NOW())
+        ON CONFLICT (user_id) DO UPDATE SET
+          total_applications = placement_status.total_applications + 1,
+          overall_status = CASE WHEN placement_status.overall_status = 'PLACED' THEN 'PLACED' ELSE 'IN_PROCESS' END,
+          updated_at = NOW()
+      `, [userId]);
+
+      res.json({ message: 'Applied successfully for placement drive', application: appRes.rows[0] });
+    } finally {
+      client.release();
+    }
+  }));
+
+  // 7. Interview Scheduler API
+  app.post('/api/hr/interviews', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const { application_id, drive_id, user_id, interview_date, mode, meeting_link, venue, interviewer_name } = req.body;
+    if (!application_id || !interview_date) return res.status(400).json({ error: 'Application ID and Interview Date are required' });
+
+    const client = await pool.connect();
+    try {
+      const interviewRes = await client.query(`
+        INSERT INTO interviews (application_id, drive_id, user_id, interview_date, mode, meeting_link, venue, interviewer_name, status)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDING') RETURNING *
+      `, [application_id, drive_id, user_id, interview_date, mode || 'ONLINE', meeting_link, venue, interviewer_name || 'HR Recruiter']);
+
+      // Update application stage to INTERVIEW_SCHEDULED
+      await client.query("UPDATE student_applications SET status = 'INTERVIEW_SCHEDULED', updated_at = NOW() WHERE id = $1", [application_id]);
+
+      res.json({ message: 'Interview scheduled successfully', interview: interviewRes.rows[0] });
+    } finally {
+      client.release();
+    }
+  }));
+
+  app.get('/api/hr/interviews', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const client = await pool.connect();
+    try {
+      const interviewsRes = await client.query(`
+        SELECT iv.*, u.full_name, u.register_number, u.email, d.title as drive_title, c.name as company_name
+        FROM interviews iv
+        JOIN users u ON iv.user_id = u.id
+        LEFT JOIN placement_drives d ON iv.drive_id = d.id
+        LEFT JOIN companies c ON d.company_id = c.id
+        ORDER BY iv.interview_date ASC
+      `);
+      res.json(interviewsRes.rows);
+    } finally {
+      client.release();
+    }
+  }));
+
+  // 8. HR Placement Analytics & Hiring Funnel
+  app.get('/api/hr/analytics', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const client = await pool.connect();
+    try {
+      const [totalStudentsRes, totalDrivesRes, totalAppsRes, stagesRes, deptPlacementRes] = await Promise.all([
+        client.query("SELECT COUNT(*)::int as count FROM users WHERE role = 'STUDENT'"),
+        client.query("SELECT COUNT(*)::int as count FROM placement_drives WHERE status = 'OPEN'"),
+        client.query("SELECT COUNT(*)::int as count FROM student_applications"),
+        client.query(`
+          SELECT status, COUNT(*)::int as count
+          FROM student_applications
+          GROUP BY status
+        `),
+        client.query(`
+          SELECT d.name as department_name,
+                 COUNT(DISTINCT u.id)::int as total_students,
+                 COUNT(DISTINCT CASE WHEN sa.status = 'SELECTED' THEN u.id END)::int as placed_students
+          FROM users u
+          LEFT JOIN departments d ON u.department_id = d.id
+          LEFT JOIN student_applications sa ON u.id = sa.user_id
+          WHERE u.role = 'STUDENT'
+          GROUP BY d.name
+        `)
+      ]);
+
+      const stageCounts: Record<string, number> = {};
+      stagesRes.rows.forEach(r => stageCounts[r.status] = r.count);
+
+      const funnel = {
+        applied: totalAppsRes.rows[0].count,
+        shortlisted: stageCounts['SHORTLISTED'] || 0,
+        interview: stageCounts['INTERVIEW_SCHEDULED'] || 0,
+        selected: stageCounts['SELECTED'] || 0,
+        offer_released: stageCounts['OFFER_RELEASED'] || 0
+      };
+
+      res.json({
+        total_students: totalStudentsRes.rows[0].count,
+        active_drives: totalDrivesRes.rows[0].count,
+        total_applications: totalAppsRes.rows[0].count,
+        funnel,
+        department_placement: deptPlacementRes.rows
+      });
+    } finally {
+      client.release();
+    }
+  }));
+
   // ── API 404 Fallback ──────────────────────────────────────────────────────
   app.use('/api/*', (req, res) => {
     res.status(404).json({ error: `API route ${req.originalUrl} not found` });

@@ -2646,6 +2646,719 @@ function StaffStudentProfileModal({
   );
 }
 
+// ── HR Portal View Component ──────────────────────────────────────────────
+function HRPortalView({
+  token,
+  user,
+  view,
+  setView,
+  departments,
+  classes,
+  addToast,
+  onViewProfile
+}: {
+  token: string | null;
+  user: User | null;
+  view: string;
+  setView: (v: string) => void;
+  departments: Department[];
+  classes: Class[];
+  addToast: (msg: string, type?: 'info' | 'success' | 'error' | 'warning') => void;
+  onViewProfile: (id: string) => void;
+}) {
+  const [activeTab, setActiveTab] = useState(view.replace('hr-', '') || 'dashboard');
+  const [drives, setDrives] = useState<any[]>([]);
+  const [applications, setApplications] = useState<any[]>([]);
+  const [interviews, setInterviews] = useState<any[]>([]);
+  const [analytics, setAnalytics] = useState<any>(null);
+  const [searchCandidates, setSearchCandidates] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Search Filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [deptFilter, setDeptFilter] = useState('');
+  const [minCgpaFilter, setMinCgpaFilter] = useState('');
+  const [maxArrearsFilter, setMaxArrearsFilter] = useState('');
+  const [preferredRoleFilter, setPreferredRoleFilter] = useState('');
+  const [sortBy, setSortBy] = useState('cgpa_desc');
+
+  // Modals
+  const [showCreateDrive, setShowCreateDrive] = useState(false);
+  const [showEligibilityModal, setShowEligibilityModal] = useState<any>(null);
+  const [showScheduleInterview, setShowScheduleInterview] = useState<any>(null);
+
+  // New Drive Form
+  const [newDrive, setNewDrive] = useState({
+    title: '', role: '', package_details: '12 LPA', type: 'FTE', location: 'Hybrid',
+    min_cgpa: '7.0', max_arrears: '0', job_description: '', eligible_batches: '2024-2028, 2025-2029',
+    last_date_to_apply: '', drive_date: '', required_skill_1: 'Java', required_skill_2: 'Spring Boot'
+  });
+
+  // New Interview Form
+  const [newInterview, setNewInterview] = useState({
+    interview_date: '', mode: 'ONLINE', meeting_link: '', venue: '', interviewer_name: 'HR Recruiter'
+  });
+
+  // Selected applications for bulk shortlist
+  const [selectedAppIds, setSelectedAppIds] = useState<string[]>([]);
+  const [appStageFilter, setAppStageFilter] = useState('APPLIED');
+
+  useEffect(() => {
+    setActiveTab(view.replace('hr-', '') || 'dashboard');
+  }, [view]);
+
+  const fetchDrives = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/hr/drives`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setDrives(await res.json());
+    } catch {}
+  };
+
+  const fetchApplications = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/hr/applications`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setApplications(await res.json());
+    } catch {}
+  };
+
+  const fetchInterviews = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/hr/interviews`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setInterviews(await res.json());
+    } catch {}
+  };
+
+  const fetchAnalytics = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/hr/analytics`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setAnalytics(await res.json());
+    } catch {}
+  };
+
+  const executeSearch = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/hr/student-search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          query: searchQuery,
+          department_id: deptFilter,
+          min_cgpa: minCgpaFilter,
+          max_arrears: maxArrearsFilter,
+          preferred_role: preferredRoleFilter,
+          sort_by: sortBy
+        })
+      });
+      if (res.ok) setSearchCandidates(await res.json());
+    } catch {
+      addToast('Error searching candidate database', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDrives();
+    fetchApplications();
+    fetchInterviews();
+    fetchAnalytics();
+    executeSearch();
+  }, [token]);
+
+  const handleCreateDrive = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API_URL}/api/hr/drives`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          ...newDrive,
+          min_cgpa: parseFloat(newDrive.min_cgpa || '0'),
+          max_arrears: parseInt(newDrive.max_arrears || '0'),
+          required_skills: [
+            { skill_name: newDrive.required_skill_1, min_level: 'Intermediate', is_mandatory: true },
+            { skill_name: newDrive.required_skill_2, min_level: 'Beginner', is_mandatory: false }
+          ]
+        })
+      });
+      if (res.ok) {
+        addToast('Placement drive created successfully!', 'success');
+        setShowCreateDrive(false);
+        fetchDrives();
+      } else {
+        const data = await res.json();
+        addToast(data.error || 'Failed to create drive', 'error');
+      }
+    } catch {
+      addToast('Network error creating placement drive', 'error');
+    }
+  };
+
+  const checkEligibility = async (driveId: string) => {
+    try {
+      const res = await fetch(`${API_URL}/api/hr/drives/${driveId}/eligibility`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setShowEligibilityModal(data);
+      }
+    } catch {
+      addToast('Failed to calculate student eligibility', 'error');
+    }
+  };
+
+  const handleBulkStageUpdate = async (newStage: string) => {
+    if (selectedAppIds.length === 0) return addToast('Please select candidates first', 'error');
+    try {
+      const res = await fetch(`${API_URL}/api/hr/applications/bulk-stage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ application_ids: selectedAppIds, new_status: newStage })
+      });
+      if (res.ok) {
+        addToast(`Updated ${selectedAppIds.length} candidate applications to ${newStage}`, 'success');
+        setSelectedAppIds([]);
+        fetchApplications();
+        fetchAnalytics();
+      }
+    } catch {
+      addToast('Error performing bulk update', 'error');
+    }
+  };
+
+  const handleScheduleInterviewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!showScheduleInterview) return;
+    try {
+      const res = await fetch(`${API_URL}/api/hr/interviews`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          application_id: showScheduleInterview.id,
+          drive_id: showScheduleInterview.drive_id,
+          user_id: showScheduleInterview.user_id,
+          ...newInterview
+        })
+      });
+      if (res.ok) {
+        addToast('Interview scheduled successfully!', 'success');
+        setShowScheduleInterview(null);
+        fetchInterviews();
+        fetchApplications();
+      }
+    } catch {
+      addToast('Error scheduling interview', 'error');
+    }
+  };
+
+  const exportCandidatesCSV = () => {
+    const headers = ["Name", "Register Number", "Email", "Department", "Year", "CGPA", "Arrears", "Preferred Role"];
+    const rows = searchCandidates.map(c => [
+      `"${c.full_name}"`, `"${c.register_number}"`, `"${c.email}"`, `"${c.department_name || ''}"`,
+      c.year || '', c.cgpa || '0.0', c.current_arrears || '0', `"${c.preferred_role || ''}"`
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Candidate_Search_Export_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    addToast('Candidate export CSV downloaded!', 'success');
+  };
+
+  return (
+    <PageLayout>
+      {/* HR Portal Navigation Tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-zinc-200 custom-scrollbar mb-6">
+        {[
+          { id: 'dashboard', label: 'HR Dashboard', icon: LayoutDashboard },
+          { id: 'search', label: 'Candidate Search', icon: Search },
+          { id: 'drives', label: 'Placement Drives', icon: Briefcase },
+          { id: 'applications', label: 'Applications Pipeline', icon: Users },
+          { id: 'interviews', label: 'Interview Schedule', icon: CalendarRange },
+          { id: 'analytics', label: 'Hiring Funnel', icon: Activity },
+        ].map(t => {
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.id}
+              onClick={() => { setActiveTab(t.id); setView(`hr-${t.id}`); }}
+              className={cn(
+                "px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 shrink-0 border",
+                activeTab === t.id
+                  ? "bg-zinc-900 text-white border-zinc-900 shadow-sm"
+                  : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
+              )}
+            >
+              <Icon size={16} />
+              <span>{t.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* DASHBOARD MODULE */}
+      {activeTab === 'dashboard' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <StatCard title="Total Candidates" value={analytics?.total_students || searchCandidates.length} icon={<Users />} color="blue" />
+            <StatCard title="Active Placement Drives" value={analytics?.active_drives || drives.length} icon={<Briefcase />} color="emerald" />
+            <StatCard title="Applications Received" value={analytics?.total_applications || applications.length} icon={<ClipboardList />} color="indigo" />
+            <StatCard title="Shortlisted Candidates" value={analytics?.funnel?.shortlisted || 0} icon={<CheckCircle2 />} color="purple" />
+            <StatCard title="Total Selections" value={analytics?.funnel?.selected || 0} icon={<Trophy />} color="amber" />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card className="p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-base text-zinc-900 flex items-center gap-2">
+                  <Briefcase size={18} className="text-blue-600" /> Active Drives Overview
+                </h4>
+                <Button size="sm" onClick={() => setShowCreateDrive(true)}>
+                  <Plus size={14} /> New Drive
+                </Button>
+              </div>
+              <div className="space-y-3 max-h-80 overflow-y-auto pr-1 custom-scrollbar">
+                {drives.length === 0 ? (
+                  <p className="text-xs text-zinc-400 py-8 text-center">No placement drives created yet.</p>
+                ) : (
+                  drives.map(d => (
+                    <div key={d.id} className="p-4 bg-zinc-50 rounded-xl border border-zinc-200 flex items-center justify-between gap-4">
+                      <div>
+                        <h5 className="font-bold text-sm text-zinc-900">{d.title}</h5>
+                        <p className="text-xs text-zinc-500 font-semibold">{d.role} • {d.package_details} • Min CGPA: {d.min_cgpa}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="secondary" onClick={() => checkEligibility(d.id)}>
+                          Check Eligibility
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+
+            <Card className="p-6 space-y-4">
+              <h4 className="font-bold text-base text-zinc-900 flex items-center gap-2">
+                <Activity size={18} className="text-purple-600" /> Hiring Conversion Funnel
+              </h4>
+              <div className="space-y-3 pt-2">
+                {[
+                  { stage: 'Applied', count: analytics?.funnel?.applied || 0, color: 'bg-blue-500' },
+                  { stage: 'Shortlisted', count: analytics?.funnel?.shortlisted || 0, color: 'bg-indigo-500' },
+                  { stage: 'Interviews Scheduled', count: analytics?.funnel?.interview || 0, color: 'bg-purple-500' },
+                  { stage: 'Selected & Offers', count: analytics?.funnel?.selected || 0, color: 'bg-emerald-500' },
+                ].map(s => (
+                  <div key={s.stage} className="space-y-1">
+                    <div className="flex justify-between text-xs font-bold text-zinc-700">
+                      <span>{s.stage}</span>
+                      <span>{s.count} Candidates</span>
+                    </div>
+                    <div className="w-full bg-zinc-100 rounded-full h-3 overflow-hidden">
+                      <div className={cn("h-full rounded-full transition-all", s.color)} style={{ width: `${Math.min(100, (s.count / Math.max(1, analytics?.funnel?.applied || 1)) * 100)}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* CANDIDATE SEARCH MODULE */}
+      {activeTab === 'search' && (
+        <div className="space-y-6">
+          <Card className="p-6 space-y-4">
+            <div className="flex flex-col md:flex-row items-center gap-4">
+              <div className="relative flex-1 w-full">
+                <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+                <Input
+                  placeholder="Search by student name or register number..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="pl-10 h-11"
+                />
+              </div>
+              <Button onClick={executeSearch} className="w-full md:w-auto h-11 px-6 flex items-center gap-2">
+                <Search size={16} /> Search Candidates
+              </Button>
+              <Button variant="secondary" onClick={exportCandidatesCSV} className="w-full md:w-auto h-11 px-6 flex items-center gap-2">
+                <FileDown size={16} /> Export CSV
+              </Button>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-zinc-100">
+              <div>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase">Min CGPA</label>
+                <Input type="number" step="0.1" placeholder="e.g. 7.5" value={minCgpaFilter} onChange={e => setMinCgpaFilter(e.target.value)} className="h-9 text-xs" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase">Max Arrears</label>
+                <Input type="number" placeholder="e.g. 0" value={maxArrearsFilter} onChange={e => setMaxArrearsFilter(e.target.value)} className="h-9 text-xs" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase">Preferred Role</label>
+                <Input placeholder="e.g. Developer" value={preferredRoleFilter} onChange={e => setPreferredRoleFilter(e.target.value)} className="h-9 text-xs" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase">Sort Candidates</label>
+                <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="w-full h-9 px-2 rounded-lg border border-zinc-200 text-xs font-semibold">
+                  <option value="cgpa_desc">Highest CGPA</option>
+                  <option value="projects_desc">Most Projects</option>
+                  <option value="skills_desc">Most Skills</option>
+                </select>
+              </div>
+            </div>
+          </Card>
+
+          {/* Results Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {loading ? (
+              <div className="col-span-full py-16 text-center text-zinc-400">
+                <Loader2 size={32} className="animate-spin mx-auto mb-2 text-black" />
+                <p className="text-xs font-semibold">Searching candidate database...</p>
+              </div>
+            ) : searchCandidates.length === 0 ? (
+              <div className="col-span-full py-16 text-center text-zinc-400 bg-white rounded-2xl border border-zinc-200">
+                <Users size={32} className="mx-auto mb-2 opacity-50" />
+                <p className="text-sm font-bold text-zinc-700">No candidates found</p>
+                <p className="text-xs text-zinc-400">Try adjusting your search query or filters.</p>
+              </div>
+            ) : (
+              searchCandidates.map(c => (
+                <Card key={c.id} className="p-5 relative space-y-3 hover:border-blue-500 transition-all">
+                  <div className="flex items-start gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-zinc-900 text-white font-bold flex items-center justify-center shrink-0 overflow-hidden">
+                      {c.avatar_url ? <img src={c.avatar_url} alt={c.full_name} className="w-full h-full object-cover" /> : (c.full_name || 'ST').slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h5 className="font-bold text-sm text-zinc-900 truncate">{c.full_name}</h5>
+                      <p className="text-xs font-mono text-zinc-400">{c.register_number}</p>
+                      <p className="text-xs text-zinc-500 font-semibold">{c.department_name || 'IT'} • Year {c.year || 3}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-zinc-100 text-center">
+                    <div className="p-1.5 bg-blue-50 text-blue-700 rounded-lg">
+                      <p className="text-[10px] font-bold uppercase">CGPA</p>
+                      <p className="text-xs font-black">{c.cgpa || 'N/A'}</p>
+                    </div>
+                    <div className="p-1.5 bg-amber-50 text-amber-700 rounded-lg">
+                      <p className="text-[10px] font-bold uppercase">Arrears</p>
+                      <p className="text-xs font-black">{c.current_arrears || 0}</p>
+                    </div>
+                    <div className="p-1.5 bg-purple-50 text-purple-700 rounded-lg">
+                      <p className="text-[10px] font-bold uppercase">Projects</p>
+                      <p className="text-xs font-black">{c.project_count || 0}</p>
+                    </div>
+                  </div>
+
+                  <Button variant="secondary" className="w-full text-xs font-bold py-2 flex items-center justify-center gap-1" onClick={() => onViewProfile(c.id)}>
+                    <User size={14} /> View Full Profile
+                  </Button>
+                </Card>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* PLACEMENT DRIVES MODULE */}
+      {activeTab === 'drives' && (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-bold text-zinc-900">Placement Drives ({drives.length})</h3>
+            <Button onClick={() => setShowCreateDrive(true)} className="flex items-center gap-2">
+              <Plus size={16} /> Create Placement Drive
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {drives.map(d => (
+              <Card key={d.id} className="p-6 space-y-4 relative border-zinc-200 hover:border-zinc-400 transition-all">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className={cn(
+                      "px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider",
+                      d.status === 'OPEN' ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"
+                    )}>
+                      {d.status}
+                    </span>
+                    <h4 className="font-extrabold text-lg text-zinc-900 mt-2">{d.title}</h4>
+                    <p className="text-xs text-zinc-500 font-semibold">{d.company_name || 'Tech Partner'} • {d.role}</p>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-zinc-50 rounded-xl space-y-1.5 text-xs text-zinc-600 border border-zinc-100">
+                  <p><span className="font-bold text-zinc-800">Package:</span> {d.package_details}</p>
+                  <p><span className="font-bold text-zinc-800">Cutoff CGPA:</span> {d.min_cgpa}+</p>
+                  <p><span className="font-bold text-zinc-800">Max Arrears:</span> {d.max_arrears}</p>
+                  <p><span className="font-bold text-zinc-800">Applications:</span> {d.total_applications || 0} candidates</p>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button variant="secondary" className="flex-1 text-xs font-bold" onClick={() => checkEligibility(d.id)}>
+                    Auto Eligibility
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* APPLICATIONS PIPELINE MODULE */}
+      {activeTab === 'applications' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-zinc-900">Applications Pipeline</h3>
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={() => handleBulkStageUpdate('SHORTLISTED')} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs">
+                Bulk Shortlist ({selectedAppIds.length})
+              </Button>
+              <Button size="sm" variant="danger" onClick={() => handleBulkStageUpdate('REJECTED')} className="text-xs font-bold">
+                Bulk Reject ({selectedAppIds.length})
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-zinc-200 custom-scrollbar">
+            {['APPLIED', 'SHORTLISTED', 'INTERVIEW_SCHEDULED', 'REJECTED', 'SELECTED', 'OFFER_RELEASED'].map(stage => (
+              <button
+                key={stage}
+                onClick={() => setAppStageFilter(stage)}
+                className={cn(
+                  "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap",
+                  appStageFilter === stage ? "bg-zinc-900 text-white shadow-sm" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                )}
+              >
+                {stage.replace('_', ' ')}
+              </button>
+            ))}
+          </div>
+
+          <Table>
+            <THead>
+              <TR>
+                <TH>
+                  <input
+                    type="checkbox"
+                    onChange={(e) => {
+                      if (e.target.checked) setSelectedAppIds(applications.filter(a => a.status === appStageFilter).map(a => a.id));
+                      else setSelectedAppIds([]);
+                    }}
+                  />
+                </TH>
+                <TH>Candidate</TH>
+                <TH>Drive / Role</TH>
+                <TH>CGPA</TH>
+                <TH>Status</TH>
+                <TH className="text-right">Actions</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {applications.filter(a => a.status === appStageFilter).length === 0 ? (
+                <TR>
+                  <TD colSpan={6} className="text-center py-10 text-zinc-400 text-xs font-medium">No candidate applications in this stage.</TD>
+                </TR>
+              ) : (
+                applications.filter(a => a.status === appStageFilter).map(app => (
+                  <TR key={app.id}>
+                    <TD>
+                      <input
+                        type="checkbox"
+                        checked={selectedAppIds.includes(app.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedAppIds(prev => [...prev, app.id]);
+                          else setSelectedAppIds(prev => prev.filter(id => id !== app.id));
+                        }}
+                      />
+                    </TD>
+                    <TD className="font-bold text-zinc-900 text-xs">
+                      {app.full_name} <span className="text-zinc-400 font-mono">({app.register_number})</span>
+                    </TD>
+                    <TD className="text-xs text-zinc-600 font-semibold">{app.drive_title} ({app.job_role})</TD>
+                    <TD className="text-xs font-bold text-zinc-800">{app.cgpa || 'N/A'}</TD>
+                    <TD><Badge variant="primary">{app.status}</Badge></TD>
+                    <TD className="text-right">
+                      <Button size="sm" variant="secondary" onClick={() => setShowScheduleInterview(app)}>
+                        Schedule Interview
+                      </Button>
+                    </TD>
+                  </TR>
+                ))
+              )}
+            </TBody>
+          </Table>
+        </div>
+      )}
+
+      {/* CREATE DRIVE MODAL */}
+      {showCreateDrive && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex items-center justify-center p-4">
+          <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white rounded-3xl p-6 md:p-8 w-full max-w-2xl shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
+              <h3 className="text-lg font-bold text-zinc-900">Create Placement Drive</h3>
+              <button onClick={() => setShowCreateDrive(false)}><XCircle size={20} className="text-zinc-400" /></button>
+            </div>
+            <form onSubmit={handleCreateDrive} className="space-y-4 text-xs font-medium">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="font-bold uppercase text-[10px] text-zinc-400">Drive Title</label>
+                  <Input required placeholder="Campus Drive 2026" value={newDrive.title} onChange={e => setNewDrive(p => ({ ...p, title: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="font-bold uppercase text-[10px] text-zinc-400">Job Role</label>
+                  <Input required placeholder="Software Engineer" value={newDrive.role} onChange={e => setNewDrive(p => ({ ...p, role: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="font-bold uppercase text-[10px] text-zinc-400">Package Details</label>
+                  <Input placeholder="12 LPA" value={newDrive.package_details} onChange={e => setNewDrive(p => ({ ...p, package_details: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="font-bold uppercase text-[10px] text-zinc-400">Min CGPA Cutoff</label>
+                  <Input type="number" step="0.1" placeholder="7.0" value={newDrive.min_cgpa} onChange={e => setNewDrive(p => ({ ...p, min_cgpa: e.target.value }))} />
+                </div>
+              </div>
+              <Button type="submit" className="w-full py-3 text-sm font-bold mt-4">Publish Drive</Button>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* AUTO ELIGIBILITY CALCULATOR MODAL */}
+      {showEligibilityModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex items-center justify-center p-4">
+          <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white rounded-3xl p-6 md:p-8 w-full max-w-4xl shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
+              <div>
+                <h3 className="text-lg font-bold text-zinc-900">Auto Eligibility Results: {showEligibilityModal.drive?.title}</h3>
+                <p className="text-xs text-zinc-500">Eligible: <span className="font-bold text-emerald-600">{showEligibilityModal.eligible_count}</span> • Not Eligible: <span className="font-bold text-red-600">{showEligibilityModal.not_eligible_count}</span></p>
+              </div>
+              <button onClick={() => setShowEligibilityModal(null)}><XCircle size={24} className="text-zinc-400" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+              <h4 className="font-bold text-sm text-emerald-700">Eligible Candidates ({showEligibilityModal.eligible_count})</h4>
+              <Table>
+                <THead><TR><TH>Name</TH><TH>Reg No</TH><TH>CGPA</TH><TH>Arrears</TH></TR></THead>
+                <TBody>
+                  {showEligibilityModal.eligible_students?.map((s: any) => (
+                    <TR key={s.id}>
+                      <TD className="font-bold text-xs">{s.full_name}</TD>
+                      <TD className="text-xs font-mono text-zinc-400">{s.register_number}</TD>
+                      <TD className="text-xs font-bold">{s.cgpa}</TD>
+                      <TD className="text-xs">{s.current_arrears}</TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* SCHEDULE INTERVIEW MODAL */}
+      {showScheduleInterview && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex items-center justify-center p-4">
+          <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
+              <h3 className="text-base font-bold text-zinc-900">Schedule Interview: {showScheduleInterview.full_name}</h3>
+              <button onClick={() => setShowScheduleInterview(null)}><XCircle size={20} className="text-zinc-400" /></button>
+            </div>
+            <form onSubmit={handleScheduleInterviewSubmit} className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-zinc-500">Interview Date & Time</label>
+                <Input type="datetime-local" required value={newInterview.interview_date} onChange={e => setNewInterview(p => ({ ...p, interview_date: e.target.value }))} />
+              </div>
+              <div>
+                <label className="font-bold text-zinc-500">Meeting Link (Google Meet/Teams)</label>
+                <Input placeholder="https://meet.google.com/xyz" value={newInterview.meeting_link} onChange={e => setNewInterview(p => ({ ...p, meeting_link: e.target.value }))} />
+              </div>
+              <Button type="submit" className="w-full py-2.5 font-bold mt-2">Confirm Schedule</Button>
+            </form>
+          </motion.div>
+        </div>
+      )}
+    </PageLayout>
+  );
+}
+
+// ── Student Placement Drives View Component ────────────────────────────────
+function StudentPlacementDrivesView({ token, addToast }: { token: string | null, addToast: (msg: string, type?: any) => void }) {
+  const [drives, setDrives] = useState<any[]>([]);
+  const [applying, setApplying] = useState<string | null>(null);
+
+  const fetchStudentDrives = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/student/drives`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setDrives(await res.json());
+    } catch {}
+  };
+
+  useEffect(() => { fetchStudentDrives(); }, [token]);
+
+  const applyForDrive = async (driveId: string) => {
+    setApplying(driveId);
+    try {
+      const res = await fetch(`${API_URL}/api/student/drives/${driveId}/apply`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        addToast('Applied for placement drive successfully!', 'success');
+        fetchStudentDrives();
+      } else {
+        const data = await res.json();
+        addToast(data.error || 'Failed to apply', 'error');
+      }
+    } catch {
+      addToast('Error applying for drive', 'error');
+    } finally {
+      setApplying(null);
+    }
+  };
+
+  return (
+    <PageLayout>
+      <div className="space-y-6">
+        <h3 className="text-xl font-black text-zinc-900">Campus Placement Drives</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {drives.map(d => (
+            <Card key={d.id} className="p-6 space-y-4 border-zinc-200 shadow-sm relative">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h4 className="font-extrabold text-lg text-zinc-900">{d.title}</h4>
+                  <p className="text-xs text-zinc-500 font-semibold">{d.company_name || 'Tech Partner'} • {d.role}</p>
+                </div>
+              </div>
+              <div className="p-3 bg-zinc-50 rounded-xl space-y-1 text-xs text-zinc-600">
+                <p><span className="font-bold text-zinc-800">Package:</span> {d.package_details}</p>
+                <p><span className="font-bold text-zinc-800">Cutoff CGPA:</span> {d.min_cgpa}+</p>
+                <p><span className="font-bold text-zinc-800">Location:</span> {d.location}</p>
+              </div>
+              {d.my_application_status ? (
+                <div className="p-2.5 bg-emerald-50 text-emerald-700 text-center rounded-xl text-xs font-bold">
+                  Status: {d.my_application_status}
+                </div>
+              ) : (
+                <Button disabled={applying === d.id} onClick={() => applyForDrive(d.id)} className="w-full py-2.5 text-xs font-bold">
+                  {applying === d.id ? <Loader2 size={16} className="animate-spin mx-auto" /> : 'Apply Now'}
+                </Button>
+              )}
+            </Card>
+          ))}
+        </div>
+      </div>
+    </PageLayout>
+  );
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
@@ -2803,6 +3516,7 @@ export default function App() {
   const isHOD = user?.role === 'HOD';
   const isAdvisor = user?.role === 'CLASS_ADVISOR';
   const isStudent = user?.role === 'STUDENT';
+  const isHR = user?.role === 'HR';
   const isCoordinator = Boolean(user?.role === 'STUDENT' && user?.is_coordinator);
 
   // Deep Link Handling for Shared Tasks (?taskId=... or ?task=...)
@@ -5000,94 +5714,137 @@ export default function App() {
       </div>
 
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
-        <SidebarItem
-          icon={<LayoutDashboard size={20} />}
-          label="Dashboard"
-          active={view === 'dashboard'}
-          onClick={() => { setView('dashboard'); setIsMobileSidebarOpen(false); }}
-        />
-
-        {isAdmin && (
+        {isHR ? (
           <>
             <SidebarItem
-              icon={<Building2 size={20} />}
-              label="Departments"
-              active={view === 'departments'}
-              onClick={() => { setView('departments'); setIsMobileSidebarOpen(false); }}
+              icon={<LayoutDashboard size={20} />}
+              label="HR Dashboard"
+              active={view === 'hr-dashboard' || view === 'dashboard'}
+              onClick={() => { setView('hr-dashboard'); setIsMobileSidebarOpen(false); }}
+            />
+            <SidebarItem
+              icon={<Search size={20} />}
+              label="Student Search"
+              active={view === 'hr-search'}
+              onClick={() => { setView('hr-search'); setIsMobileSidebarOpen(false); }}
+            />
+            <SidebarItem
+              icon={<Briefcase size={20} />}
+              label="Placement Drives"
+              active={view === 'hr-drives'}
+              onClick={() => { setView('hr-drives'); setIsMobileSidebarOpen(false); }}
             />
             <SidebarItem
               icon={<Users size={20} />}
-              label="HOD Accounts"
-              active={view === 'users'}
-              onClick={() => { setView('users'); setIsMobileSidebarOpen(false); }}
+              label="Applications"
+              active={view === 'hr-applications'}
+              onClick={() => { setView('hr-applications'); setIsMobileSidebarOpen(false); }}
+            />
+            <SidebarItem
+              icon={<CalendarRange size={20} />}
+              label="Interviews"
+              active={view === 'hr-interviews'}
+              onClick={() => { setView('hr-interviews'); setIsMobileSidebarOpen(false); }}
             />
           </>
-        )}
-
-        {isHOD && (
+        ) : (
           <>
             <SidebarItem
-              icon={<Building2 size={20} />}
-              label="Classes"
-              active={view === 'classes'}
-              onClick={() => { setView('classes'); setIsMobileSidebarOpen(false); }}
+              icon={<LayoutDashboard size={20} />}
+              label="Dashboard"
+              active={view === 'dashboard'}
+              onClick={() => { setView('dashboard'); setIsMobileSidebarOpen(false); }}
             />
-            <SidebarItem
-              icon={<Users size={20} />}
-              label="Users"
-              active={view === 'users'}
-              onClick={() => { setView('users'); setIsMobileSidebarOpen(false); }}
-            />
-          </>
-        )}
 
-        {isAdvisor && (
-          <>
-            <SidebarItem
-              icon={<Building2 size={20} />}
-              label="My Class"
-              active={view === 'my-class'}
-              onClick={() => { setView('my-class'); setIsMobileSidebarOpen(false); }}
-            />
-            <SidebarItem
-              icon={<Users size={20} />}
-              label="Students"
-              active={view === 'users'}
-              onClick={() => { setView('users'); setIsMobileSidebarOpen(false); }}
-            />
-          </>
-        )}
+            {isAdmin && (
+              <>
+                <SidebarItem
+                  icon={<Building2 size={20} />}
+                  label="Departments"
+                  active={view === 'departments'}
+                  onClick={() => { setView('departments'); setIsMobileSidebarOpen(false); }}
+                />
+                <SidebarItem
+                  icon={<Users size={20} />}
+                  label="HOD Accounts"
+                  active={view === 'users'}
+                  onClick={() => { setView('users'); setIsMobileSidebarOpen(false); }}
+                />
+              </>
+            )}
 
-        <SidebarItem
-          icon={<ClipboardList size={20} />}
-          label="Tasks"
-          active={view === 'tasks'}
-          onClick={() => { setView('tasks'); setIsMobileSidebarOpen(false); }}
-        />
+            {isHOD && (
+              <>
+                <SidebarItem
+                  icon={<Building2 size={20} />}
+                  label="Classes"
+                  active={view === 'classes'}
+                  onClick={() => { setView('classes'); setIsMobileSidebarOpen(false); }}
+                />
+                <SidebarItem
+                  icon={<Users size={20} />}
+                  label="Users"
+                  active={view === 'users'}
+                  onClick={() => { setView('users'); setIsMobileSidebarOpen(false); }}
+                />
+              </>
+            )}
 
-        {(isAdvisor || isHOD || isAdmin || isCoordinator) && (
-          <SidebarItem
-            icon={<ShieldCheck size={20} />}
-            label="Verifications"
-            active={view === 'verifications'}
-            onClick={() => { setView('verifications'); setIsMobileSidebarOpen(false); }}
-          />
-        )}
+            {isAdvisor && (
+              <>
+                <SidebarItem
+                  icon={<Building2 size={20} />}
+                  label="My Class"
+                  active={view === 'my-class'}
+                  onClick={() => { setView('my-class'); setIsMobileSidebarOpen(false); }}
+                />
+                <SidebarItem
+                  icon={<Users size={20} />}
+                  label="Students"
+                  active={view === 'users'}
+                  onClick={() => { setView('users'); setIsMobileSidebarOpen(false); }}
+                />
+              </>
+            )}
 
-        {isStudent && (
-          <>
             <SidebarItem
-              icon={<CheckCircle2 size={20} />}
-              label="My Submissions"
-              active={view === 'submissions'}
-              onClick={() => { setView('submissions'); setIsMobileSidebarOpen(false); }}
+              icon={<ClipboardList size={20} />}
+              label="Tasks"
+              active={view === 'tasks'}
+              onClick={() => { setView('tasks'); setIsMobileSidebarOpen(false); }}
             />
-            <SidebarItem
-              icon={<User size={20} />}
-              label="Profile"
-              active={view === 'profile'}
-              onClick={() => { setView('profile'); setIsMobileSidebarOpen(false); }}
-            />
+
+            {(isAdvisor || isHOD || isAdmin || isCoordinator) && (
+              <SidebarItem
+                icon={<ShieldCheck size={20} />}
+                label="Verifications"
+                active={view === 'verifications'}
+                onClick={() => { setView('verifications'); setIsMobileSidebarOpen(false); }}
+              />
+            )}
+
+            {isStudent && (
+              <>
+                <SidebarItem
+                  icon={<Briefcase size={20} />}
+                  label="Placement Drives"
+                  active={view === 'student-drives'}
+                  onClick={() => { setView('student-drives'); setIsMobileSidebarOpen(false); }}
+                />
+                <SidebarItem
+                  icon={<CheckCircle2 size={20} />}
+                  label="My Submissions"
+                  active={view === 'submissions'}
+                  onClick={() => { setView('submissions'); setIsMobileSidebarOpen(false); }}
+                />
+                <SidebarItem
+                  icon={<User size={20} />}
+                  label="Profile"
+                  active={view === 'profile'}
+                  onClick={() => { setView('profile'); setIsMobileSidebarOpen(false); }}
+                />
+              </>
+            )}
           </>
         )}
 
@@ -5470,7 +6227,24 @@ export default function App() {
 
           <div className="flex-1 min-h-0 bg-[#F5F5F4] relative">
             <AnimatePresence mode="wait">
-            {view === 'dashboard' && (
+            {(isHR || view.startsWith('hr-')) && (
+              <HRPortalView
+                token={token}
+                user={user}
+                view={view}
+                setView={setView}
+                departments={departments}
+                classes={classes}
+                addToast={addToast}
+                onViewProfile={(id: string) => setViewingStudentProfileId(id)}
+              />
+            )}
+
+            {view === 'student-drives' && isStudent && (
+              <StudentPlacementDrivesView token={token} addToast={addToast} />
+            )}
+
+            {view === 'dashboard' && !isHR && (
               <motion.div
                 key="dashboard"
                 initial={{ opacity: 0, y: 10 }}
