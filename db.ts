@@ -356,6 +356,98 @@ export async function initDB() {
       );
     `);
 
+    // ─── Module 1: Task Discussion Forum ────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS task_discussions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        task_id UUID REFERENCES tasks(id) ON DELETE CASCADE NOT NULL,
+        parent_id UUID REFERENCES task_discussions(id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        message TEXT NOT NULL,
+        is_pinned BOOLEAN DEFAULT FALSE,
+        is_edited BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TIMESTAMP
+      );
+    `);
+
+    // ─── Module 2: Digital Notice Board ─────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS notices (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        title VARCHAR(255) NOT NULL,
+        description TEXT NOT NULL,
+        scope VARCHAR(50) DEFAULT 'ALL',
+        department_id UUID REFERENCES departments(id) ON DELETE SET NULL,
+        class_id UUID REFERENCES classes(id) ON DELETE SET NULL,
+        year INT,
+        priority VARCHAR(50) DEFAULT 'NORMAL',
+        attachment_url VARCHAR(1000),
+        attachment_cloudinary_public_id VARCHAR(255),
+        created_by UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        is_pinned BOOLEAN DEFAULT FALSE,
+        publish_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expire_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // ─── Module 3: Feedback Module ───────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS feedback (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        category VARCHAR(100) NOT NULL DEFAULT 'General',
+        title VARCHAR(255) NOT NULL,
+        description TEXT NOT NULL,
+        priority VARCHAR(50) DEFAULT 'Medium',
+        is_anonymous BOOLEAN DEFAULT FALSE,
+        status VARCHAR(50) DEFAULT 'Open',
+        assigned_to UUID REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS feedback_messages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        feedback_id UUID REFERENCES feedback(id) ON DELETE CASCADE NOT NULL,
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        message TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // ─── Module 4: Smart Reminder System ────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS scheduled_notifications (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        type VARCHAR(100) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        scheduled_time TIMESTAMP NOT NULL,
+        status VARCHAR(50) DEFAULT 'PENDING',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        sent_at TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_notification_settings (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID UNIQUE REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        task_reminders BOOLEAN DEFAULT TRUE,
+        event_reminders BOOLEAN DEFAULT TRUE,
+        notice_reminders BOOLEAN DEFAULT TRUE,
+        feedback_notifications BOOLEAN DEFAULT TRUE,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     // Schema Migrations
     await client.query(`
       ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS cloudinary_public_id VARCHAR(255);
@@ -382,8 +474,7 @@ export async function initDB() {
       ALTER TABLE tasks ADD COLUMN IF NOT EXISTS max_team_size INT DEFAULT 5;
     `);
 
-    // Create indexes
-
+    // Create indexes — original tables
     await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_dept ON tasks(department_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_submissions_task_user ON task_submissions(task_id, user_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_class_role ON users(class_id, role);`);
@@ -402,6 +493,20 @@ export async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_team_submissions_team ON team_submissions(team_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_teams_status ON teams(status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);`);
+
+    // Create indexes — new module tables
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_task_discussions_task ON task_discussions(task_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_task_discussions_parent ON task_discussions(parent_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_task_discussions_user ON task_discussions(user_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_notices_scope_dept ON notices(scope, department_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_notices_class ON notices(class_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_notices_publish ON notices(publish_at);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_notices_created_by ON notices(created_by);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_feedback_messages_fid ON feedback_messages(feedback_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_scheduled_notifs_user ON scheduled_notifications(user_id, status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_scheduled_notifs_time ON scheduled_notifications(scheduled_time, status);`);
 
     // Seed Supreme Admin if not exists
     const adminRes = await client.query(`SELECT * FROM users WHERE role = 'SUPREME_ADMIN' LIMIT 1;`);

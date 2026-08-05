@@ -1,4 +1,4 @@
-﻿import dotenv from 'dotenv';
+import dotenv from 'dotenv';
 dotenv.config();
 
 import express, { Request, Response, NextFunction } from 'express';
@@ -162,7 +162,7 @@ async function startServer() {
   // ── Auth ──────────────────────────────────────────────────────────────────
   // Login accepts `email` field for HOD/Advisor accounts.
   // Students may still log in using their Registration Number (intentional).
-  app.post('/api/auth/login', async (req, res) => {
+  app.post('/api/auth/login', asyncHandler(async (req: any, res: Response) => {
     const { email, username, password } = req.body;
     // Accept either `email` (new) or `username` (legacy) field from the client
     const loginId = (email || username || '').trim();
@@ -287,9 +287,9 @@ async function startServer() {
         year_scope: user.year_scope,
       }
     });
-  });
+  }));
 
-  app.get('/api/auth/me', authenticate, async (req: any, res) => {
+  app.get('/api/auth/me', authenticate, asyncHandler(async (req: any, res: Response) => {
     const userRes = await pool.query(`
       SELECT 
         u.id, u.username, u.role, u.full_name, u.email, u.register_number, u.gender,
@@ -326,7 +326,7 @@ async function startServer() {
       is_year_coordinator: Boolean(user.is_year_coordinator),
       year_scope: user.year_scope,
     });
-  });
+  }));
 
 
 
@@ -499,74 +499,6 @@ async function startServer() {
   app.delete('/api/student/profile/languages/:id', authenticate, authorize(['STUDENT']), async (req: any, res) => {
     await pool.query('DELETE FROM student_languages WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
     res.json({ success: true });
-  });
-
-  // 10. Career Preferences
-  app.put('/api/student/profile/career-preferences', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    const userId = req.user.id;
-    const { preferred_role, preferred_domain, preferred_location, willing_to_relocate, work_mode } = req.body;
-
-    const result = await pool.query(`
-      INSERT INTO student_career_preferences (user_id, preferred_role, preferred_domain, preferred_location, willing_to_relocate, work_mode, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW())
-      ON CONFLICT (user_id) DO UPDATE SET
-        preferred_role = EXCLUDED.preferred_role,
-        preferred_domain = EXCLUDED.preferred_domain,
-        preferred_location = EXCLUDED.preferred_location,
-        willing_to_relocate = EXCLUDED.willing_to_relocate,
-        work_mode = EXCLUDED.work_mode,
-        updated_at = NOW()
-      RETURNING *
-    `, [userId, preferred_role || '', preferred_domain || '', preferred_location || '', willing_to_relocate ?? true, work_mode || 'Hybrid']);
-    res.json(result.rows[0]);
-  });
-
-  // ── Settings Module: Change Password ────────────────────────────────────
-  app.put('/api/settings/change-password', authenticate, async (req: any, res) => {
-    const userId = req.user.id;
-    const { currentPassword, newPassword } = req.body;
-
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({ error: 'Both current password and new password are required' });
-    }
-
-    if (newPassword.length < 6) {
-      return res.status(400).json({ error: 'New password must be at least 6 characters long' });
-    }
-
-    const userRes = await pool.query('SELECT * FROM users WHERE id = $1 LIMIT 1', [userId]);
-    const user = userRes.rows[0];
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    let isCurrentValid = false;
-    const cleanCurrentPass = currentPassword.trim();
-
-    try {
-      if (user.password && (user.password.startsWith('$2a$') || user.password.startsWith('$2b$') || user.password.startsWith('$2y$'))) {
-        isCurrentValid = await bcrypt.compare(cleanCurrentPass, user.password) ||
-                         await bcrypt.compare(currentPassword, user.password);
-      } else {
-        isCurrentValid = (cleanCurrentPass === user.password) || (currentPassword === user.password);
-      }
-    } catch (e) {
-      isCurrentValid = false;
-    }
-
-    if (!isCurrentValid && user.role === 'STUDENT' && user.register_number) {
-      const regNo = user.register_number.trim().toLowerCase();
-      if (cleanCurrentPass.toLowerCase() === regNo || currentPassword.toLowerCase() === regNo) {
-        isCurrentValid = true;
-      }
-    }
-
-    if (!isCurrentValid) {
-      return res.status(400).json({ error: 'Incorrect current password' });
-    }
-
-    const hashedNewPassword = await bcrypt.hash(newPassword.trim(), 10);
-    await pool.query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [hashedNewPassword, userId]);
-
-    res.json({ message: 'Password changed successfully' });
   });
 
   // ── Departments ───────────────────────────────────────────────────────────
@@ -3985,6 +3917,554 @@ async function startServer() {
     res.json({ message: 'Password changed successfully in database' });
   }));
 
+
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // MODULE 1 â€” TASK DISCUSSION FORUM
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+  // GET /api/tasks/:taskId/discussions
+  app.get('/api/tasks/:taskId/discussions', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const { taskId } = req.params;
+    const { sort = 'newest' } = req.query;
+    const orderDir = sort === 'oldest' ? 'ASC' : 'DESC';
+
+    const result = await pool.query(`
+      SELECT d.id, d.task_id, d.parent_id, d.user_id, d.message,
+        d.is_pinned, d.is_edited, d.created_at, d.updated_at, d.deleted_at,
+        u.full_name AS author_name, u.role AS author_role,
+        COALESCE(u.register_number, u.username) AS author_regno
+      FROM task_discussions d
+      JOIN users u ON d.user_id = u.id
+      WHERE d.task_id = $1 AND d.deleted_at IS NULL
+      ORDER BY d.is_pinned DESC, d.created_at ${orderDir}
+    `, [taskId]);
+
+    const topLevel = result.rows.filter((r: any) => !r.parent_id);
+    const replies   = result.rows.filter((r: any) =>  r.parent_id);
+    const threaded  = topLevel.map((post: any) => ({
+      ...post,
+      replies: replies
+        .filter((r: any) => r.parent_id === post.id)
+        .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+      reply_count: replies.filter((r: any) => r.parent_id === post.id).length,
+    }));
+
+    res.json(threaded);
+  }));
+
+  // POST /api/tasks/:taskId/discussions
+  app.post('/api/tasks/:taskId/discussions', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const { taskId } = req.params;
+    const { message, parent_id } = req.body;
+    if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
+
+    const result = await pool.query(`
+      INSERT INTO task_discussions (task_id, parent_id, user_id, message)
+      VALUES ($1, $2, $3, $4) RETURNING *
+    `, [taskId, parent_id || null, req.user.id, message.trim()]);
+
+    const post = result.rows[0];
+
+    if (!parent_id) {
+      const taskRes = await pool.query('SELECT created_by, title FROM tasks WHERE id = $1', [taskId]);
+      if (taskRes.rows[0] && String(taskRes.rows[0].created_by) !== String(req.user.id)) {
+        await pool.query(
+          `INSERT INTO notifications (user_id, message, type) VALUES ($1, $2, 'DISCUSSION_REPLY')`,
+          [taskRes.rows[0].created_by, `New question on task "${taskRes.rows[0].title}" by ${req.user.username}`]
+        );
+      }
+    } else {
+      const origRes = await pool.query('SELECT user_id FROM task_discussions WHERE id = $1', [parent_id]);
+      if (origRes.rows[0] && String(origRes.rows[0].user_id) !== String(req.user.id)) {
+        await pool.query(
+          `INSERT INTO notifications (user_id, message, type) VALUES ($1, $2, 'DISCUSSION_REPLY')`,
+          [origRes.rows[0].user_id, `${req.user.username} replied to your discussion post`]
+        );
+      }
+    }
+
+    res.status(201).json(post);
+  }));
+
+  // PATCH /api/discussions/:id â€” edit post (own within 10 min, or staff)
+  app.patch('/api/discussions/:id', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const { message } = req.body;
+    if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
+
+    const postRes = await pool.query(
+      'SELECT * FROM task_discussions WHERE id = $1 AND deleted_at IS NULL', [req.params.id]
+    );
+    if (!postRes.rows[0]) return res.status(404).json({ error: 'Post not found' });
+    const post = postRes.rows[0];
+
+    const isOwner     = String(post.user_id) === String(req.user.id);
+    const isStaff     = ['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN'].includes(req.user.role);
+    const withinWindow = isOwner && (Date.now() - new Date(post.created_at).getTime()) < 10 * 60 * 1000;
+
+    if (!withinWindow && !isStaff) {
+      return res.status(403).json({ error: 'You can only edit your own posts within 10 minutes' });
+    }
+
+    const updated = await pool.query(
+      `UPDATE task_discussions SET message = $1, is_edited = TRUE, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [message.trim(), req.params.id]
+    );
+    res.json(updated.rows[0]);
+  }));
+
+  // DELETE /api/discussions/:id â€” soft delete
+  app.delete('/api/discussions/:id', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const postRes = await pool.query(
+      'SELECT * FROM task_discussions WHERE id = $1 AND deleted_at IS NULL', [req.params.id]
+    );
+    if (!postRes.rows[0]) return res.status(404).json({ error: 'Post not found' });
+    const post = postRes.rows[0];
+
+    const isOwner     = String(post.user_id) === String(req.user.id);
+    const isStaff     = ['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN'].includes(req.user.role);
+    const withinWindow = isOwner && (Date.now() - new Date(post.created_at).getTime()) < 10 * 60 * 1000;
+
+    if (!withinWindow && !isStaff) {
+      return res.status(403).json({ error: 'You can only delete your own posts within 10 minutes' });
+    }
+
+    await pool.query(`UPDATE task_discussions SET deleted_at = NOW() WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  }));
+
+  // PATCH /api/discussions/:id/pin â€” staff only
+  app.patch('/api/discussions/:id/pin', authenticate, authorize(['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN']), asyncHandler(async (req: any, res: Response) => {
+    const postRes = await pool.query('SELECT is_pinned FROM task_discussions WHERE id = $1', [req.params.id]);
+    if (!postRes.rows[0]) return res.status(404).json({ error: 'Post not found' });
+
+    const updated = await pool.query(
+      `UPDATE task_discussions SET is_pinned = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [!postRes.rows[0].is_pinned, req.params.id]
+    );
+    res.json(updated.rows[0]);
+  }));
+
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // MODULE 2 â€” DIGITAL NOTICE BOARD
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+  // GET /api/notices â€” fetch notices visible to the current user
+  app.get('/api/notices', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const u = req.user;
+    const { search, priority, scope: scopeFilter } = req.query as any;
+    const params: any[] = [];
+    const conditions: string[] = [
+      `(n.expire_at IS NULL OR n.expire_at > NOW())`,
+      `n.publish_at <= NOW()`,
+    ];
+
+    if (u.role === 'SUPREME_ADMIN') {
+      // sees everything
+    } else if (u.role === 'HOD') {
+      params.push(u.department_id);
+      conditions.push(
+        `(n.scope='ALL' OR (n.scope='DEPARTMENT' AND n.department_id=$${params.length}) OR n.scope='YEAR' OR n.scope='CLASS')`
+      );
+    } else if (u.role === 'CLASS_ADVISOR') {
+      params.push(u.department_id, u.class_id);
+      conditions.push(
+        `(n.scope='ALL' OR (n.scope='DEPARTMENT' AND n.department_id=$${params.length-1}) OR n.scope='YEAR' OR (n.scope='CLASS' AND n.class_id=$${params.length}))`
+      );
+    } else {
+      params.push(u.department_id, u.class_id);
+      conditions.push(
+        `(n.scope='ALL' OR (n.scope='DEPARTMENT' AND n.department_id=$${params.length-1}) OR (n.scope='CLASS' AND n.class_id=$${params.length}))`
+      );
+    }
+
+    if (search)      { params.push(`%${search}%`);  conditions.push(`(n.title ILIKE $${params.length} OR n.description ILIKE $${params.length})`); }
+    if (priority)    { params.push(priority);        conditions.push(`n.priority=$${params.length}`); }
+    if (scopeFilter) { params.push(scopeFilter);     conditions.push(`n.scope=$${params.length}`); }
+
+    const result = await pool.query(`
+      SELECT n.*, u.full_name AS creator_name, u.role AS creator_role,
+        d.name AS department_name, c.name AS class_name
+      FROM notices n
+      JOIN users u ON n.created_by = u.id
+      LEFT JOIN departments d ON n.department_id = d.id
+      LEFT JOIN classes c ON n.class_id = c.id
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY n.is_pinned DESC,
+        CASE n.priority WHEN 'URGENT' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END,
+        n.created_at DESC
+    `, params);
+
+    res.json(result.rows);
+  }));
+
+  // POST /api/notices
+  app.post('/api/notices', authenticate, authorize(['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN']), asyncHandler(async (req: any, res: Response) => {
+    const u = req.user;
+    const { title, description, scope, department_id, class_id, year, priority,
+            attachment_url, attachment_cloudinary_public_id, publish_at, expire_at } = req.body;
+
+    if (!title || !description) return res.status(400).json({ error: 'Title and description are required' });
+    if (u.role === 'CLASS_ADVISOR' && scope !== 'CLASS')
+      return res.status(403).json({ error: 'Class Advisors can only create CLASS-scoped notices' });
+    if (u.role === 'HOD' && scope === 'ALL')
+      return res.status(403).json({ error: 'HODs cannot create ALL-scope notices' });
+
+    const deptId = u.role === 'CLASS_ADVISOR' ? u.department_id : (department_id || u.department_id || null);
+    const clsId  = u.role === 'CLASS_ADVISOR' ? u.class_id     : (class_id || null);
+
+    const result = await pool.query(`
+      INSERT INTO notices
+        (title, description, scope, department_id, class_id, year, priority,
+         attachment_url, attachment_cloudinary_public_id, created_by, publish_at, expire_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *
+    `, [
+      title.trim(), description.trim(), scope || 'ALL',
+      deptId, clsId, year || null, priority || 'NORMAL',
+      attachment_url || null, attachment_cloudinary_public_id || null,
+      u.id, publish_at || new Date().toISOString(), expire_at || null,
+    ]);
+
+    res.status(201).json(result.rows[0]);
+  }));
+
+  // PUT /api/notices/:id
+  app.put('/api/notices/:id', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const nr = await pool.query('SELECT created_by FROM notices WHERE id = $1', [req.params.id]);
+    if (!nr.rows[0]) return res.status(404).json({ error: 'Notice not found' });
+
+    const isCreator = String(nr.rows[0].created_by) === String(req.user.id);
+    const isAdmin   = req.user.role === 'SUPREME_ADMIN';
+    if (!isCreator && !isAdmin) return res.status(403).json({ error: 'Forbidden' });
+
+    const { title, description, scope, department_id, class_id, year, priority,
+            attachment_url, attachment_cloudinary_public_id, publish_at, expire_at } = req.body;
+
+    const result = await pool.query(`
+      UPDATE notices SET
+        title=COALESCE($1,title), description=COALESCE($2,description), scope=COALESCE($3,scope),
+        department_id=$4, class_id=$5, year=$6, priority=COALESCE($7,priority),
+        attachment_url=$8, attachment_cloudinary_public_id=$9,
+        publish_at=COALESCE($10,publish_at), expire_at=$11, updated_at=NOW()
+      WHERE id=$12 RETURNING *
+    `, [title, description, scope, department_id||null, class_id||null, year||null, priority,
+        attachment_url||null, attachment_cloudinary_public_id||null, publish_at, expire_at||null, req.params.id]);
+
+    res.json(result.rows[0]);
+  }));
+
+  // DELETE /api/notices/:id
+  app.delete('/api/notices/:id', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const nr = await pool.query('SELECT created_by FROM notices WHERE id = $1', [req.params.id]);
+    if (!nr.rows[0]) return res.status(404).json({ error: 'Notice not found' });
+
+    const isCreator = String(nr.rows[0].created_by) === String(req.user.id);
+    const isAdmin   = req.user.role === 'SUPREME_ADMIN';
+    if (!isCreator && !isAdmin) return res.status(403).json({ error: 'Forbidden' });
+
+    await pool.query('DELETE FROM notices WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  }));
+
+  // PATCH /api/notices/:id/pin
+  app.patch('/api/notices/:id/pin', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const nr = await pool.query('SELECT created_by, is_pinned FROM notices WHERE id = $1', [req.params.id]);
+    if (!nr.rows[0]) return res.status(404).json({ error: 'Notice not found' });
+
+    const isCreator = String(nr.rows[0].created_by) === String(req.user.id);
+    const isAdmin   = req.user.role === 'SUPREME_ADMIN';
+    const isHOD     = req.user.role === 'HOD';
+    if (!isCreator && !isAdmin && !isHOD) return res.status(403).json({ error: 'Forbidden' });
+
+    const result = await pool.query(
+      'UPDATE notices SET is_pinned=$1, updated_at=NOW() WHERE id=$2 RETURNING *',
+      [!nr.rows[0].is_pinned, req.params.id]
+    );
+    res.json(result.rows[0]);
+  }));
+
+  // POST /api/notices/upload â€” Cloudinary attachment upload
+  app.post('/api/notices/upload', authenticate, authorize(['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN']),
+    upload.single('attachment'), asyncHandler(async (req: any, res: Response) => {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+      const f = req.file as any;
+      res.json({ attachment_url: f.path, attachment_cloudinary_public_id: f.filename });
+    })
+  );
+
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // MODULE 3 â€” FEEDBACK MODULE
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+  // GET /api/feedback
+  app.get('/api/feedback', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const u = req.user;
+    const { category, status, priority, search } = req.query as any;
+    const params: any[] = [u.role];
+    const conditions: string[] = [];
+
+    if (u.role === 'STUDENT') {
+      params.push(u.id);
+      conditions.push(`f.user_id=$${params.length}`);
+    } else if (u.role === 'CLASS_ADVISOR') {
+      params.push(u.class_id);
+      conditions.push(`f.user_id IN (SELECT id FROM users WHERE class_id=$${params.length})`);
+    }
+    // HOD and SUPREME_ADMIN see all
+
+    if (category) { params.push(category);          conditions.push(`f.category=$${params.length}`); }
+    if (status)   { params.push(status);            conditions.push(`f.status=$${params.length}`); }
+    if (priority) { params.push(priority);          conditions.push(`f.priority=$${params.length}`); }
+    if (search)   { params.push(`%${search}%`);     conditions.push(`(f.title ILIKE $${params.length} OR f.description ILIKE $${params.length})`); }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const result = await pool.query(`
+      SELECT f.*,
+        CASE WHEN f.is_anonymous AND $1 NOT IN ('CLASS_ADVISOR','HOD','SUPREME_ADMIN')
+          THEN 'Anonymous' ELSE u.full_name END AS submitter_name,
+        u.role AS submitter_role,
+        COALESCE(u.register_number, u.username) AS submitter_regno,
+        au.full_name AS assigned_to_name,
+        (SELECT COUNT(*) FROM feedback_messages fm WHERE fm.feedback_id = f.id) AS reply_count
+      FROM feedback f
+      JOIN users u ON f.user_id = u.id
+      LEFT JOIN users au ON f.assigned_to = au.id
+      ${where}
+      ORDER BY
+        CASE f.status WHEN 'Open' THEN 0 WHEN 'In Progress' THEN 1 ELSE 2 END,
+        CASE f.priority WHEN 'Critical' THEN 0 WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 ELSE 3 END,
+        f.created_at DESC
+    `, params);
+
+    res.json(result.rows);
+  }));
+
+  // POST /api/feedback
+  app.post('/api/feedback', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
+    const { category, title, description, priority, is_anonymous } = req.body;
+    if (!title || !description) return res.status(400).json({ error: 'Title and description are required' });
+
+    const result = await pool.query(`
+      INSERT INTO feedback (user_id, category, title, description, priority, is_anonymous)
+      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *
+    `, [req.user.id, category || 'General', title.trim(), description.trim(), priority || 'Medium', Boolean(is_anonymous)]);
+
+    if (req.user.class_id) {
+      const advisorRes = await pool.query(
+        `SELECT id FROM users WHERE class_id=$1 AND role='CLASS_ADVISOR' LIMIT 1`, [req.user.class_id]
+      );
+      if (advisorRes.rows[0]) {
+        await pool.query(
+          `INSERT INTO notifications (user_id, message, type) VALUES ($1,$2,'FEEDBACK_REPLY')`,
+          [advisorRes.rows[0].id, `New ${category || 'General'} feedback: "${title.trim()}"`]
+        );
+      }
+    }
+
+    res.status(201).json(result.rows[0]);
+  }));
+
+  // GET /api/feedback/:id
+  app.get('/api/feedback/:id', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const u = req.user;
+    const fbRes = await pool.query(`
+      SELECT f.*, CASE WHEN f.is_anonymous THEN 'Anonymous' ELSE us.full_name END AS submitter_name,
+        au.full_name AS assigned_to_name
+      FROM feedback f
+      JOIN users us ON f.user_id = us.id
+      LEFT JOIN users au ON f.assigned_to = au.id
+      WHERE f.id = $1
+    `, [req.params.id]);
+
+    if (!fbRes.rows[0]) return res.status(404).json({ error: 'Feedback not found' });
+    const fb = fbRes.rows[0];
+
+    const isOwner = String(fb.user_id) === String(u.id);
+    const isStaff = ['CLASS_ADVISOR','HOD','SUPREME_ADMIN'].includes(u.role);
+    if (!isOwner && !isStaff) return res.status(403).json({ error: 'Forbidden' });
+
+    const messagesRes = await pool.query(`
+      SELECT fm.*, u.full_name AS author_name, u.role AS author_role
+      FROM feedback_messages fm JOIN users u ON fm.user_id = u.id
+      WHERE fm.feedback_id = $1 ORDER BY fm.created_at ASC
+    `, [req.params.id]);
+
+    res.json({ feedback: fb, messages: messagesRes.rows });
+  }));
+
+  // PATCH /api/feedback/:id â€” staff: update status/priority/assign
+  app.patch('/api/feedback/:id', authenticate, authorize(['CLASS_ADVISOR','HOD','SUPREME_ADMIN']), asyncHandler(async (req: any, res: Response) => {
+    const { status, priority, assigned_to } = req.body;
+    const result = await pool.query(`
+      UPDATE feedback SET
+        status=COALESCE($1,status), priority=COALESCE($2,priority),
+        assigned_to=COALESCE($3,assigned_to), updated_at=NOW()
+      WHERE id=$4 RETURNING *
+    `, [status, priority, assigned_to || null, req.params.id]);
+
+    if (!result.rows[0]) return res.status(404).json({ error: 'Feedback not found' });
+
+    if (status === 'Resolved' || status === 'Rejected') {
+      await pool.query(
+        `INSERT INTO notifications (user_id, message, type) VALUES ($1,$2,'FEEDBACK_REPLY')`,
+        [result.rows[0].user_id, `Your feedback "${result.rows[0].title}" has been ${status}`]
+      );
+    }
+    res.json(result.rows[0]);
+  }));
+
+  // POST /api/feedback/:id/messages
+  app.post('/api/feedback/:id/messages', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const { message } = req.body;
+    if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
+
+    const fbRes = await pool.query('SELECT user_id FROM feedback WHERE id = $1', [req.params.id]);
+    if (!fbRes.rows[0]) return res.status(404).json({ error: 'Feedback not found' });
+
+    const isOwner = String(fbRes.rows[0].user_id) === String(req.user.id);
+    const isStaff = ['CLASS_ADVISOR','HOD','SUPREME_ADMIN'].includes(req.user.role);
+    if (!isOwner && !isStaff) return res.status(403).json({ error: 'Forbidden' });
+
+    const result = await pool.query(
+      `INSERT INTO feedback_messages (feedback_id, user_id, message) VALUES ($1,$2,$3) RETURNING *`,
+      [req.params.id, req.user.id, message.trim()]
+    );
+
+    if (isStaff) {
+      await pool.query(
+        `INSERT INTO notifications (user_id, message, type) VALUES ($1,$2,'FEEDBACK_REPLY')`,
+        [fbRes.rows[0].user_id, `${req.user.username} replied to your feedback`]
+      );
+    }
+
+    await pool.query(`
+      UPDATE feedback SET status=CASE WHEN status='PENDING' THEN 'UNDER_REVIEW' ELSE status END,
+        updated_at=NOW() WHERE id=$1
+    `, [req.params.id]);
+
+    res.status(201).json(result.rows[0]);
+  }));
+
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // MODULE 4 â€” SMART REMINDER SETTINGS
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+  // GET /api/reminders/settings
+  app.get('/api/reminders/settings', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const result = await pool.query(
+      'SELECT * FROM user_notification_settings WHERE user_id = $1', [req.user.id]
+    );
+    res.json(result.rows[0] || {
+      task_reminders: true, event_reminders: true,
+      notice_reminders: true, feedback_notifications: true,
+    });
+  }));
+
+  // PUT /api/reminders/settings
+  app.put('/api/reminders/settings', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const { task_reminders, event_reminders, notice_reminders, feedback_notifications } = req.body;
+    const result = await pool.query(`
+      INSERT INTO user_notification_settings
+        (user_id, task_reminders, event_reminders, notice_reminders, feedback_notifications, updated_at)
+      VALUES ($1,$2,$3,$4,$5,NOW())
+      ON CONFLICT (user_id) DO UPDATE SET
+        task_reminders=EXCLUDED.task_reminders, event_reminders=EXCLUDED.event_reminders,
+        notice_reminders=EXCLUDED.notice_reminders, feedback_notifications=EXCLUDED.feedback_notifications,
+        updated_at=NOW()
+      RETURNING *
+    `, [
+      req.user.id,
+      task_reminders         !== undefined ? Boolean(task_reminders)         : true,
+      event_reminders        !== undefined ? Boolean(event_reminders)        : true,
+      notice_reminders       !== undefined ? Boolean(notice_reminders)       : true,
+      feedback_notifications !== undefined ? Boolean(feedback_notifications) : true,
+    ]);
+    res.json(result.rows[0]);
+  }));
+
+  // â”€â”€ Background Reminder Scheduler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const checkAndSendReminders = async () => {
+    try {
+      // 1. Task deadline tomorrow: notify students who haven't submitted
+      const deadlineTasks = await pool.query(`
+        SELECT t.id AS task_id, t.title, t.deadline, tc.class_id
+        FROM tasks t JOIN task_classes tc ON t.id = tc.task_id
+        WHERE t.status = 'OPEN'
+          AND t.deadline IS NOT NULL
+          AND t.deadline BETWEEN NOW() AND NOW() + INTERVAL '25 hours'
+      `);
+
+      for (const task of deadlineTasks.rows) {
+        const students = await pool.query(`
+          SELECT u.id FROM users u
+          WHERE u.class_id = $1 AND u.role = 'STUDENT'
+            AND NOT EXISTS (
+              SELECT 1 FROM task_submissions ts
+              WHERE ts.task_id = $2 AND ts.user_id = u.id
+                AND ts.status IN ('SUBMITTED','VERIFIED')
+            )
+        `, [task.class_id, task.task_id]);
+
+        for (const student of students.rows) {
+          const settings = await pool.query(
+            'SELECT task_reminders FROM user_notification_settings WHERE user_id = $1', [student.id]
+          );
+          if (settings.rows[0] && !settings.rows[0].task_reminders) continue;
+
+          // Deduplicate â€” skip if already sent within 20 hours
+          const existing = await pool.query(`
+            SELECT id FROM scheduled_notifications
+            WHERE user_id = $1 AND type = 'TASK_DEADLINE_TOMORROW'
+              AND title LIKE $2 AND created_at > NOW() - INTERVAL '20 hours'
+          `, [student.id, `%${task.task_id}%`]);
+          if (existing.rows.length > 0) continue;
+
+          await pool.query(
+            `INSERT INTO notifications (user_id, message, type) VALUES ($1, $2, 'TASK_DEADLINE_TOMORROW')`,
+            [student.id, `Deadline tomorrow: "${task.title}" â€” submit before it closes`]
+          );
+          await pool.query(`
+            INSERT INTO scheduled_notifications
+              (user_id, type, title, message, scheduled_time, status, sent_at)
+            VALUES ($1, 'TASK_DEADLINE_TOMORROW', $2, $3, NOW(), 'SENT', NOW())
+          `, [student.id, `Deadline Tomorrow: ${task.task_id}`, `Submit "${task.title}" before it closes`]);
+        }
+      }
+
+      // 2. Profile incomplete reminder (weekly)
+      const incomplete = await pool.query(`
+        SELECT u.id FROM users u
+        WHERE u.role = 'STUDENT'
+          AND NOT EXISTS (SELECT 1 FROM student_profiles sp WHERE sp.user_id = u.id)
+          AND NOT EXISTS (
+            SELECT 1 FROM scheduled_notifications sn
+            WHERE sn.user_id = u.id AND sn.type = 'PROFILE_INCOMPLETE'
+              AND sn.created_at > NOW() - INTERVAL '7 days'
+          )
+        LIMIT 50
+      `);
+
+      for (const student of incomplete.rows) {
+        await pool.query(
+          `INSERT INTO notifications (user_id, message, type) VALUES ($1, 'Your student profile is incomplete. Fill it to unlock all features!', 'TASK_CREATED')`,
+          [student.id]
+        );
+        await pool.query(`
+          INSERT INTO scheduled_notifications
+            (user_id, type, title, message, scheduled_time, status, sent_at)
+          VALUES ($1, 'PROFILE_INCOMPLETE', 'Complete Your Profile', 'Profile incomplete', NOW(), 'SENT', NOW())
+        `, [student.id]);
+      }
+
+      console.log(`[Reminder Scheduler] Completed at ${new Date().toISOString()}`);
+    } catch (err) {
+      console.error('[Reminder Scheduler] Error:', err);
+    }
+  };
+
+  // Run once on startup, then every hour
+  checkAndSendReminders();
+  setInterval(checkAndSendReminders, 60 * 60 * 1000);
   // ── API 404 Fallback ──────────────────────────────────────────────────────
   app.use('/api/*', (req, res) => {
     res.status(404).json({ error: `API route ${req.originalUrl} not found` });
