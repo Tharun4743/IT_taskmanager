@@ -73,11 +73,22 @@ const memoryUpload = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 
+let isDbInitialized = false;
+async function ensureDbInitialized() {
+  if (isDbInitialized) return;
+  try {
+    await initDB();
+    await syncAndGenerateStudentDirectory().catch(err => console.error('[StudentDirectory] Startup sync warning:', err));
+    isDbInitialized = true;
+  } catch (err) {
+    console.error('[DBInit] Initialization error:', err);
+  }
+}
+
 // ─── Express App ──────────────────────────────────────────────────────────────
 async function startServer() {
-  // Initialize PostgreSQL database schemas and tables
-  await initDB();
-  await syncAndGenerateStudentDirectory().catch(err => console.error('[StudentDirectory] Startup sync warning:', err));
+  // Trigger PostgreSQL schema initialization asynchronously in background
+  ensureDbInitialized().catch(err => console.error('[DBInit] Background init warning:', err));
 
   // Initialize Sentry Production Error Tracking
   initSentry();
