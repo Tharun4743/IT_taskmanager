@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { pool } from './db';
+import { pool } from './db.js';
 
 export interface ConstantStudent {
   id: string;
