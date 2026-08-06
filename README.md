@@ -28,6 +28,30 @@ The **VSBEC Task Manager** is a full-stack academic workflow, proof verification
 
 ---
 
+## ⚔️ Master Feature Comparison (Original Repo vs Updated Repo)
+
+A comprehensive breakdown comparing the original base repository (**`PratapSakthivel/VSBEC-TASK-MANAGER`**) with this updated repository (**`Tharun4743/IT_taskmanager`**):
+
+| Category | Old Feature / Functionality (`PratapSakthivel`) | New Feature / Functionality (`Tharun4743`) |
+| :--- | :--- | :--- |
+| **📢 Digital Notice Board** | ❌ **Not Available** (No announcement feature) | ✅ **Full Notice Board**: Scopes (`GLOBAL`, `DEPARTMENT`, `CLASS`), Priorities (`Urgent`, `High`, `Normal`, `Low`), Pinning, File attachments, Multi-class selection, and One-click Link Sharing. |
+| **👥 Team Tasks & Group Formation** | ❌ **Not Available** (All tasks were strictly individual) | ✅ **Team Tasks System**: Min/Max team size controls, Interactive top invitation banners, Leader/Member roles, Pre-submission team editing, and Disband/Leave API endpoints. |
+| **🛑 Student Opt-Out / Not Participating** | ❌ **Not Available** (Students could only submit proof or ignore) | ✅ **"Not Participating" Module**: Radio choice cards (`"Yes I'll Submit"` vs `"Skip / Not Interested"`), mandatory reason collection, "Edit Reason" option, and stat cards. |
+| **💬 Peer Discussions & Mentions** | ❌ **Not Available** (No communication section) | ✅ **Task Q&A Thread**: Threaded discussion box under each task, `@mentions` to tag faculty/peers, and real-time notification alerts. |
+| **📬 Feedback & Complaints System** | ❌ **Not Available** | ✅ **Feedback Portal**: Category selection (`Suggestion`, `Bug`, `Complaint`), Anonymous mode, Priority tagging, and Staff status resolution (`Open`, `In Progress`, `Resolved`, `Rejected`). |
+| **🔄 Task Rejection & Resubmission** | ❌ **Basic** (Only simple verify or delete) | ✅ **Rejection System**: Staff can reject submissions with detailed feedback notes. Students get Red Alert banners and a 1-click **Re-upload Proof** button. |
+| **⏰ Task Expiry & Reopening** | ❌ **Fixed Expiry** (Expired tasks locked permanently) | ✅ **HOD Task Control**: HODs can reopen expired tasks, extend deadline dates, and automatically send notification alerts to assigned students. |
+| **🔐 Student Auth & Login** | ⚠️ **Basic Login** | ✅ **Strict Login Policy**: Official College Email ID login support, Register Number default password enforcement, whitespace trimming, and case-insensitive matching. |
+| **📊 Excel Reports & Exporting** | ⚠️ **Basic Single CSV/Excel Export** | ✅ **3-Sheet Professional Exporter**: Generates 3-sheet Excel workbooks (*Task Overview*, *Submitted/Interested*, *Opt-Out Reasons*) + Multi-Class Export Filters. |
+| **☁️ Automated GitHub Backup** | ❌ **Not Available** | ✅ **Auto Cloud Backup Service** (`autoExcelGitHubReportService.ts`): Periodically compiles database snapshots into Excel reports and pushes them to GitHub. |
+| **🖼️ Media Storage & Cleanup** | ⚠️ **Manual Storage** (Screenshots accumulated forever) | ✅ **Auto-Cleanup Worker** (`imageCleanupService.ts`): Automatically purges Cloudinary screenshot uploads older than 7 days to keep media storage light. |
+| **⚡ Database Performance** | ⚠️ **Basic Pool** (Un-indexed queries, N+1 query issue) | ✅ **Optimized**: Pre-warmed PostgreSQL pool, composite indexes on high-frequency tables (`notices`, `submissions`, `tasks`), and statement timeouts. |
+| **🎨 UI Modals & Mobile Layout** | ⚠️ **Sizing Issues & Horizontal Scroll** | ✅ **Mobile Polish**: Fixed modal scaling (`max-h-[90vh] overflow-y-auto`), eliminated horizontal scrollbar (`overflow-x-hidden`), added PWA manifest, and styled status badges (`VERIFIED`, `PENDING VERIFICATION`, `INCOMPLETE`). |
+| **🚨 Error Monitoring** | ❌ **Not Available** | ✅ **Sentry Integration** (`sentryService.ts`): Captures unhandled backend errors and reports them to Sentry. |
+| **📂 Database Tables** | ⚠️ **Basic Tables Only** | ✅ **Added 8 New Tables**: `notices`, `discussions`, `feedback`, `feedback_messages`, `task_teams`, `team_members`, `notifications`, `task_classes`. |
+
+---
+
 ## 👥 2. Complete Role Workflows & Authorization
 
 ### 🎓 2.1 Role 1: Student
