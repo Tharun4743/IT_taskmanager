@@ -4607,7 +4607,9 @@ async function startServer() {
     });
   };
 
-  startApp(PORT);
+  if (!process.env.VERCEL) {
+    startApp(PORT);
+  }
 
   // ── Graceful Shutdown Handler for Render redeployments ────────────────────
   const gracefulShutdown = (signal: string) => {
@@ -4623,6 +4625,12 @@ async function startServer() {
 
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+  return app;
 }
 
-startServer();
+export const appPromise = startServer();
+export default async function handler(req: any, res: any) {
+  const app = await appPromise;
+  return app(req, res);
+}
