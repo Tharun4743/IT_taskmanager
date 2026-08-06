@@ -1,9 +1,9 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+import fs from 'fs';
 import express, { Request, Response, NextFunction } from 'express';
 import compression from 'compression';
-import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
@@ -4564,6 +4564,7 @@ async function startServer() {
 
   // ── Vite & Static Serving ─────────────────────────────────────────────────
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -4575,7 +4576,14 @@ async function startServer() {
       immutable: true,
       index: false,
     }));
-    app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist/index.html')));
+    app.get('*', (req, res) => {
+      const indexPath = path.join(__dirname, 'dist/index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(200).send('API Server active');
+      }
+    });
   }
 
   // ── Global Error Handler ───────────────────────────────────────────────────
