@@ -4114,12 +4114,12 @@ async function startServer() {
     } else if (u.role === 'HOD') {
       params.push(u.department_id);
       conditions.push(
-        `(n.scope='ALL' OR (n.scope='DEPARTMENT' AND n.department_id=$${params.length}) OR n.scope='YEAR' OR n.scope='CLASS')`
+        `(n.scope='ALL' OR (n.scope='DEPARTMENT' AND n.department_id=$${params.length}) OR n.scope='YEAR' OR (n.scope='CLASS' AND (n.department_id=$${params.length} OR c.department_id=$${params.length})))`
       );
     } else if (u.role === 'CLASS_ADVISOR') {
       params.push(u.department_id, u.class_id);
       conditions.push(
-        `(n.scope='ALL' OR (n.scope='DEPARTMENT' AND n.department_id=$${params.length - 1}) OR n.scope='YEAR' OR (n.scope='CLASS' AND n.class_id=$${params.length}))`
+        `(n.scope='ALL' OR (n.scope='DEPARTMENT' AND n.department_id=$${params.length - 1}) OR n.scope='YEAR' OR (n.scope='CLASS' AND (n.class_id=$${params.length} OR n.department_id=$${params.length - 1})))`
       );
     } else {
       params.push(u.department_id, u.class_id);
@@ -4167,17 +4167,42 @@ async function startServer() {
   // POST /api/notices
   app.post('/api/notices', authenticate, authorize(['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN']), asyncHandler(async (req: any, res: Response) => {
     const u = req.user;
-    const { title, description, scope, department_id, class_id, year, priority,
+    let { title, description, scope, department_id, class_id, class_ids, year, priority,
       attachment_url, attachment_cloudinary_public_id, publish_at, expire_at } = req.body;
 
     if (!title || !description) return res.status(400).json({ error: 'Title and description are required' });
-    if (u.role === 'CLASS_ADVISOR' && scope !== 'CLASS')
-      return res.status(403).json({ error: 'Class Advisors can only create CLASS-scoped notices' });
-    if (u.role === 'HOD' && scope === 'ALL')
-      return res.status(403).json({ error: 'HODs cannot create ALL-scope notices' });
+
+    // Enforce role-based scope fallbacks
+    if (u.role === 'CLASS_ADVISOR') {
+      scope = 'CLASS';
+    } else if (u.role === 'HOD') {
+      if (scope === 'ALL') scope = 'DEPARTMENT';
+    }
 
     const deptId = u.role === 'CLASS_ADVISOR' ? u.department_id : (department_id || u.department_id || null);
-    const clsId = u.role === 'CLASS_ADVISOR' ? u.class_id : (class_id || null);
+
+    // Multi-class notice creation handling
+    if (scope === 'CLASS' && Array.isArray(class_ids) && class_ids.length > 0) {
+      const insertedNotices: any[] = [];
+      for (const cid of class_ids) {
+        if (!cid) continue;
+        const result = await pool.query(`
+          INSERT INTO notices
+            (title, description, scope, department_id, class_id, year, priority,
+             attachment_url, attachment_cloudinary_public_id, created_by, publish_at, expire_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *
+        `, [
+          title.trim(), description.trim(), 'CLASS',
+          deptId, cid, year || null, priority || 'NORMAL',
+          attachment_url || null, attachment_cloudinary_public_id || null,
+          u.id, publish_at || new Date().toISOString(), expire_at || null,
+        ]);
+        insertedNotices.push(result.rows[0]);
+      }
+      return res.status(201).json(insertedNotices[0] || { success: true });
+    }
+
+    const clsId = u.role === 'CLASS_ADVISOR' ? (class_id || u.class_id || null) : (class_id || null);
 
     const result = await pool.query(`
       INSERT INTO notices
@@ -4185,7 +4210,7 @@ async function startServer() {
          attachment_url, attachment_cloudinary_public_id, created_by, publish_at, expire_at)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *
     `, [
-      title.trim(), description.trim(), scope || 'ALL',
+      title.trim(), description.trim(), scope || 'DEPARTMENT',
       deptId, clsId, year || null, priority || 'NORMAL',
       attachment_url || null, attachment_cloudinary_public_id || null,
       u.id, publish_at || new Date().toISOString(), expire_at || null,

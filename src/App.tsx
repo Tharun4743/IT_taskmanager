@@ -2939,9 +2939,25 @@ export default function App() {
   const [noticePriorityFilter, setNoticePriorityFilter] = useState('');
   const [noticeScopeFilter, setNoticeScopeFilter] = useState('');
   const [showCreateNoticeModal, setShowCreateNoticeModal] = useState(false);
-  const [noticeForm, setNoticeForm] = useState({ title: '', description: '', scope: 'ALL', department_id: '', class_id: '', year: '', priority: 'NORMAL' });
+  const [noticeForm, setNoticeForm] = useState({ title: '', description: '', scope: 'ALL', department_id: '', class_id: '', class_ids: [] as string[], year: '', priority: 'NORMAL' });
   const [noticeFile, setNoticeFile] = useState<File | null>(null);
   const [isPublishingNotice, setIsPublishingNotice] = useState(false);
+
+  const openCreateNoticeModal = () => {
+    const defaultScope = isAdmin ? 'ALL' : (isHOD ? 'DEPARTMENT' : 'CLASS');
+    setNoticeForm({
+      title: '',
+      description: '',
+      scope: defaultScope,
+      department_id: user?.department_id || '',
+      class_id: '',
+      class_ids: [],
+      year: '',
+      priority: 'NORMAL'
+    });
+    setNoticeFile(null);
+    setShowCreateNoticeModal(true);
+  };
 
   // Feedback State
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
@@ -3058,6 +3074,15 @@ export default function App() {
       addToast('Title and Description are required', 'error');
       return;
     }
+    const selectedClasses = noticeForm.class_ids && noticeForm.class_ids.length > 0
+      ? noticeForm.class_ids
+      : (noticeForm.class_id ? [noticeForm.class_id] : []);
+
+    if (noticeForm.scope === 'CLASS' && selectedClasses.length === 0) {
+      addToast('Please select at least one target class', 'error');
+      return;
+    }
+
     setIsPublishingNotice(true);
     try {
       let attachment_url = null;
@@ -3076,12 +3101,18 @@ export default function App() {
           attachment_cloudinary_public_id = uploadData.attachment_cloudinary_public_id;
         }
       }
+
+      const effectiveScope = isAdvisor ? 'CLASS' : (isHOD && noticeForm.scope === 'ALL' ? 'DEPARTMENT' : noticeForm.scope);
+
       const res = await fetch(`${API_URL}/api/notices`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           ...noticeForm,
+          scope: effectiveScope,
           department_id: noticeForm.department_id || (user?.department_id || null),
+          class_ids: selectedClasses,
+          class_id: selectedClasses[0] || null,
           attachment_url,
           attachment_cloudinary_public_id
         })
@@ -3089,7 +3120,7 @@ export default function App() {
       if (res.ok) {
         addToast('Notice published successfully!', 'success');
         setShowCreateNoticeModal(false);
-        setNoticeForm({ title: '', description: '', scope: 'ALL', department_id: '', class_id: '', year: '', priority: 'NORMAL' });
+        setNoticeForm({ title: '', description: '', scope: 'ALL', department_id: '', class_id: '', class_ids: [], year: '', priority: 'NORMAL' });
         setNoticeFile(null);
         fetchNotices();
       } else {
@@ -8387,7 +8418,7 @@ export default function App() {
                         </Button>
                         {(isAdvisor || isHOD || isAdmin) && (
                           <Button
-                            onClick={() => setShowCreateNoticeModal(true)}
+                            onClick={openCreateNoticeModal}
                             className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 rounded-xl shadow-lg shadow-indigo-600/20"
                           >
                             <Plus size={18} /> Publish Notice
@@ -8474,8 +8505,8 @@ export default function App() {
                                     )}>
                                       {notice.priority}
                                     </span>
-                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-zinc-100 text-zinc-700 uppercase">
-                                      {notice.scope} SCOPE
+                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200 uppercase">
+                                      {notice.scope === 'ALL' ? '🌐 GLOBAL' : notice.scope === 'DEPARTMENT' ? `🏢 DEPT: ${notice.department_name || 'DEPARTMENT'}` : notice.scope === 'CLASS' ? `🎓 CLASS: ${notice.class_name || 'CLASS'}` : `${notice.scope} SCOPE`}
                                     </span>
                                   </div>
                                   <h3 className="text-lg font-black text-zinc-900 leading-snug">{notice.title}</h3>
@@ -9605,20 +9636,80 @@ export default function App() {
                   </div>
                 </div>
 
-                {noticeForm.scope === 'CLASS' && (
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">Target Class</label>
-                    <Select
-                      value={noticeForm.class_id}
-                      onChange={e => setNoticeForm(prev => ({ ...prev, class_id: e.target.value }))}
-                    >
-                      <option value="">-- Select Class --</option>
-                      {classes.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </Select>
-                  </div>
-                )}
+                {noticeForm.scope === 'CLASS' && (() => {
+                  const deptClasses = isHOD && user?.department_id
+                    ? classes.filter(c => String(c.department_id) === String(user.department_id))
+                    : (isAdvisor && user?.class_id ? classes.filter(c => String(c.id) === String(user.class_id)) : classes);
+                  const availClasses = deptClasses.length > 0 ? deptClasses : classes;
+                  const selectedIds = noticeForm.class_ids && noticeForm.class_ids.length > 0
+                    ? noticeForm.class_ids
+                    : (noticeForm.class_id ? [noticeForm.class_id] : []);
+                  const allSelected = availClasses.length > 0 && availClasses.every(c => selectedIds.includes(String(c.id)));
+
+                  return (
+                    <div className="space-y-2 border border-zinc-200 p-3.5 rounded-xl bg-zinc-50/50">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                          <GraduationCap size={16} className="text-indigo-600" /> Target Classes <span className="text-red-500">*</span>
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-semibold text-zinc-500 bg-zinc-200 px-2 py-0.5 rounded-full">
+                            {selectedIds.length} selected
+                          </span>
+                          {availClasses.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (allSelected) {
+                                  setNoticeForm(prev => ({ ...prev, class_ids: [], class_id: '' }));
+                                } else {
+                                  const allCids = availClasses.map(c => String(c.id));
+                                  setNoticeForm(prev => ({ ...prev, class_ids: allCids, class_id: allCids[0] || '' }));
+                                }
+                              }}
+                              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline"
+                            >
+                              {allSelected ? 'Deselect All' : 'Select All'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 max-h-44 overflow-y-auto p-1">
+                        {availClasses.map(c => {
+                          const isSelected = selectedIds.includes(String(c.id));
+                          return (
+                            <label
+                              key={c.id}
+                              className={cn(
+                                "flex items-center gap-2 p-2 rounded-lg border text-xs font-medium cursor-pointer transition-all",
+                                isSelected
+                                  ? "bg-indigo-50/80 border-indigo-300 text-indigo-900 shadow-sm"
+                                  : "bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-100"
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={e => {
+                                  if (e.target.checked) {
+                                    const next = [...selectedIds, String(c.id)];
+                                    setNoticeForm(prev => ({ ...prev, class_ids: next, class_id: next[0] || '' }));
+                                  } else {
+                                    const next = selectedIds.filter(id => id !== String(c.id));
+                                    setNoticeForm(prev => ({ ...prev, class_ids: next, class_id: next[0] || '' }));
+                                  }
+                                }}
+                                className="rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                              />
+                              <span className="truncate">{c.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div>
                   <label className="text-xs font-bold text-zinc-700 block mb-1">Attachment File (Optional PDF / Image)</label>
