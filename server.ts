@@ -4,6 +4,7 @@ dotenv.config();
 import fs from 'fs';
 import express, { Request, Response, NextFunction } from 'express';
 import compression from 'compression';
+import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
@@ -73,22 +74,11 @@ const memoryUpload = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 
-let isDbInitialized = false;
-async function ensureDbInitialized() {
-  if (isDbInitialized) return;
-  try {
-    await initDB();
-    await syncAndGenerateStudentDirectory().catch(err => console.error('[StudentDirectory] Startup sync warning:', err));
-    isDbInitialized = true;
-  } catch (err) {
-    console.error('[DBInit] Initialization error:', err);
-  }
-}
-
 // ─── Express App ──────────────────────────────────────────────────────────────
 async function startServer() {
-  // Trigger PostgreSQL schema initialization asynchronously in background
-  ensureDbInitialized().catch(err => console.error('[DBInit] Background init warning:', err));
+  // Initialize PostgreSQL database schemas and tables
+  await initDB();
+  await syncAndGenerateStudentDirectory().catch(err => console.error('[StudentDirectory] Startup sync warning:', err));
 
   // Initialize Sentry Production Error Tracking
   initSentry();
@@ -4575,7 +4565,6 @@ async function startServer() {
 
   // ── Vite & Static Serving ─────────────────────────────────────────────────
   if (process.env.NODE_ENV !== 'production') {
-    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -4587,14 +4576,7 @@ async function startServer() {
       immutable: true,
       index: false,
     }));
-    app.get('*', (req, res) => {
-      const indexPath = path.join(__dirname, 'dist/index.html');
-      if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-      } else {
-        res.status(200).send('API Server active');
-      }
-    });
+    app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist/index.html')));
   }
 
   // ── Global Error Handler ───────────────────────────────────────────────────
@@ -4626,9 +4608,7 @@ async function startServer() {
     });
   };
 
-  if (!process.env.VERCEL) {
-    startApp(PORT);
-  }
+  startApp(PORT);
 
   // ── Graceful Shutdown Handler for Render redeployments ────────────────────
   const gracefulShutdown = (signal: string) => {

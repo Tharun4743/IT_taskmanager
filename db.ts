@@ -14,9 +14,9 @@ if (!databaseUrl) {
 
 export const pool = new Pool({
   connectionString: databaseUrl,
-  max: process.env.VERCEL ? 2 : 10,
-  min: 0,
-  idleTimeoutMillis: 1000,
+  max: 25,
+  min: 5,
+  idleTimeoutMillis: 60000,
   connectionTimeoutMillis: 5000,
   statement_timeout: 10000,
   keepAlive: true,

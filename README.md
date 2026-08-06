@@ -291,7 +291,7 @@ npm run lint
 npm run dev
 ```
 
-### 3. Production Build
+### 3. Production Local Build
 ```bash
 # Build Vite frontend bundle
 npm run build
@@ -299,6 +299,22 @@ npm run build
 # Launch Express server
 npm start
 ```
+
+---
+
+## 🚀 9. Production Deployment (Render)
+
+This application is designed for persistent Node.js server deployment on **Render** (or AWS/DigitalOcean).
+
+1. Push your code to your GitHub repository.
+2. Go to **Render Dashboard** -> **New Web Service**.
+3. Connect your repository. Render automatically reads `render.yaml`.
+4. Configure required Environment Variables in Render:
+   * `DATABASE_URL` (PostgreSQL connection string)
+   * `JWT_SECRET`
+   * `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
+5. **Build Command:** `npm install && npm run build`
+6. **Start Command:** `npm start`
 
 ---
 
