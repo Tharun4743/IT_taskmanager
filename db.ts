@@ -14,9 +14,9 @@ if (!databaseUrl) {
 
 export const pool = new Pool({
   connectionString: databaseUrl,
-  max: 25,
-  min: 5,
-  idleTimeoutMillis: 60000,
+  max: process.env.VERCEL ? 2 : 10,
+  min: 0,
+  idleTimeoutMillis: 1000,
   connectionTimeoutMillis: 5000,
   statement_timeout: 10000,
   keepAlive: true,
@@ -521,6 +521,49 @@ export async function initDB() {
         VALUES ('admin', $1, 'SUPREME_ADMIN', 'Supreme Administrator');
       `, [hashedPassword]);
       console.log('Supreme Admin seeded: admin / admin123');
+    }
+
+    // Seed Default Department & Classes if none exist
+    const deptRes = await client.query(`SELECT id FROM departments LIMIT 1;`);
+    let defaultDeptId = deptRes.rows[0]?.id;
+    if (!defaultDeptId) {
+      const newDeptRes = await client.query(`
+        INSERT INTO departments (name) VALUES ('Information Technology') RETURNING id;
+      `);
+      defaultDeptId = newDeptRes.rows[0].id;
+      console.log('Default Department seeded: Information Technology');
+    }
+
+    const classRes = await client.query(`SELECT id FROM classes LIMIT 1;`);
+    if (classRes.rowCount === 0 && defaultDeptId) {
+      const c1 = await client.query(`
+        INSERT INTO classes (name, department_id, year, batch) VALUES ('III IT-A', $1, 3, '2024-2028') RETURNING id;
+      `, [defaultDeptId]);
+      await client.query(`
+        INSERT INTO classes (name, department_id, year, batch) VALUES ('III IT-B', $1, 3, '2024-2028');
+      `, [defaultDeptId]);
+      await client.query(`
+        INSERT INTO classes (name, department_id, year, batch) VALUES ('II IT-A', $1, 2, '2025-2029');
+      `, [defaultDeptId]);
+      const defaultClassId = c1.rows[0].id;
+
+      // Assign unassigned students & coordinators to default class and department
+      await client.query(`
+        UPDATE users 
+        SET department_id = $1, class_id = $2 
+        WHERE class_id IS NULL OR department_id IS NULL;
+      `, [defaultDeptId, defaultClassId]);
+      console.log('Default Classes seeded & unassigned users linked.');
+    } else if (defaultDeptId) {
+      // Ensure existing users without class_id are linked to the first available class
+      const firstClassRes = await client.query(`SELECT id FROM classes ORDER BY name ASC LIMIT 1;`);
+      if (firstClassRes.rows.length > 0) {
+        await client.query(`
+          UPDATE users 
+          SET department_id = COALESCE(department_id, $1), class_id = COALESCE(class_id, $2) 
+          WHERE class_id IS NULL OR department_id IS NULL;
+        `, [defaultDeptId, firstClassRes.rows[0].id]);
+      }
     }
 
     // Update batch definitions for Year 2 (2025-2029) and Year 3 (2024-2028)
