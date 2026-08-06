@@ -4097,6 +4097,22 @@ async function startServer() {
     res.json(result.rows);
   }));
 
+  // GET /api/notices/:id — fetch single notice detail
+  app.get('/api/notices/:id', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const result = await pool.query(`
+      SELECT n.*, u.full_name AS creator_name, u.role AS creator_role,
+        d.name AS department_name, c.name AS class_name
+      FROM notices n
+      JOIN users u ON n.created_by = u.id
+      LEFT JOIN departments d ON n.department_id = d.id
+      LEFT JOIN classes c ON n.class_id = c.id
+      WHERE n.id = $1
+    `, [req.params.id]);
+
+    if (!result.rows[0]) return res.status(404).json({ error: 'Notice not found' });
+    res.json(result.rows[0]);
+  }));
+
   // POST /api/notices
   app.post('/api/notices', authenticate, authorize(['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN']), asyncHandler(async (req: any, res: Response) => {
     const u = req.user;

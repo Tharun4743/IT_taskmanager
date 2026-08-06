@@ -3016,6 +3016,42 @@ export default function App() {
     }
   };
 
+  const handleShareNotice = (noticeId: string, title?: string) => {
+    const shareUrl = `${window.location.origin}${window.location.pathname}?tab=notice-board&noticeId=${noticeId}`;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        addToast(title ? `Share link copied for "${title.length > 25 ? title.substring(0, 25) + '...' : title}"!` : 'Notice share link copied to clipboard!', 'success');
+      }).catch(() => {
+        copyNoticeFallback(shareUrl);
+      });
+    } else {
+      copyNoticeFallback(shareUrl);
+    }
+  };
+
+  const handleShareNoticeBoard = () => {
+    const shareUrl = `${window.location.origin}${window.location.pathname}?tab=notice-board`;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        addToast('Notice Board share link copied to clipboard!', 'success');
+      }).catch(() => {
+        copyNoticeFallback(shareUrl);
+      });
+    } else {
+      copyNoticeFallback(shareUrl);
+    }
+  };
+
+  const copyNoticeFallback = (text: string) => {
+    const input = document.createElement('input');
+    input.value = text;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    document.body.removeChild(input);
+    addToast('Link copied to clipboard!', 'success');
+  };
+
   const handleCreateNotice = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!noticeForm.title.trim() || !noticeForm.description.trim()) {
@@ -3166,6 +3202,7 @@ export default function App() {
   const [selectedBatchSubmissions, setSelectedBatchSubmissions] = useState<string[]>([]);
   const [sharedTaskModal, setSharedTaskModal] = useState<Task | null>(null);
   const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
+  const [highlightedNoticeId, setHighlightedNoticeId] = useState<string | null>(null);
 
   // Role Helpers
   const isAdmin = user?.role === 'SUPREME_ADMIN';
@@ -3186,6 +3223,42 @@ export default function App() {
       }
     }
   }, [token]);
+
+  // Deep Link Handling for Shared Notice Board & Notices (?tab=notice-board or ?noticeId=... or ?notice=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    const noticeIdParam = params.get('noticeId') || params.get('notice');
+    if (tabParam === 'notice-board' || tabParam === 'notices' || noticeIdParam) {
+      if (noticeIdParam) {
+        sessionStorage.setItem('pendingNoticeId', noticeIdParam);
+        setHighlightedNoticeId(noticeIdParam);
+      } else {
+        sessionStorage.setItem('pendingNoticeBoard', 'true');
+      }
+      if (token) {
+        setView('notice-board');
+        fetchNotices();
+      }
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (highlightedNoticeId && notices.length > 0 && view === 'notice-board') {
+      setTimeout(() => {
+        const el = document.getElementById(`notice-${highlightedNoticeId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 400);
+    }
+  }, [highlightedNoticeId, notices, view]);
+
+  useEffect(() => {
+    if (token && view === 'notice-board' && notices.length === 0) {
+      fetchNotices();
+    }
+  }, [view, token]);
 
   useEffect(() => {
     if (highlightedTaskId && tasks.length > 0) {
@@ -3607,11 +3680,22 @@ export default function App() {
         setUser(data.user);
 
         const pendingTaskId = sessionStorage.getItem('pendingTaskId');
+        const pendingNoticeId = sessionStorage.getItem('pendingNoticeId');
+        const pendingNoticeBoard = sessionStorage.getItem('pendingNoticeBoard');
         if (pendingTaskId) {
           setView('tasks');
           setHighlightedTaskId(pendingTaskId);
           sessionStorage.removeItem('pendingTaskId');
           addToast('Redirected to shared task page!', 'info');
+        } else if (pendingNoticeId || pendingNoticeBoard) {
+          setView('notice-board');
+          fetchNotices();
+          if (pendingNoticeId) {
+            setHighlightedNoticeId(pendingNoticeId);
+            sessionStorage.removeItem('pendingNoticeId');
+          }
+          sessionStorage.removeItem('pendingNoticeBoard');
+          addToast('Redirected to Digital Notice Board!', 'info');
         } else {
           setView('dashboard');
         }
@@ -8292,14 +8376,24 @@ export default function App() {
                         <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Official Announcements & Communications</p>
                       </div>
 
-                      {(isAdvisor || isHOD || isAdmin) && (
+                      <div className="flex items-center gap-2">
                         <Button
-                          onClick={() => setShowCreateNoticeModal(true)}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 rounded-xl shadow-lg shadow-indigo-600/20"
+                          onClick={handleShareNoticeBoard}
+                          variant="outline"
+                          className="border-zinc-300 hover:bg-zinc-100 text-zinc-700 font-bold px-4 rounded-xl flex items-center gap-1.5"
+                          title="Copy Notice Board link"
                         >
-                          <Plus size={18} /> Publish Notice
+                          <Share2 size={16} /> Share Board
                         </Button>
-                      )}
+                        {(isAdvisor || isHOD || isAdmin) && (
+                          <Button
+                            onClick={() => setShowCreateNoticeModal(true)}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 rounded-xl shadow-lg shadow-indigo-600/20"
+                          >
+                            <Plus size={18} /> Publish Notice
+                          </Button>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3 mb-6">
@@ -8343,41 +8437,68 @@ export default function App() {
                           <p className="text-xs text-zinc-400 mt-1">Check back later for announcements</p>
                         </Card>
                       ) : (
-                        notices.map(notice => (
-                          <Card key={notice.id} className={cn("p-6 relative transition-all border", notice.is_pinned ? "border-amber-300 bg-amber-50/20 shadow-md" : "border-zinc-200 hover:border-zinc-300")}>
-                            <div className="flex items-start justify-between gap-4 mb-3">
-                              <div className="space-y-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  {notice.is_pinned && (
-                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
-                                      <Pin size={10} /> PINNED
+                        notices.map(notice => {
+                          const isHighlighted = String(highlightedNoticeId) === String(notice.id);
+                          return (
+                            <Card
+                              id={`notice-${notice.id}`}
+                              key={notice.id}
+                              className={cn(
+                                "p-6 relative transition-all border",
+                                isHighlighted
+                                  ? "border-indigo-500 ring-2 ring-indigo-500/50 bg-indigo-50/20 shadow-lg"
+                                  : notice.is_pinned
+                                  ? "border-amber-300 bg-amber-50/20 shadow-md"
+                                  : "border-zinc-200 hover:border-zinc-300"
+                              )}
+                            >
+                              <div className="flex items-start justify-between gap-4 mb-3">
+                                <div className="space-y-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {isHighlighted && (
+                                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-600 text-white border border-indigo-700 flex items-center gap-1">
+                                        <Share2 size={10} /> SHARED LINK TARGET
+                                      </span>
+                                    )}
+                                    {notice.is_pinned && (
+                                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
+                                        <Pin size={10} /> PINNED
+                                      </span>
+                                    )}
+                                    <span className={cn(
+                                      "px-2.5 py-0.5 rounded-full text-[10px] font-black border",
+                                      notice.priority === 'URGENT' ? "bg-red-50 text-red-600 border-red-200" :
+                                      notice.priority === 'HIGH' ? "bg-orange-50 text-orange-600 border-orange-200" :
+                                      notice.priority === 'LOW' ? "bg-zinc-100 text-zinc-600 border-zinc-200" :
+                                      "bg-blue-50 text-blue-600 border-blue-200"
+                                    )}>
+                                      {notice.priority}
                                     </span>
-                                  )}
-                                  <span className={cn(
-                                    "px-2.5 py-0.5 rounded-full text-[10px] font-black border",
-                                    notice.priority === 'URGENT' ? "bg-red-50 text-red-600 border-red-200" :
-                                    notice.priority === 'HIGH' ? "bg-orange-50 text-orange-600 border-orange-200" :
-                                    notice.priority === 'LOW' ? "bg-zinc-100 text-zinc-600 border-zinc-200" :
-                                    "bg-blue-50 text-blue-600 border-blue-200"
-                                  )}>
-                                    {notice.priority}
-                                  </span>
-                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-zinc-100 text-zinc-700 uppercase">
-                                    {notice.scope} SCOPE
-                                  </span>
+                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-zinc-100 text-zinc-700 uppercase">
+                                      {notice.scope} SCOPE
+                                    </span>
+                                  </div>
+                                  <h3 className="text-lg font-black text-zinc-900 leading-snug">{notice.title}</h3>
                                 </div>
-                                <h3 className="text-lg font-black text-zinc-900 leading-snug">{notice.title}</h3>
-                              </div>
 
-                              {(isAdvisor || isHOD || isAdmin) && (
                                 <div className="flex items-center gap-1 shrink-0">
                                   <button
-                                    onClick={() => handlePinNotice(notice.id)}
-                                    className={cn("p-1.5 rounded-lg hover:bg-zinc-100 transition-colors", notice.is_pinned ? "text-amber-600" : "text-zinc-400")}
-                                    title={notice.is_pinned ? "Unpin Notice" : "Pin Notice"}
+                                    onClick={() => handleShareNotice(notice.id, notice.title)}
+                                    className="p-1.5 text-zinc-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold px-2.5 border border-zinc-200 hover:border-indigo-300"
+                                    title="Share Notice Link"
                                   >
-                                    <Pin size={16} />
+                                    <Share2 size={14} />
+                                    <span className="hidden sm:inline">Share</span>
                                   </button>
+                                  {(isAdvisor || isHOD || isAdmin) && (
+                                    <button
+                                      onClick={() => handlePinNotice(notice.id)}
+                                      className={cn("p-1.5 rounded-lg hover:bg-zinc-100 transition-colors", notice.is_pinned ? "text-amber-600" : "text-zinc-400")}
+                                      title={notice.is_pinned ? "Unpin Notice" : "Pin Notice"}
+                                    >
+                                      <Pin size={16} />
+                                    </button>
+                                  )}
                                   {(isAdmin || String(notice.created_by) === String(user?.id)) && (
                                     <button
                                       onClick={() => handleDeleteNotice(notice.id)}
@@ -8388,30 +8509,30 @@ export default function App() {
                                     </button>
                                   )}
                                 </div>
-                              )}
-                            </div>
-
-                            <p className="text-sm text-zinc-700 whitespace-pre-wrap leading-relaxed mb-4">{notice.description}</p>
-
-                            {notice.attachment_url && (
-                              <div className="mb-4">
-                                <a
-                                  href={notice.attachment_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors border border-indigo-200"
-                                >
-                                  <Paperclip size={14} /> Download Notice Attachment
-                                </a>
                               </div>
-                            )}
 
-                            <div className="flex items-center justify-between text-xs font-medium text-zinc-400 border-t border-zinc-100 pt-3">
-                              <span>Posted by <strong className="text-zinc-700">{notice.creator_name}</strong> ({notice.creator_role})</span>
-                              <span>{new Date(notice.created_at).toLocaleString()}</span>
-                            </div>
-                          </Card>
-                        ))
+                              <p className="text-sm text-zinc-700 whitespace-pre-wrap leading-relaxed mb-4">{notice.description}</p>
+
+                              {notice.attachment_url && (
+                                <div className="mb-4">
+                                  <a
+                                    href={notice.attachment_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors border border-indigo-200"
+                                  >
+                                    <Paperclip size={14} /> Download Notice Attachment
+                                  </a>
+                                </div>
+                              )}
+
+                              <div className="flex items-center justify-between text-xs font-medium text-zinc-400 border-t border-zinc-100 pt-3">
+                                <span>Posted by <strong className="text-zinc-700">{notice.creator_name}</strong> ({notice.creator_role})</span>
+                                <span>{new Date(notice.created_at).toLocaleString()}</span>
+                              </div>
+                            </Card>
+                          );
+                        })
                       )}
                     </div>
                   </PageLayout>
