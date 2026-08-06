@@ -507,6 +507,10 @@ export async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_feedback_messages_fid ON feedback_messages(feedback_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_scheduled_notifs_user ON scheduled_notifications(user_id, status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_scheduled_notifs_time ON scheduled_notifications(scheduled_time, status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_status_deadline ON tasks(status, deadline);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_submissions_submitted_at ON task_submissions(submitted_at);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_submissions_verified_at ON task_submissions(verified_at);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_submissions_cloudinary ON task_submissions(cloudinary_public_id);`);
 
     // Seed Supreme Admin if not exists
     const adminRes = await client.query(`SELECT * FROM users WHERE role = 'SUPREME_ADMIN' LIMIT 1;`);

@@ -13,7 +13,7 @@ services:
           name: vsbec-db
           property: connectionString
       - key: JWT_SECRET
-        generateValue: true
+        sync: false
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY

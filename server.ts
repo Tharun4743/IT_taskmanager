@@ -16,6 +16,9 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { pool, initDB } from './db.js';
 import { syncAndGenerateStudentDirectory, constantStudentByIdMap, constantStudentByRegNoMap, constantStudentByEmailMap, constantStudentsByClassMap } from './studentDirectoryService.js';
+import { cleanupOnlyTaskScreenshots } from './imageCleanupService.js';
+import { generateDatabaseSnapshot } from './dbBackupService.js';
+import { initSentry, captureException } from './sentryService.js';
 
 // ─── Async Route Error Wrapper ────────────────────────────────────────────────
 // Express 4 does not catch async errors automatically.
@@ -76,6 +79,21 @@ async function startServer() {
   await initDB();
   await syncAndGenerateStudentDirectory().catch(err => console.error('[StudentDirectory] Startup sync warning:', err));
 
+  // Initialize Sentry Production Error Tracking
+  initSentry();
+
+  // Trigger initial 7-day screenshot cleanup and schedule daily background execution (every 24 hours)
+  cleanupOnlyTaskScreenshots().catch(err => console.error('[ImageCleanup] Startup cleanup warning:', err));
+  setInterval(() => {
+    cleanupOnlyTaskScreenshots().catch(err => console.error('[ImageCleanup] Scheduled cleanup warning:', err));
+  }, 24 * 60 * 60 * 1000);
+
+  // Trigger initial DB snapshot backup and schedule daily execution (every 24 hours)
+  generateDatabaseSnapshot().catch(err => console.error('[DBBackup] Startup snapshot warning:', err));
+  setInterval(() => {
+    generateDatabaseSnapshot().catch(err => console.error('[DBBackup] Scheduled snapshot warning:', err));
+  }, 24 * 60 * 60 * 1000);
+
   const app = express();
 
   // Enable trust proxy so express-rate-limit correctly identifies individual client IPs behind reverse proxies (Render, Cloudflare, Nginx)
@@ -111,26 +129,45 @@ async function startServer() {
     credentials: true
   }));
 
-  app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'ok' });
-  });
+  const healthCheckHandler = async (req: Request, res: Response) => {
+    try {
+      await pool.query('SELECT 1');
+      res.status(200).json({ status: 'ok', database: 'connected', timestamp: new Date().toISOString() });
+    } catch (err: any) {
+      console.error('[Health Check Error]: Database connectivity failed:', err.message);
+      res.status(503).json({ status: 'error', database: 'disconnected', error: err.message });
+    }
+  };
 
-  app.get('/api/health', (req, res) => {
-    res.status(200).json({ status: 'ok' });
-  });
+  app.get('/health', healthCheckHandler);
+  app.get('/api/health', healthCheckHandler);
 
-  // Auth Middleware - Fetches dynamic permissions (is_coordinator, role, class_id) live from database
+  // ─── In-Memory User Auth Cache (2-minute TTL) to protect DB pool ─────────────
+  const userAuthCache = new Map<string, { user: any; expiresAt: number }>();
+
+  // Auth Middleware - Fetches dynamic permissions with 2-minute caching
   const authenticate = async (req: any, res: any, next: any) => {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
     try {
       const decoded: any = jwt.verify(token, JWT_SECRET);
+      const userId = decoded.id;
+      const now = Date.now();
 
-      const dbUserRes = await pool.query(
-        'SELECT id, username, role, department_id, class_id, is_coordinator, is_year_coordinator, year_scope, register_number FROM users WHERE id = $1 LIMIT 1',
-        [decoded.id]
-      );
-      const user = dbUserRes.rows[0];
+      let user: any = null;
+      const cached = userAuthCache.get(userId);
+      if (cached && cached.expiresAt > now) {
+        user = cached.user;
+      } else {
+        const dbUserRes = await pool.query(
+          'SELECT id, username, role, department_id, class_id, is_coordinator, is_year_coordinator, year_scope, register_number FROM users WHERE id = $1 LIMIT 1',
+          [userId]
+        );
+        user = dbUserRes.rows[0];
+        if (user) {
+          userAuthCache.set(userId, { user, expiresAt: now + 120000 });
+        }
+      }
 
       if (!user) {
         return res.status(401).json({ error: 'Unauthorized: User not found' });
@@ -158,6 +195,20 @@ async function startServer() {
     }
     next();
   };
+
+  // Admin endpoint: Trigger manual purge of proof screenshots older than 7 days
+  app.post('/api/admin/purge-old-screenshots', authenticate, authorize(['SUPREME_ADMIN', 'HOD']), asyncHandler(async (req: Request, res: Response) => {
+    const purgedCount = await cleanupOnlyTaskScreenshots();
+    res.json({ message: `Successfully purged ${purgedCount} task proof screenshots older than 7 days.`, purgedCount });
+  }));
+
+  // Admin endpoint: Export complete database JSON snapshot
+  app.get('/api/admin/export-db-snapshot', authenticate, authorize(['SUPREME_ADMIN', 'HOD']), asyncHandler(async (req: Request, res: Response) => {
+    const snapshot = await generateDatabaseSnapshot();
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="${path.basename(snapshot.filePath)}"`);
+    res.send(JSON.stringify(snapshot.backupPayload, null, 2));
+  }));
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   // Login accepts `email` field for HOD/Advisor accounts.
@@ -245,9 +296,9 @@ async function startServer() {
     try {
       if (user.password && (user.password.startsWith('$2a$') || user.password.startsWith('$2b$') || user.password.startsWith('$2y$'))) {
         isPasswordValid = await bcrypt.compare(cleanPassword, user.password) ||
-                          (password && await bcrypt.compare(password, user.password)) ||
-                          await bcrypt.compare(cleanPassword.toLowerCase(), user.password) ||
-                          await bcrypt.compare(cleanPassword.toUpperCase(), user.password);
+          (password && await bcrypt.compare(password, user.password)) ||
+          await bcrypt.compare(cleanPassword.toLowerCase(), user.password) ||
+          await bcrypt.compare(cleanPassword.toUpperCase(), user.password);
       } else {
         isPasswordValid = (cleanPassword === user.password) || (password === user.password);
       }
@@ -1610,7 +1661,7 @@ async function startServer() {
   });
 
   // ── Team Tasks Management APIs ─────────────────────────────────────────────
-  
+
   // 1. Get eligible classmates for team task (excluding current user and already ACCEPTED team members/leaders)
   app.get('/api/team/classmates/:taskId', authenticate, authorize(['STUDENT']), async (req: any, res) => {
     const student = req.user;
@@ -3528,7 +3579,7 @@ async function startServer() {
       let academic = userRes.rows[0] || {};
 
       const dirStudent = (academic.register_number && constantStudentByRegNoMap.get(academic.register_number.toLowerCase().trim())) ||
-                         (academic.email && constantStudentByEmailMap.get(academic.email.toLowerCase().trim()));
+        (academic.email && constantStudentByEmailMap.get(academic.email.toLowerCase().trim()));
 
       if (dirStudent) {
         academic.full_name = academic.full_name || dirStudent.full_name;
@@ -3607,7 +3658,7 @@ async function startServer() {
       const isAdmin = currentUser.role === 'ADMIN';
       const isHOD = currentUser.role === 'HOD';
       const isAdvisorOrCoordinator = (currentUser.role === 'ADVISOR' || currentUser.role === 'COORDINATOR' || currentUser.is_coordinator) &&
-                                    currentUser.class_id?.toString() === academic.class_id?.toString();
+        currentUser.class_id?.toString() === academic.class_id?.toString();
       const isYearCoordinator = currentUser.is_year_coordinator && currentUser.year_scope === academic.year;
 
       if (!isSelf && !isAdmin && !isHOD && !isAdvisorOrCoordinator && !isYearCoordinator) {
@@ -3940,8 +3991,8 @@ async function startServer() {
     `, [taskId]);
 
     const topLevel = result.rows.filter((r: any) => !r.parent_id);
-    const replies   = result.rows.filter((r: any) =>  r.parent_id);
-    const threaded  = topLevel.map((post: any) => ({
+    const replies = result.rows.filter((r: any) => r.parent_id);
+    const threaded = topLevel.map((post: any) => ({
       ...post,
       replies: replies
         .filter((r: any) => r.parent_id === post.id)
@@ -3997,8 +4048,8 @@ async function startServer() {
     if (!postRes.rows[0]) return res.status(404).json({ error: 'Post not found' });
     const post = postRes.rows[0];
 
-    const isOwner     = String(post.user_id) === String(req.user.id);
-    const isStaff     = ['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN'].includes(req.user.role);
+    const isOwner = String(post.user_id) === String(req.user.id);
+    const isStaff = ['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN'].includes(req.user.role);
     const withinWindow = isOwner && (Date.now() - new Date(post.created_at).getTime()) < 10 * 60 * 1000;
 
     if (!withinWindow && !isStaff) {
@@ -4020,8 +4071,8 @@ async function startServer() {
     if (!postRes.rows[0]) return res.status(404).json({ error: 'Post not found' });
     const post = postRes.rows[0];
 
-    const isOwner     = String(post.user_id) === String(req.user.id);
-    const isStaff     = ['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN'].includes(req.user.role);
+    const isOwner = String(post.user_id) === String(req.user.id);
+    const isStaff = ['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN'].includes(req.user.role);
     const withinWindow = isOwner && (Date.now() - new Date(post.created_at).getTime()) < 10 * 60 * 1000;
 
     if (!withinWindow && !isStaff) {
@@ -4068,18 +4119,18 @@ async function startServer() {
     } else if (u.role === 'CLASS_ADVISOR') {
       params.push(u.department_id, u.class_id);
       conditions.push(
-        `(n.scope='ALL' OR (n.scope='DEPARTMENT' AND n.department_id=$${params.length-1}) OR n.scope='YEAR' OR (n.scope='CLASS' AND n.class_id=$${params.length}))`
+        `(n.scope='ALL' OR (n.scope='DEPARTMENT' AND n.department_id=$${params.length - 1}) OR n.scope='YEAR' OR (n.scope='CLASS' AND n.class_id=$${params.length}))`
       );
     } else {
       params.push(u.department_id, u.class_id);
       conditions.push(
-        `(n.scope='ALL' OR (n.scope='DEPARTMENT' AND n.department_id=$${params.length-1}) OR (n.scope='CLASS' AND n.class_id=$${params.length}))`
+        `(n.scope='ALL' OR (n.scope='DEPARTMENT' AND n.department_id=$${params.length - 1}) OR (n.scope='CLASS' AND n.class_id=$${params.length}))`
       );
     }
 
-    if (search)      { params.push(`%${search}%`);  conditions.push(`(n.title ILIKE $${params.length} OR n.description ILIKE $${params.length})`); }
-    if (priority)    { params.push(priority);        conditions.push(`n.priority=$${params.length}`); }
-    if (scopeFilter) { params.push(scopeFilter);     conditions.push(`n.scope=$${params.length}`); }
+    if (search) { params.push(`%${search}%`); conditions.push(`(n.title ILIKE $${params.length} OR n.description ILIKE $${params.length})`); }
+    if (priority) { params.push(priority); conditions.push(`n.priority=$${params.length}`); }
+    if (scopeFilter) { params.push(scopeFilter); conditions.push(`n.scope=$${params.length}`); }
 
     const result = await pool.query(`
       SELECT n.*, u.full_name AS creator_name, u.role AS creator_role,
@@ -4117,7 +4168,7 @@ async function startServer() {
   app.post('/api/notices', authenticate, authorize(['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN']), asyncHandler(async (req: any, res: Response) => {
     const u = req.user;
     const { title, description, scope, department_id, class_id, year, priority,
-            attachment_url, attachment_cloudinary_public_id, publish_at, expire_at } = req.body;
+      attachment_url, attachment_cloudinary_public_id, publish_at, expire_at } = req.body;
 
     if (!title || !description) return res.status(400).json({ error: 'Title and description are required' });
     if (u.role === 'CLASS_ADVISOR' && scope !== 'CLASS')
@@ -4126,7 +4177,7 @@ async function startServer() {
       return res.status(403).json({ error: 'HODs cannot create ALL-scope notices' });
 
     const deptId = u.role === 'CLASS_ADVISOR' ? u.department_id : (department_id || u.department_id || null);
-    const clsId  = u.role === 'CLASS_ADVISOR' ? u.class_id     : (class_id || null);
+    const clsId = u.role === 'CLASS_ADVISOR' ? u.class_id : (class_id || null);
 
     const result = await pool.query(`
       INSERT INTO notices
@@ -4149,11 +4200,11 @@ async function startServer() {
     if (!nr.rows[0]) return res.status(404).json({ error: 'Notice not found' });
 
     const isCreator = String(nr.rows[0].created_by) === String(req.user.id);
-    const isAdmin   = req.user.role === 'SUPREME_ADMIN';
+    const isAdmin = req.user.role === 'SUPREME_ADMIN';
     if (!isCreator && !isAdmin) return res.status(403).json({ error: 'Forbidden' });
 
     const { title, description, scope, department_id, class_id, year, priority,
-            attachment_url, attachment_cloudinary_public_id, publish_at, expire_at } = req.body;
+      attachment_url, attachment_cloudinary_public_id, publish_at, expire_at } = req.body;
 
     const result = await pool.query(`
       UPDATE notices SET
@@ -4162,8 +4213,8 @@ async function startServer() {
         attachment_url=$8, attachment_cloudinary_public_id=$9,
         publish_at=COALESCE($10,publish_at), expire_at=$11, updated_at=NOW()
       WHERE id=$12 RETURNING *
-    `, [title, description, scope, department_id||null, class_id||null, year||null, priority,
-        attachment_url||null, attachment_cloudinary_public_id||null, publish_at, expire_at||null, req.params.id]);
+    `, [title, description, scope, department_id || null, class_id || null, year || null, priority,
+      attachment_url || null, attachment_cloudinary_public_id || null, publish_at, expire_at || null, req.params.id]);
 
     res.json(result.rows[0]);
   }));
@@ -4174,7 +4225,7 @@ async function startServer() {
     if (!nr.rows[0]) return res.status(404).json({ error: 'Notice not found' });
 
     const isCreator = String(nr.rows[0].created_by) === String(req.user.id);
-    const isAdmin   = req.user.role === 'SUPREME_ADMIN';
+    const isAdmin = req.user.role === 'SUPREME_ADMIN';
     if (!isCreator && !isAdmin) return res.status(403).json({ error: 'Forbidden' });
 
     await pool.query('DELETE FROM notices WHERE id = $1', [req.params.id]);
@@ -4187,8 +4238,8 @@ async function startServer() {
     if (!nr.rows[0]) return res.status(404).json({ error: 'Notice not found' });
 
     const isCreator = String(nr.rows[0].created_by) === String(req.user.id);
-    const isAdmin   = req.user.role === 'SUPREME_ADMIN';
-    const isHOD     = req.user.role === 'HOD';
+    const isAdmin = req.user.role === 'SUPREME_ADMIN';
+    const isHOD = req.user.role === 'HOD';
     if (!isCreator && !isAdmin && !isHOD) return res.status(403).json({ error: 'Forbidden' });
 
     const result = await pool.query(
@@ -4227,10 +4278,10 @@ async function startServer() {
     }
     // HOD and SUPREME_ADMIN see all
 
-    if (category) { params.push(category);          conditions.push(`f.category=$${params.length}`); }
-    if (status)   { params.push(status);            conditions.push(`f.status=$${params.length}`); }
-    if (priority) { params.push(priority);          conditions.push(`f.priority=$${params.length}`); }
-    if (search)   { params.push(`%${search}%`);     conditions.push(`(f.title ILIKE $${params.length} OR f.description ILIKE $${params.length})`); }
+    if (category) { params.push(category); conditions.push(`f.category=$${params.length}`); }
+    if (status) { params.push(status); conditions.push(`f.status=$${params.length}`); }
+    if (priority) { params.push(priority); conditions.push(`f.priority=$${params.length}`); }
+    if (search) { params.push(`%${search}%`); conditions.push(`(f.title ILIKE $${params.length} OR f.description ILIKE $${params.length})`); }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -4296,7 +4347,7 @@ async function startServer() {
     const fb = fbRes.rows[0];
 
     const isOwner = String(fb.user_id) === String(u.id);
-    const isStaff = ['CLASS_ADVISOR','HOD','SUPREME_ADMIN'].includes(u.role);
+    const isStaff = ['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN'].includes(u.role);
     if (!isOwner && !isStaff) return res.status(403).json({ error: 'Forbidden' });
 
     const messagesRes = await pool.query(`
@@ -4309,7 +4360,7 @@ async function startServer() {
   }));
 
   // PATCH /api/feedback/:id â€” staff: update status/priority/assign
-  app.patch('/api/feedback/:id', authenticate, authorize(['CLASS_ADVISOR','HOD','SUPREME_ADMIN']), asyncHandler(async (req: any, res: Response) => {
+  app.patch('/api/feedback/:id', authenticate, authorize(['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN']), asyncHandler(async (req: any, res: Response) => {
     const { status, priority, assigned_to } = req.body;
     const result = await pool.query(`
       UPDATE feedback SET
@@ -4338,7 +4389,7 @@ async function startServer() {
     if (!fbRes.rows[0]) return res.status(404).json({ error: 'Feedback not found' });
 
     const isOwner = String(fbRes.rows[0].user_id) === String(req.user.id);
-    const isStaff = ['CLASS_ADVISOR','HOD','SUPREME_ADMIN'].includes(req.user.role);
+    const isStaff = ['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN'].includes(req.user.role);
     if (!isOwner && !isStaff) return res.status(403).json({ error: 'Forbidden' });
 
     const result = await pool.query(
@@ -4390,9 +4441,9 @@ async function startServer() {
       RETURNING *
     `, [
       req.user.id,
-      task_reminders         !== undefined ? Boolean(task_reminders)         : true,
-      event_reminders        !== undefined ? Boolean(event_reminders)        : true,
-      notice_reminders       !== undefined ? Boolean(notice_reminders)       : true,
+      task_reminders !== undefined ? Boolean(task_reminders) : true,
+      event_reminders !== undefined ? Boolean(event_reminders) : true,
+      notice_reminders !== undefined ? Boolean(notice_reminders) : true,
       feedback_notifications !== undefined ? Boolean(feedback_notifications) : true,
     ]);
     res.json(result.rows[0]);
@@ -4532,6 +4583,21 @@ async function startServer() {
   };
 
   startApp(PORT);
+
+  // ── Graceful Shutdown Handler for Render redeployments ────────────────────
+  const gracefulShutdown = (signal: string) => {
+    console.log(`[Server] ${signal} received. Closing HTTP server and PostgreSQL pool gracefully...`);
+    pool.end().then(() => {
+      console.log('[Server] Database pool closed. Exiting process cleanly.');
+      process.exit(0);
+    }).catch((err) => {
+      console.error('[Server] Error during database pool shutdown:', err);
+      process.exit(1);
+    });
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 }
 
 startServer();

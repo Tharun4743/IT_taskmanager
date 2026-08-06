@@ -8,5 +8,5 @@ coverage/
 !.env.example
 *.sql
 scratch_*.js
-metadata.json
+backups/
 
