@@ -6725,10 +6725,9 @@ export default function App() {
                 </div>
               </Card>
             ) : (
-              /* LeetCode Targets Configuration Table */
               <Card className="p-0 overflow-hidden border border-zinc-200 bg-white shadow-xs">
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[850px] text-left border-collapse">
+                  <table className="w-full min-w-[700px] text-left border-collapse">
                     <thead>
                       <tr className="bg-zinc-50 border-b border-zinc-200 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                         <th className="px-6 py-4">Scope</th>
@@ -6737,13 +6736,12 @@ export default function App() {
                         <th className="px-6 py-4 text-center">Weekly Target</th>
                         <th className="px-6 py-4">Duration</th>
                         <th className="px-6 py-4">Created By</th>
-                        <th className="px-6 py-4 text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-200 text-sm">
                       {leetcodeTargets.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="px-6 py-12 text-center text-zinc-400 font-semibold">
+                          <td colSpan={6} className="px-6 py-12 text-center text-zinc-400 font-semibold">
                             No active LeetCode target configurations found. Click "LeetCode Target" to add one.
                           </td>
                         </tr>
@@ -6756,15 +6754,6 @@ export default function App() {
                             <td className="px-6 py-4 text-center font-bold text-indigo-600">{target.weekly_target} / week</td>
                             <td className="px-6 py-4 text-xs font-medium text-zinc-500">{target.start_date} to {target.end_date}</td>
                             <td className="px-6 py-4 text-xs text-zinc-600">{target.creator_name || 'Staff'}</td>
-                            <td className="px-6 py-4 text-right">
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteLeetcodeTarget(target.id)}
-                                className="px-2 py-1 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer"
-                              >
-                                Delete
-                              </button>
-                            </td>
                           </tr>
                         ))
                       )}
@@ -7054,7 +7043,7 @@ export default function App() {
               /* GitHub Targets Configuration Table */
               <Card className="p-0 overflow-hidden border border-zinc-200 bg-white shadow-xs">
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[850px] text-left border-collapse">
+                  <table className="w-full min-w-[700px] text-left border-collapse">
                     <thead>
                       <tr className="bg-zinc-50 border-b border-zinc-200 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                         <th className="px-6 py-4">Scope</th>
@@ -7063,13 +7052,12 @@ export default function App() {
                         <th className="px-6 py-4 text-center">Weekly Target</th>
                         <th className="px-6 py-4">Duration</th>
                         <th className="px-6 py-4">Created By</th>
-                        <th className="px-6 py-4 text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-200 text-sm">
                       {githubTargets.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="px-6 py-12 text-center text-zinc-400 font-semibold">
+                          <td colSpan={6} className="px-6 py-12 text-center text-zinc-400 font-semibold">
                             No active GitHub target configurations found. Click "GitHub Target" to add one.
                           </td>
                         </tr>
@@ -7082,15 +7070,6 @@ export default function App() {
                             <td className="px-6 py-4 text-center font-bold text-indigo-600">{target.weekly_target} / week</td>
                             <td className="px-6 py-4 text-xs font-medium text-zinc-500">{target.start_date} to {target.end_date}</td>
                             <td className="px-6 py-4 text-xs text-zinc-600">{target.creator_name || 'Staff'}</td>
-                            <td className="px-6 py-4 text-right">
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteGithubTarget(target.id)}
-                                className="px-2 py-1 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer"
-                              >
-                                Delete
-                              </button>
-                            </td>
                           </tr>
                         ))
                       )}
