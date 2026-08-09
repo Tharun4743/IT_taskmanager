@@ -30,6 +30,12 @@ export function loadDirectoryFromDisk() {
     const baseDir = path.join(process.cwd(), 'students_directory');
     if (!fs.existsSync(baseDir)) return;
 
+    constantStudentByIdMap.clear();
+    constantStudentByRegNoMap.clear();
+    constantStudentByEmailMap.clear();
+    constantStudentsByClassMap.clear();
+    constantStudentsByYearMap.clear();
+
     function scan(dir: string) {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
       for (const entry of entries) {
@@ -47,12 +53,18 @@ export function loadDirectoryFromDisk() {
                 if (s.class_id) {
                   const classKey = s.class_id.toString();
                   if (!constantStudentsByClassMap.has(classKey)) constantStudentsByClassMap.set(classKey, []);
-                  constantStudentsByClassMap.get(classKey)!.push(s);
+                  const list = constantStudentsByClassMap.get(classKey)!;
+                  if (!list.some(existing => String(existing.id) === String(s.id))) {
+                    list.push(s);
+                  }
                 }
                 if (s.year) {
                   const yearKey = String(s.year);
                   if (!constantStudentsByYearMap.has(yearKey)) constantStudentsByYearMap.set(yearKey, []);
-                  constantStudentsByYearMap.get(yearKey)!.push(s);
+                  const list = constantStudentsByYearMap.get(yearKey)!;
+                  if (!list.some(existing => String(existing.id) === String(s.id))) {
+                    list.push(s);
+                  }
                 }
               }
             }
@@ -134,13 +146,19 @@ export async function syncAndGenerateStudentDirectory() {
       if (!constantStudentsByClassMap.has(classKey)) {
         constantStudentsByClassMap.set(classKey, []);
       }
-      constantStudentsByClassMap.get(classKey)!.push(student);
+      const classList = constantStudentsByClassMap.get(classKey)!;
+      if (!classList.some(existing => String(existing.id) === String(student.id))) {
+        classList.push(student);
+      }
 
       const yearKey = String(student.year || 0);
       if (!constantStudentsByYearMap.has(yearKey)) {
         constantStudentsByYearMap.set(yearKey, []);
       }
-      constantStudentsByYearMap.get(yearKey)!.push(student);
+      const yearList = constantStudentsByYearMap.get(yearKey)!;
+      if (!yearList.some(existing => String(existing.id) === String(student.id))) {
+        yearList.push(student);
+      }
 
       // 2. Group for file exports
       const yearFolder = `Year_${student.year || 'Unassigned'}`;

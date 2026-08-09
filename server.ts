@@ -5279,9 +5279,10 @@ async function startServer() {
 
   // Optimized in-memory student lookup helper (uses RAM map when available, falls back to DB)
   async function fetchStudentsForScope(scope: { classId?: string; year?: number; departmentId?: string; batch?: string }) {
+    let rawStudents: any[] = [];
     if (scope.classId && constantStudentsByClassMap.has(scope.classId.toString())) {
       const cached = constantStudentsByClassMap.get(scope.classId.toString())!;
-      return cached.map(s => ({
+      rawStudents = cached.map(s => ({
         id: s.id,
         register_number: s.register_number,
         full_name: s.full_name,
@@ -5291,35 +5292,47 @@ async function startServer() {
         batch: s.batch,
         class_name: s.class_name
       }));
+    } else {
+      let baseQuery = `
+        SELECT u.id, u.register_number, u.full_name, u.class_id, u.department_id, c.year, c.batch, c.name as class_name
+        FROM users u
+        LEFT JOIN classes c ON u.class_id = c.id
+        WHERE u.role = 'STUDENT'
+      `;
+      const params: any[] = [];
+      if (scope.classId) {
+        params.push(scope.classId);
+        baseQuery += ` AND u.class_id = $${params.length}`;
+      }
+      if (scope.year) {
+        params.push(scope.year);
+        baseQuery += ` AND c.year = $${params.length}`;
+      }
+      if (scope.batch) {
+        params.push(scope.batch);
+        baseQuery += ` AND c.batch = $${params.length}`;
+      }
+      if (scope.departmentId) {
+        params.push(scope.departmentId);
+        baseQuery += ` AND u.department_id = $${params.length}`;
+      }
+      baseQuery += ` ORDER BY u.register_number ASC, u.full_name ASC`;
+
+      const students = await pool.query(baseQuery, params);
+      rawStudents = students.rows;
     }
 
-    let baseQuery = `
-      SELECT u.id, u.register_number, u.full_name, u.class_id, u.department_id, c.year, c.batch, c.name as class_name
-      FROM users u
-      LEFT JOIN classes c ON u.class_id = c.id
-      WHERE u.role = 'STUDENT'
-    `;
-    const params: any[] = [];
-    if (scope.classId) {
-      params.push(scope.classId);
-      baseQuery += ` AND u.class_id = $${params.length}`;
+    // Defensive Deduplication by Student ID
+    const seen = new Set<string>();
+    const uniqueStudents: any[] = [];
+    for (const s of rawStudents) {
+      const key = String(s.id || s.register_number);
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueStudents.push(s);
+      }
     }
-    if (scope.year) {
-      params.push(scope.year);
-      baseQuery += ` AND c.year = $${params.length}`;
-    }
-    if (scope.batch) {
-      params.push(scope.batch);
-      baseQuery += ` AND c.batch = $${params.length}`;
-    }
-    if (scope.departmentId) {
-      params.push(scope.departmentId);
-      baseQuery += ` AND u.department_id = $${params.length}`;
-    }
-    baseQuery += ` ORDER BY u.register_number ASC, u.full_name ASC`;
-
-    const students = await pool.query(baseQuery, params);
-    return students.rows;
+    return uniqueStudents;
   }
 
   // 6. Daily Monitoring Progress
