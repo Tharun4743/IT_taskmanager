@@ -3248,6 +3248,7 @@ async function startServer() {
           t.team_name,
           t.status as team_status,
           t.created_at,
+          t.leader_id,
           tk.id as task_id,
           tk.title as task_title,
           tk.category as task_category,
@@ -3299,7 +3300,7 @@ async function startServer() {
 
       if (teamIds.length > 0) {
         const membersRes = await pool.query(`
-          SELECT tm.team_id, u.full_name, u.register_number, tm.status
+          SELECT tm.team_id, tm.student_id, u.full_name, u.register_number, u.email, tm.status
           FROM team_members tm
           JOIN users u ON tm.student_id = u.id
           WHERE tm.team_id = ANY($1)
@@ -3311,8 +3312,10 @@ async function startServer() {
           const key = m.team_id.toString();
           if (!membersByTeam.has(key)) membersByTeam.set(key, []);
           membersByTeam.get(key)!.push({
+            student_id: m.student_id,
             full_name: m.full_name,
             register_number: m.register_number,
+            email: m.email,
             status: m.status
           });
         });

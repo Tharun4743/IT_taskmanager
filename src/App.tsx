@@ -5155,6 +5155,82 @@ export default function App() {
     const sheet1Line5 = `${selectedTaskTitle} - ${classInfoStr}`;
     const sheet2Line5 = `TASK COMPLETION SUMMARY - ${classInfoStr}`;
 
+    // ── PRE-FETCH TEAM REPORT DATA ──────────────────────────────────────────────
+    const teamRows: any[] = [];
+    const teamStudentMap = new Map<string, { status: string; teamName: string; remarks?: string }>();
+
+    try {
+      const classQuery = selectedClassIds.length > 0 ? `?class_ids=${encodeURIComponent(selectedClassIds.join(','))}` : '';
+      const taskQuery = filters?.taskId ? `${classQuery ? '&' : '?'}task_id=${encodeURIComponent(filters.taskId)}` : '';
+      const teamRes = await fetch(`${API_URL}/api/team/report${classQuery}${taskQuery}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (teamRes.ok) {
+        const teamData: any[] = await teamRes.json();
+        let teamSno = 1;
+
+        teamData.forEach(t => {
+          if (filters?.taskId && t.task_id?.toString() !== filters.taskId.toString()) {
+            return;
+          }
+
+          const subStat = (t.submission_status || '').toUpperCase();
+          const teamStat = (t.team_status || '').toUpperCase();
+
+          let mappedStatus = 'NOT_SUBMITTED';
+          if (subStat === 'APPROVED' || subStat === 'VERIFIED' || teamStat === 'APPROVED') {
+            mappedStatus = 'VERIFIED';
+          } else if (subStat === 'PENDING' || subStat === 'SUBMITTED' || teamStat === 'SUBMITTED') {
+            mappedStatus = 'SUBMITTED';
+          } else if (subStat === 'REJECTED' || teamStat === 'REJECTED') {
+            mappedStatus = 'REJECTED';
+          }
+
+          const info = {
+            status: mappedStatus,
+            teamName: t.team_name || 'Team',
+            remarks: t.remarks || ''
+          };
+
+          if (t.leader_id && t.task_id) {
+            teamStudentMap.set(`${t.leader_id.toString()}_${t.task_id.toString()}`, info);
+          }
+
+          if (Array.isArray(t.members)) {
+            t.members.forEach((m: any) => {
+              if (m.student_id && t.task_id) {
+                teamStudentMap.set(`${m.student_id.toString()}_${t.task_id.toString()}`, info);
+              }
+            });
+          }
+
+          const leaderStr = `${t.leader_name || 'Leader'} (${t.leader_regno || 'N/A'})`;
+          const statusStr = t.submission_status || t.team_status || 'FORMING';
+
+          const membersList = Array.isArray(t.members) && t.members.length > 0 ? t.members : [];
+          const participantsStr = membersList.length > 0
+            ? membersList.map((m: any) => {
+                const memberText = `${m.full_name || 'Student'} (${m.register_number || 'N/A'})`;
+                return m.status === 'PENDING' ? `${memberText} [Pending]` : memberText;
+              }).join(', ')
+            : leaderStr;
+
+          teamRows.push({
+            'S.No': teamSno,
+            'Team Name': t.team_name || '—',
+            'Team Leader': leaderStr,
+            'Team Participants': participantsStr,
+            'Hackathon / Task Name': t.task_title || '—',
+            'Category': t.task_category || 'Competition',
+            'Team Status': statusStr,
+          });
+          teamSno++;
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching team report data for excel:', err);
+    }
+
     // ── SHEET 1: Detailed rows ─────────────────────────────────────────────────
     const detailedRows: any[] = [];
     let sno = 1;
@@ -5165,7 +5241,16 @@ export default function App() {
           return;
         }
         const sub = getSub(student.id, student.register_number, task.id);
-        const rawStatus = sub ? sub.status : 'NOT_SUBMITTED';
+        const teamInfo = teamStudentMap.get(`${student.id}_${task.id}`);
+
+        let rawStatus = sub ? sub.status : 'NOT_SUBMITTED';
+        let customFieldValue = sub?.custom_field_value || '—';
+
+        if (teamInfo && rawStatus === 'NOT_SUBMITTED') {
+          rawStatus = teamInfo.status;
+          customFieldValue = `Team: ${teamInfo.teamName}${teamInfo.remarks ? ` (${teamInfo.remarks})` : ''}`;
+        }
+
         const isNotParticipating = rawStatus === 'NOT_PARTICIPATING';
         const isParticipating = rawStatus === 'SUBMITTED' || rawStatus === 'VERIFIED' || rawStatus === 'REJECTED';
 
@@ -5192,7 +5277,7 @@ export default function App() {
             'Task Name': task.title,
             'Participating / Interested': isParticipating ? 'Yes' : isNotParticipating ? 'No' : '—',
             'Task Status': statusLabel,
-            'Custom Field': isParticipating ? (sub?.custom_field_value || '—') : '—',
+            'Custom Field': customFieldValue,
             'Reason (If Not Participating)': isNotParticipating ? (sub?.not_participating_reason || '—') : '—',
           });
         }
@@ -5239,7 +5324,12 @@ export default function App() {
         let verifiedCount = 0, submittedCount = 0, rejectedCount = 0, notSubmittedCount = 0, notParticipatingCount = 0;
         classStudents.forEach(st => {
           const sub = getSub(st.id, st.register_number, task.id);
-          const rs = sub ? sub.status : 'NOT_SUBMITTED';
+          const teamInfo = teamStudentMap.get(`${st.id}_${task.id}`);
+          let rs = sub ? sub.status : 'NOT_SUBMITTED';
+          if (teamInfo && rs === 'NOT_SUBMITTED') {
+            rs = teamInfo.status;
+          }
+
           if (rs === 'VERIFIED') verifiedCount++;
           else if (rs === 'SUBMITTED') submittedCount++;
           else if (rs === 'REJECTED') rejectedCount++;
@@ -5259,45 +5349,6 @@ export default function App() {
         });
       });
     });
-
-    // ── SHEET 3: Team Wise Report ──────────────────────────────────────────────
-    const teamRows: any[] = [];
-    try {
-      const classQuery = selectedClassIds.length > 0 ? `?class_ids=${encodeURIComponent(selectedClassIds.join(','))}` : '';
-      const taskQuery = filters?.taskId ? `${classQuery ? '&' : '?'}task_id=${encodeURIComponent(filters.taskId)}` : '';
-      const teamRes = await fetch(`${API_URL}/api/team/report${classQuery}${taskQuery}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (teamRes.ok) {
-        const teamData: any[] = await teamRes.json();
-        let teamSno = 1;
-        teamData.forEach(t => {
-          if (filters?.taskId && t.task_id?.toString() !== filters.taskId.toString()) {
-            return;
-          }
-
-          const leaderStr = `${t.leader_name || 'Leader'} (${t.leader_regno || 'N/A'})`;
-          const statusStr = t.submission_status || t.team_status || 'FORMING';
-          const acceptedMembers = (t.members || []).filter((m: any) => m.status === 'ACCEPTED');
-          const participantsStr = acceptedMembers.length > 0
-            ? acceptedMembers.map((m: any) => `${m.full_name || 'Student'} (${m.register_number || 'N/A'})`).join(', ')
-            : leaderStr;
-
-          teamRows.push({
-            'S.No': teamSno,
-            'Team Name': t.team_name || '—',
-            'Team Leader': leaderStr,
-            'Team Participants': participantsStr,
-            'Hackathon / Task Name': t.task_title || '—',
-            'Category': t.task_category || 'Competition',
-            'Team Status': statusStr,
-          });
-          teamSno++;
-        });
-      }
-    } catch (err) {
-      console.error('Error fetching team report data for excel:', err);
-    }
 
     // ── Build Workbook ─────────────────────────────────────────────────────────
     const sheet1Cols = [
