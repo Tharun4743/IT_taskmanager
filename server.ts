@@ -20,6 +20,7 @@ import { syncAndGenerateStudentDirectory, constantStudentByIdMap, constantStuden
 import { cleanupOnlyTaskScreenshots } from './imageCleanupService.js';
 import { generateDatabaseSnapshot } from './dbBackupService.js';
 import { initSentry, captureException } from './sentryService.js';
+import * as XLSX from 'xlsx';
 
 // ─── Async Route Error Wrapper ────────────────────────────────────────────────
 // Express 4 does not catch async errors automatically.
@@ -99,6 +100,11 @@ async function startServer() {
 
   // Enable trust proxy so express-rate-limit correctly identifies individual client IPs behind reverse proxies (Render, Cloudflare, Nginx)
   app.set('trust proxy', 1);
+
+  // Lightweight Health Check Endpoint (for RenderPing / keep-alive pings)
+  app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', uptime: Math.floor(process.uptime()), timestamp: new Date().toISOString() });
+  });
 
   // ── Security configuration ───────────────────────────────────────────────────
   const maxRequests = process.env.RATE_LIMIT_MAX ? parseInt(process.env.RATE_LIMIT_MAX, 10) : 3000;
@@ -4558,10 +4564,2196 @@ async function startServer() {
   // Run once on startup, then every hour
   checkAndSendReminders();
   setInterval(checkAndSendReminders, 60 * 60 * 1000);
+  // ── LeetCode Targets & Progress API Module ───────────────────────────────────
+
+  // Utility: Extract username from profile URL or username
+  function extractLeetCodeUsername(urlOrUsername: string): string {
+    const clean = urlOrUsername.trim().replace(/\/$/, '');
+    const match = clean.match(/leetcode\.com\/(?:u\/)?([^/]+)/);
+    return match && match[1] ? match[1] : clean;
+  }
+
+  // Utility: Get date string in IST YYYY-MM-DD
+  function getISTDateStr(): string {
+    const offset = 5.5 * 60 * 60 * 1000; // IST is UTC +5:30
+    const istDate = new Date(Date.now() + offset);
+    return istDate.toISOString().split('T')[0];
+  }
+
+  // Utility: Get start and end of week (Monday to Sunday) in IST format
+  function getWeekRange(dateStr: string): { start: string; end: string } {
+    const date = new Date(dateStr);
+    const day = date.getDay(); // 0 is Sunday, 1 is Monday
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is Sunday
+    const monday = new Date(date.setDate(diff));
+    
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    
+    return {
+      start: monday.toISOString().split('T')[0],
+      end: sunday.toISOString().split('T')[0]
+    };
+  }
+
+  // Utility: In-memory target resolver with strict 4-level scope priority
+  function resolveTargetInMemory(student: { id: string; class_id?: string; year?: number | null; department_id?: string }, targetRows: any[]) {
+    const userId = student.id ? student.id.toString() : '';
+    const classId = student.class_id ? student.class_id.toString() : '';
+    const year = student.year !== undefined && student.year !== null ? Number(student.year) : null;
+    const departmentId = student.department_id ? student.department_id.toString() : '';
+
+    for (const t of targetRows) {
+      // Scope Level 1: Individual Student Target
+      if (t.user_id && t.user_id.toString() === userId) {
+        return t;
+      }
+      // Scope Level 2: Class Section Target
+      if (t.class_id && t.class_id.toString() === classId) {
+        return t;
+      }
+      // Scope Level 3: Year / Batch Target
+      if (t.year && year !== null && Number(t.year) === year) {
+        if (!t.department_id || (departmentId && t.department_id.toString() === departmentId)) {
+          return t;
+        }
+      }
+      // Scope Level 4: Department Target (Only if user_id, class_id, and year are ALL NULL)
+      if (t.department_id && !t.user_id && !t.class_id && !t.year && departmentId && t.department_id.toString() === departmentId) {
+        return t;
+      }
+    }
+
+    return {
+      id: null,
+      daily_target: 0,
+      weekly_target: 0,
+      start_date: null,
+      end_date: null
+    };
+  }
+
+  // Utility: Retrieve active target configuration for a student on a given date
+  async function getActiveTargetForStudent(clientOrPool: any, userId: string, classId: string, year: number | null, departmentId: string, dateStr: string) {
+    const targetsRes = await clientOrPool.query(`
+      SELECT * FROM leetcode_targets 
+      WHERE start_date <= $1 AND end_date >= $1
+      ORDER BY 
+        CASE 
+          WHEN user_id IS NOT NULL THEN 1
+          WHEN class_id IS NOT NULL THEN 2
+          WHEN year IS NOT NULL THEN 3
+          WHEN department_id IS NOT NULL THEN 4
+          ELSE 5
+        END ASC,
+        created_at DESC
+    `, [dateStr]);
+
+    return resolveTargetInMemory({ id: userId, class_id: classId, year, department_id: departmentId }, targetsRes.rows);
+  }
+
+  interface LeetCodeDetails {
+    totalSolved: number;
+    recentSubmissions: Array<{ titleSlug: string; timestamp: number }>;
+  }
+
+  // Utility: Scrape User Stats & Recent Submissions from LeetCode
+  async function fetchLeetCodeStats(profileUrlOrUsername: string): Promise<LeetCodeDetails | null> {
+    const username = extractLeetCodeUsername(profileUrlOrUsername);
+    if (!username) return null;
+    try {
+      const response = await fetch('https://leetcode.com/graphql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        },
+        body: JSON.stringify({
+          query: `
+            query userProblemsSolved($username: String!) {
+              matchedUser(username: $username) {
+                submitStats {
+                  acSubmissionNum {
+                    difficulty
+                    count
+                  }
+                }
+              }
+              recentAcSubmissionList(username: $username, limit: 50) {
+                title
+                titleSlug
+                timestamp
+              }
+            }
+          `,
+          variables: { username }
+        }),
+        signal: AbortSignal.timeout(10000)
+      });
+      if (!response.ok) return null;
+      const result: any = await response.json();
+      const stats = result.data?.matchedUser?.submitStats?.acSubmissionNum;
+      const allStats = stats?.find((s: any) => s.difficulty === 'All');
+      const totalSolved = allStats ? Number(allStats.count) : 0;
+
+      const rawSubmissions = result.data?.recentAcSubmissionList || [];
+      const recentSubmissions = rawSubmissions.map((s: any) => ({
+        titleSlug: s.titleSlug,
+        timestamp: Number(s.timestamp)
+      }));
+
+      return { totalSolved, recentSubmissions };
+    } catch (err) {
+      return null;
+    }
+  }
+
+  // Core Sync Function
+  async function syncLeetcodeProgressForScope(scopeFilter?: { departmentId?: string; classId?: string; year?: number; userId?: string }) {
+    try {
+      let query = `
+        SELECT u.id, u.register_number, u.full_name, u.class_id, u.department_id, c.year, c.batch 
+        FROM users u
+        LEFT JOIN classes c ON u.class_id = c.id
+        WHERE u.role = 'STUDENT'
+      `;
+      const params: any[] = [];
+      if (scopeFilter) {
+        if (scopeFilter.userId) {
+          params.push(scopeFilter.userId);
+          query += ` AND u.id = $${params.length}`;
+        } else if (scopeFilter.classId) {
+          params.push(scopeFilter.classId);
+          query += ` AND u.class_id = $${params.length}`;
+        } else if (scopeFilter.year) {
+          params.push(scopeFilter.year);
+          query += ` AND c.year = $${params.length}`;
+          if (scopeFilter.departmentId) {
+            params.push(scopeFilter.departmentId);
+            query += ` AND u.department_id = $${params.length}`;
+          }
+        } else if (scopeFilter.departmentId) {
+          params.push(scopeFilter.departmentId);
+          query += ` AND u.department_id = $${params.length}`;
+        }
+      }
+
+      const students = await pool.query(query, params);
+      const todayStr = getISTDateStr();
+
+      // Timestamps for start & end of today in IST (UTC+5:30)
+      const todayStartSec = Math.floor(new Date(`${todayStr}T00:00:00+05:30`).getTime() / 1000);
+      const todayEndSec = Math.floor(new Date(`${todayStr}T23:59:59+05:30`).getTime() / 1000);
+
+      let synced = 0;
+      let failed = 0;
+
+      const chunkSize = 5;
+      for (let i = 0; i < students.rows.length; i += chunkSize) {
+        const chunk = students.rows.slice(i, i + chunkSize);
+        await Promise.all(chunk.map(async (student) => {
+          const userId = student.id;
+          const classId = student.class_id;
+          const year = student.year ? Number(student.year) : null;
+          const departmentId = student.department_id;
+          
+          const studentDir = constantStudentByIdMap.get(userId);
+          const leetcodeProfile = studentDir?.leetcode || '';
+
+          const activeTarget = await getActiveTargetForStudent(pool, userId, classId, year, departmentId, todayStr);
+
+          let details: LeetCodeDetails | null = null;
+          if (leetcodeProfile) {
+            details = await fetchLeetCodeStats(leetcodeProfile);
+          }
+
+          if (details === null) {
+            failed++;
+            const existing = await pool.query(
+              'SELECT id FROM leetcode_daily_progress WHERE user_id = $1 AND date = $2',
+              [userId, todayStr]
+            );
+            if (existing.rowCount === 0) {
+              await pool.query(`
+                INSERT INTO leetcode_daily_progress (user_id, date, total_solved, solved_today, daily_target, status)
+                VALUES ($1, $2, NULL, 0, $3, 'DATA_UNAVAILABLE')
+                ON CONFLICT (user_id, date) DO NOTHING
+              `, [userId, todayStr, activeTarget.daily_target]);
+            }
+          } else {
+            synced++;
+            const fetchedCount = details.totalSolved;
+
+            // Calculate count of unique accepted problems solved ON current date
+            const recentTodayCount = new Set(
+              details.recentSubmissions
+                .filter(s => s.timestamp >= todayStartSec && s.timestamp <= todayEndSec)
+                .map(s => s.titleSlug)
+            ).size;
+
+            // 1. Fetch strictly previous date record (yesterday or earlier)
+            const prevRes = await pool.query(`
+              SELECT total_solved FROM leetcode_daily_progress
+              WHERE user_id = $1 AND date < $2 AND total_solved IS NOT NULL
+              ORDER BY date DESC LIMIT 1
+            `, [userId, todayStr]);
+
+            // 2. Fetch existing today record (if sync was run earlier today)
+            const todayRes = await pool.query(`
+              SELECT total_solved, solved_today FROM leetcode_daily_progress
+              WHERE user_id = $1 AND date = $2 AND total_solved IS NOT NULL
+            `, [userId, todayStr]);
+
+            let prevTotal: number | null = null;
+
+            if (prevRes.rowCount > 0 && prevRes.rows[0].total_solved !== null) {
+              prevTotal = Number(prevRes.rows[0].total_solved);
+            } else if (todayRes.rowCount > 0 && todayRes.rows[0].total_solved !== null) {
+              const tSolved = Number(todayRes.rows[0].total_solved);
+              const sToday = Number(todayRes.rows[0].solved_today);
+              prevTotal = tSolved - sToday;
+            }
+
+            let solvedToday = 0;
+            if (prevTotal !== null && prevTotal !== undefined) {
+              const diffSolved = Math.max(0, fetchedCount - prevTotal);
+              solvedToday = Math.max(diffSolved, recentTodayCount);
+            } else {
+              solvedToday = recentTodayCount;
+            }
+
+            const status = activeTarget.id !== null
+              ? (solvedToday >= activeTarget.daily_target ? 'COMPLETED' : 'NOT_COMPLETED')
+              : 'COMPLETED';
+
+            await pool.query(`
+              INSERT INTO leetcode_daily_progress (user_id, date, total_solved, solved_today, daily_target, status)
+              VALUES ($1, $2, $3, $4, $5, $6)
+              ON CONFLICT (user_id, date) DO UPDATE
+              SET total_solved = EXCLUDED.total_solved,
+                  solved_today = EXCLUDED.solved_today,
+                  daily_target = EXCLUDED.daily_target,
+                  status = EXCLUDED.status,
+                  updated_at = CURRENT_TIMESTAMP
+            `, [userId, todayStr, fetchedCount, solvedToday, activeTarget.daily_target, status]);
+          }
+        }));
+      }
+      return { success: true, synced, failed };
+
+    } catch (err) {
+      console.error('[syncLeetcodeProgressForScope] Error:', err);
+      return { success: false, synced: 0, failed: 0 };
+    }
+  }
+
+  // Recalculate Statuses
+  async function recalculateProgressStatuses(startDateStr: string, endDateStr: string, scope: { userId?: string; classId?: string; year?: number; departmentId?: string }) {
+    try {
+      let query = `
+        SELECT u.id, u.class_id, u.department_id, c.year
+        FROM users u
+        LEFT JOIN classes c ON u.class_id = c.id
+        WHERE u.role = 'STUDENT'
+      `;
+      const params: any[] = [];
+      if (scope.userId) {
+        params.push(scope.userId);
+        query += ` AND u.id = $${params.length}`;
+      } else if (scope.classId) {
+        params.push(scope.classId);
+        query += ` AND u.class_id = $${params.length}`;
+      } else if (scope.year) {
+        params.push(scope.year);
+        query += ` AND c.year = $${params.length}`;
+        if (scope.departmentId) {
+          params.push(scope.departmentId);
+          query += ` AND u.department_id = $${params.length}`;
+        }
+      } else if (scope.departmentId) {
+        params.push(scope.departmentId);
+        query += ` AND u.department_id = $${params.length}`;
+      }
+
+      const students = await pool.query(query, params);
+      if (students.rows.length === 0) return;
+
+      const studentIds = students.rows.map(s => s.id);
+      
+      // Bulk fetch all progress records in this range
+      const progressRes = await pool.query(
+        'SELECT id, user_id, date, solved_today, total_solved FROM leetcode_daily_progress WHERE user_id = ANY($1) AND date >= $2 AND date <= $3',
+        [studentIds, startDateStr, endDateStr]
+      );
+
+      // If no progress logs exist at all for the dates, there is nothing to update!
+      if (progressRes.rows.length === 0) return;
+
+      const progressMap = new Map();
+      for (const row of progressRes.rows) {
+        const dateKey = typeof row.date === 'string'
+          ? row.date.split('T')[0]
+          : new Date(row.date).toISOString().split('T')[0];
+        progressMap.set(`${row.user_id}_${dateKey}`, row);
+      }
+
+      const start = new Date(startDateStr);
+      const end = new Date(endDateStr);
+
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().split('T')[0];
+        for (const student of students.rows) {
+          const key = `${student.id}_${dateStr}`;
+          const progressRow = progressMap.get(key);
+          if (progressRow) {
+            const activeTarget = await getActiveTargetForStudent(pool, student.id, student.class_id, student.year, student.department_id, dateStr);
+            const solvedToday = Number(progressRow.solved_today);
+            let status = 'COMPLETED';
+            if (progressRow.total_solved === null) {
+              status = 'DATA_UNAVAILABLE';
+            } else if (activeTarget.id !== null) {
+              status = solvedToday >= activeTarget.daily_target ? 'COMPLETED' : 'NOT_COMPLETED';
+            }
+            await pool.query(
+              'UPDATE leetcode_daily_progress SET daily_target = $1, status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
+              [activeTarget.daily_target, status, progressRow.id]
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[recalculateProgressStatuses] Error:', err);
+    }
+  }
+
+  // Authorization Middlware
+  const authorizeTargetManagement = (req: any, res: Response, next: NextFunction) => {
+    const role = req.user.role;
+    const isCoordinator = req.user.is_coordinator;
+    const isYearCoordinator = req.user.is_year_coordinator;
+    if (role === 'SUPREME_ADMIN' || role === 'HOD' || role === 'CLASS_ADVISOR' || (role === 'STUDENT' && (isCoordinator || isYearCoordinator))) {
+      return next();
+    }
+    return res.status(403).json({ error: 'Forbidden: You do not have permissions to manage LeetCode targets' });
+  };
+
+  function enforceUserScopeFilter(user: any, filter: any) {
+    const role = user.role;
+    const isCoordinator = user.is_coordinator;
+    const isYearCoordinator = user.is_year_coordinator;
+    const scope: { departmentId?: string; classId?: string; year?: number; batch?: string } = {};
+
+    if (role === 'CLASS_ADVISOR' || isCoordinator || (role === 'STUDENT' && isCoordinator)) {
+      scope.classId = user.class_id;
+      scope.departmentId = user.department_id;
+    } else if (isYearCoordinator || (role === 'STUDENT' && isYearCoordinator)) {
+      scope.year = user.year_scope || user.year;
+      scope.departmentId = user.department_id;
+      if (filter.classId && filter.classId !== 'ALL' && filter.classId !== '') scope.classId = filter.classId;
+    } else if (role === 'HOD') {
+      scope.departmentId = user.department_id;
+      if (filter.classId && filter.classId !== 'ALL' && filter.classId !== '') scope.classId = filter.classId;
+      if (filter.year && filter.year !== 'ALL' && filter.year !== '' && !isNaN(parseInt(filter.year, 10))) scope.year = parseInt(filter.year, 10);
+      if (filter.batch && filter.batch !== 'ALL' && filter.batch !== '') scope.batch = filter.batch;
+    } else if (role === 'SUPREME_ADMIN' || role === 'ADMIN') {
+      const deptId = filter.departmentId || filter.department_id || filter.deptId;
+      if (deptId && deptId !== 'ALL' && deptId !== '' && deptId !== 'undefined' && deptId !== 'null') scope.departmentId = deptId;
+      const classId = filter.classId || filter.class_id;
+      if (classId && classId !== 'ALL' && classId !== '' && classId !== 'undefined' && classId !== 'null') scope.classId = classId;
+      if (filter.year && filter.year !== 'ALL' && filter.year !== '' && !isNaN(parseInt(filter.year, 10))) scope.year = parseInt(filter.year, 10);
+      if (filter.batch && filter.batch !== 'ALL' && filter.batch !== '') scope.batch = filter.batch;
+    }
+    return scope;
+  }
+
+  // 1. Fetch Target Configurations
+  app.get('/api/leetcode/targets', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    let query = `
+      SELECT t.*, 
+        u.full_name as student_name, 
+        c.name as class_name, 
+        d.name as department_name,
+        creator.full_name as creator_name
+      FROM leetcode_targets t
+      LEFT JOIN users u ON t.user_id = u.id
+      LEFT JOIN classes c ON t.class_id = c.id
+      LEFT JOIN departments d ON t.department_id = d.id
+      LEFT JOIN users creator ON t.created_by = creator.id
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+    if (scope.classId) {
+      params.push(scope.classId);
+      query += ` AND (t.class_id = $${params.length} OR t.user_id IN (SELECT id FROM users WHERE class_id = $${params.length}) OR t.year = (SELECT year FROM classes WHERE id = $${params.length}) OR (t.department_id = (SELECT department_id FROM classes WHERE id = $${params.length}) AND t.class_id IS NULL AND t.year IS NULL AND t.user_id IS NULL))`;
+    } else if (scope.year) {
+      params.push(scope.year);
+      query += ` AND (t.year = $${params.length} OR t.class_id IN (SELECT id FROM classes WHERE year = $${params.length}))`;
+    } else if (scope.departmentId) {
+      params.push(scope.departmentId);
+      query += ` AND (t.department_id = $${params.length} OR t.department_id IS NULL)`;
+    }
+    query += ` ORDER BY t.created_at DESC`;
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  }));
+
+  // 2. Create Target Configuration
+  app.post('/api/leetcode/targets', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const { dailyTarget, weeklyTarget, startDate, endDate, scopeType, targetValue } = req.body;
+    if (!startDate || !endDate) {
+      return res.status(400).json({ error: 'Start date and End date are required' });
+    }
+    const daily = parseInt(dailyTarget, 10) || 0;
+    const weekly = parseInt(weeklyTarget, 10) || 0;
+    const creatorId = req.user.id;
+
+    let userId: string | null = null;
+    let classId: string | null = null;
+    let year: number | null = null;
+    let departmentId: string | null = req.user.department_id || null;
+
+    if (scopeType === 'STUDENT') {
+      userId = targetValue;
+      const stdRes = await pool.query('SELECT class_id, department_id FROM users WHERE id = $1', [userId]);
+      if (stdRes.rows[0]) {
+        classId = stdRes.rows[0].class_id;
+        departmentId = stdRes.rows[0].department_id;
+      }
+    } else if (scopeType === 'CLASS') {
+      classId = targetValue;
+      const classRes = await pool.query('SELECT department_id FROM classes WHERE id = $1', [classId]);
+      if (classRes.rows[0]) {
+        departmentId = classRes.rows[0].department_id;
+      }
+    } else if (scopeType === 'YEAR') {
+      year = parseInt(targetValue, 10);
+    } else if (scopeType === 'DEPARTMENT') {
+      departmentId = targetValue;
+    }
+
+    // Boundary check
+    if (req.user.role === 'CLASS_ADVISOR' || (req.user.role === 'STUDENT' && req.user.is_coordinator)) {
+      if (scopeType === 'STUDENT' && classId?.toString() !== req.user.class_id?.toString()) {
+        return res.status(403).json({ error: 'Forbidden: You can only set targets for students in your class' });
+      }
+      if (scopeType === 'CLASS' && classId?.toString() !== req.user.class_id?.toString()) {
+        return res.status(403).json({ error: 'Forbidden: You can only set targets for your class section' });
+      }
+      if (scopeType === 'YEAR' || scopeType === 'DEPARTMENT') {
+        return res.status(403).json({ error: 'Forbidden: You cannot set batch or department-wide targets' });
+      }
+    } else if (req.user.role === 'STUDENT' && req.user.is_year_coordinator) {
+      if (scopeType === 'YEAR' && year !== req.user.year_scope) {
+        return res.status(403).json({ error: 'Forbidden: You can only set targets for your year scope' });
+      }
+      if (scopeType === 'CLASS') {
+        const clsRes = await pool.query('SELECT year FROM classes WHERE id = $1', [classId]);
+        if (clsRes.rows[0]?.year !== req.user.year_scope) {
+          return res.status(403).json({ error: 'Forbidden: You can only set targets for classes in your year' });
+        }
+      }
+    }
+
+    // Deduplication check: Check if a target with the exact scope and date range already exists
+    const existingCheck = await pool.query(`
+      SELECT id FROM leetcode_targets 
+      WHERE start_date = $1 AND end_date = $2 
+        AND ((user_id IS NULL AND $3::uuid IS NULL) OR user_id = $3)
+        AND ((class_id IS NULL AND $4::uuid IS NULL) OR class_id = $4)
+        AND ((year IS NULL AND $5::int IS NULL) OR year = $5)
+        AND ((department_id IS NULL AND $6::uuid IS NULL) OR department_id = $6)
+      LIMIT 1
+    `, [startDate, endDate, userId, classId, year, departmentId]);
+
+    let targetId: string;
+    if (existingCheck.rowCount > 0) {
+      targetId = existingCheck.rows[0].id;
+      await pool.query(`
+        UPDATE leetcode_targets 
+        SET daily_target = $1, weekly_target = $2, created_by = $3, updated_at = CURRENT_TIMESTAMP 
+        WHERE id = $4
+      `, [daily, weekly, creatorId, targetId]);
+    } else {
+      const insertRes = await pool.query(`
+        INSERT INTO leetcode_targets (daily_target, weekly_target, start_date, end_date, user_id, class_id, year, department_id, created_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id
+      `, [daily, weekly, startDate, endDate, userId, classId, year, departmentId, creatorId]);
+      targetId = insertRes.rows[0].id;
+    }
+
+    recalculateProgressStatuses(startDate, endDate, { userId: userId || undefined, classId: classId || undefined, year: year || undefined, departmentId: departmentId || undefined }).catch(err => console.error(err));
+    res.json({ success: true, targetId });
+  }));
+
+  // 3. Delete Target Configuration
+  app.delete('/api/leetcode/targets/:id', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const targetId = req.params.id;
+    const targetDetails = await pool.query('SELECT * FROM leetcode_targets WHERE id = $1', [targetId]);
+    if (targetDetails.rowCount === 0) {
+      return res.status(404).json({ error: 'Target not found' });
+    }
+    const t = targetDetails.rows[0];
+
+    if (req.user.role === 'CLASS_ADVISOR' || (req.user.role === 'STUDENT' && req.user.is_coordinator)) {
+      if (t.class_id?.toString() !== req.user.class_id?.toString() && t.user_id === null) {
+        return res.status(403).json({ error: 'Forbidden: You cannot delete this target' });
+      }
+    }
+
+    await pool.query('DELETE FROM leetcode_targets WHERE id = $1', [targetId]);
+    recalculateProgressStatuses(
+      new Date(t.start_date).toISOString().split('T')[0],
+      new Date(t.end_date).toISOString().split('T')[0],
+      { userId: t.user_id || undefined, classId: t.class_id || undefined, year: t.year || undefined, departmentId: t.department_id || undefined }
+    ).catch(err => console.error(err));
+    res.json({ success: true });
+  }));
+
+  // 4. Trigger Progress Sync
+  app.post('/api/leetcode/sync', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.body);
+    const syncResult = await syncLeetcodeProgressForScope(scope);
+    res.json(syncResult);
+  }));
+
+  // Helper to enrich student progress in batch (3 DB queries total for N students!)
+  async function enrichStudentProgressBatch(students: any[], dateStr: string) {
+    if (!students || students.length === 0) return [];
+
+    const week = getWeekRange(dateStr);
+    const studentIds = students.map(s => s.id);
+
+    // 1. Fetch all active targets for dateStr
+    const targetsRes = await pool.query(`
+      SELECT * FROM leetcode_targets 
+      WHERE start_date <= $1 AND end_date >= $1
+      ORDER BY 
+        CASE 
+          WHEN user_id IS NOT NULL THEN 1
+          WHEN class_id IS NOT NULL THEN 2
+          WHEN year IS NOT NULL THEN 3
+          WHEN department_id IS NOT NULL THEN 4
+          ELSE 5
+        END ASC,
+        created_at DESC
+    `, [dateStr]);
+    const activeTargets = targetsRes.rows;
+
+    // 2. Fetch daily progress logs for dateStr
+    const dailyRes = await pool.query(`
+      SELECT user_id, solved_today, status, total_solved 
+      FROM leetcode_daily_progress 
+      WHERE user_id = ANY($1) AND date = $2
+    `, [studentIds, dateStr]);
+
+    const dailyMap = new Map<string, any>();
+    for (const row of dailyRes.rows) {
+      dailyMap.set(row.user_id, row);
+    }
+
+    // 3. Fetch weekly aggregate progress logs
+    const weeklyRes = await pool.query(`
+      SELECT user_id, SUM(solved_today) as solved_week, COUNT(total_solved) as syncs_count 
+      FROM leetcode_daily_progress 
+      WHERE user_id = ANY($1) AND date >= $2 AND date <= $3
+      GROUP BY user_id
+    `, [studentIds, week.start, week.end]);
+
+    const weeklyMap = new Map<string, any>();
+    for (const row of weeklyRes.rows) {
+      weeklyMap.set(row.user_id, row);
+    }
+
+    // 4. Enrich all students in-memory
+    return students.map(student => {
+      const activeTarget = resolveTargetInMemory(student, activeTargets);
+      const studentDir = constantStudentByIdMap.get(student.id);
+      const leetcodeUrl = studentDir?.leetcode || '';
+
+      const dailyRow = dailyMap.get(student.id);
+      const solvedToday = dailyRow?.total_solved !== null && dailyRow?.total_solved !== undefined
+        ? Number(dailyRow.solved_today)
+        : 0;
+
+      let dailyStatus = 'NO_TARGET';
+      if (activeTarget.id !== null) {
+        dailyStatus = dailyRow?.status || (solvedToday >= activeTarget.daily_target ? 'COMPLETED' : 'NOT_COMPLETED');
+      }
+
+      const remainingDaily = activeTarget.id !== null
+        ? Math.max(0, activeTarget.daily_target - solvedToday)
+        : 0;
+
+      const completionDailyPct = activeTarget.daily_target > 0
+        ? Math.round((solvedToday / activeTarget.daily_target) * 100)
+        : 0;
+
+      const weeklyRow = weeklyMap.get(student.id);
+      const solvedThisWeek = Number(weeklyRow?.solved_week) || 0;
+      const syncsCount = Number(weeklyRow?.syncs_count) || 0;
+
+      let weeklyStatus = 'NO_TARGET';
+      if (activeTarget.id !== null) {
+        if (solvedThisWeek >= activeTarget.weekly_target) {
+          weeklyStatus = 'COMPLETED';
+        } else if (syncsCount === 0) {
+          weeklyStatus = 'DATA_UNAVAILABLE';
+        } else {
+          weeklyStatus = 'NOT_COMPLETED';
+        }
+      }
+
+      const remainingWeekly = activeTarget.id !== null
+        ? Math.max(0, activeTarget.weekly_target - solvedThisWeek)
+        : 0;
+
+      const completionWeeklyPct = activeTarget.weekly_target > 0
+        ? Math.round((solvedThisWeek / activeTarget.weekly_target) * 100)
+        : 0;
+
+      return {
+        studentId: student.id,
+        registerNumber: student.register_number,
+        fullName: student.full_name,
+        className: student.class_name || 'Unassigned',
+        leetcodeUsername: extractLeetCodeUsername(leetcodeUrl),
+        leetcodeUrl: leetcodeUrl,
+        dailyTarget: activeTarget.daily_target,
+        solvedToday,
+        remainingDaily,
+        completionDailyPct,
+        dailyStatus,
+        weeklyTarget: activeTarget.weekly_target,
+        solvedThisWeek,
+        remainingWeekly,
+        completionWeeklyPct,
+        weeklyStatus
+      };
+    });
+  }
+
+  // 5. Dashboard Summary Stats
+  app.get('/api/leetcode/stats', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+
+    const studentRows = await fetchStudentsForScope(scope);
+    const enrichedList = await enrichStudentProgressBatch(studentRows, dateStr);
+
+    const totalStudents = studentRows.length;
+    let metDaily = 0;
+    let inProgressDaily = 0;
+    let dailyCompleted = 0;
+    let dailyNotCompleted = 0;
+    let weeklyCompleted = 0;
+    let weeklyNotCompleted = 0;
+
+    for (const item of enrichedList) {
+      if (item.dailyStatus === 'COMPLETED') {
+        metDaily++;
+        dailyCompleted++;
+      } else if (item.dailyStatus === 'NOT_COMPLETED' || item.dailyStatus === 'DATA_UNAVAILABLE') {
+        if (item.solvedToday > 0) inProgressDaily++;
+        dailyNotCompleted++;
+      }
+      if (item.weeklyStatus === 'COMPLETED') weeklyCompleted++;
+      else if (item.weeklyStatus === 'NOT_COMPLETED') weeklyNotCompleted++;
+    }
+
+    const completionDailyRate = totalStudents > 0 ? Math.round((metDaily / totalStudents) * 100) : 0;
+
+    res.json({
+      totalStudents,
+      metDaily,
+      inProgressDaily,
+      completionDailyRate,
+      studentsAssigned: totalStudents,
+      dailyCompleted,
+      dailyNotCompleted,
+      weeklyCompleted,
+      weeklyNotCompleted
+    });
+  }));
+
+  // Optimized in-memory student lookup helper (uses RAM map when available, falls back to DB)
+  async function fetchStudentsForScope(scope: { classId?: string; year?: number; departmentId?: string; batch?: string }) {
+    if (scope.classId && constantStudentsByClassMap.has(scope.classId.toString())) {
+      const cached = constantStudentsByClassMap.get(scope.classId.toString())!;
+      return cached.map(s => ({
+        id: s.id,
+        register_number: s.register_number,
+        full_name: s.full_name,
+        class_id: s.class_id,
+        department_id: s.department_id,
+        year: s.year,
+        batch: s.batch,
+        class_name: s.class_name
+      }));
+    }
+
+    let baseQuery = `
+      SELECT u.id, u.register_number, u.full_name, u.class_id, u.department_id, c.year, c.batch, c.name as class_name
+      FROM users u
+      LEFT JOIN classes c ON u.class_id = c.id
+      WHERE u.role = 'STUDENT'
+    `;
+    const params: any[] = [];
+    if (scope.classId) {
+      params.push(scope.classId);
+      baseQuery += ` AND u.class_id = $${params.length}`;
+    }
+    if (scope.year) {
+      params.push(scope.year);
+      baseQuery += ` AND c.year = $${params.length}`;
+    }
+    if (scope.batch) {
+      params.push(scope.batch);
+      baseQuery += ` AND c.batch = $${params.length}`;
+    }
+    if (scope.departmentId) {
+      params.push(scope.departmentId);
+      baseQuery += ` AND u.department_id = $${params.length}`;
+    }
+    baseQuery += ` ORDER BY u.register_number ASC, u.full_name ASC`;
+
+    const students = await pool.query(baseQuery, params);
+    return students.rows;
+  }
+
+  // 6. Daily Monitoring Progress
+  app.get('/api/leetcode/progress/daily', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+    const statusFilter = req.query.status ? req.query.status.toString() : 'ALL';
+    const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
+
+    const studentRows = await fetchStudentsForScope(scope);
+    const enrichedList = await enrichStudentProgressBatch(studentRows, dateStr);
+
+    let filtered = enrichedList.filter(row => {
+      const matchSearch = row.fullName.toLowerCase().includes(search) || row.registerNumber.toLowerCase().includes(search);
+      if (!matchSearch) return false;
+
+      if (statusFilter !== 'ALL') {
+        const rowStatus = row.dailyStatus.replace('_', ' ').toUpperCase();
+        const filterUpper = statusFilter.replace('_', ' ').toUpperCase();
+        return rowStatus === filterUpper;
+      }
+      return true;
+    });
+
+    res.json(filtered);
+  }));
+
+  // 7. Weekly Monitoring Progress
+  app.get('/api/leetcode/progress/weekly', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+    const statusFilter = req.query.status ? req.query.status.toString() : 'ALL';
+    const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
+
+    const studentRows = await fetchStudentsForScope(scope);
+    const enrichedList = await enrichStudentProgressBatch(studentRows, dateStr);
+
+    let filtered = enrichedList.filter(row => {
+      const matchSearch = row.fullName.toLowerCase().includes(search) || row.registerNumber.toLowerCase().includes(search);
+      if (!matchSearch) return false;
+
+      if (statusFilter !== 'ALL') {
+        const rowStatus = row.weeklyStatus.replace('_', ' ').toUpperCase();
+        const filterUpper = statusFilter.replace('_', ' ').toUpperCase();
+        return rowStatus === filterUpper;
+      }
+      return true;
+    });
+
+    res.json(filtered);
+  }));
+
+  // 8. Student Personal Progress Card Details
+  app.get('/api/leetcode/progress/my', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const studentId = req.user.id;
+    const dateStr = getISTDateStr();
+    const stdRes = await pool.query(`
+      SELECT u.id, u.register_number, u.full_name, u.class_id, u.department_id, c.year
+      FROM users u
+      LEFT JOIN classes c ON u.class_id = c.id
+      WHERE u.id = $1 LIMIT 1
+    `, [studentId]);
+
+    if (stdRes.rowCount === 0) {
+      return res.status(404).json({ error: 'Student profile not found' });
+    }
+
+    const enriched = (await enrichStudentProgressBatch([stdRes.rows[0]], dateStr))[0];
+    res.json(enriched);
+  }));
+
+  // 9. Specific Student Progress History & Modal Details
+  app.get('/api/leetcode/progress/student/:studentId', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const { studentId } = req.params;
+    const dateStr = getISTDateStr();
+
+    const stdRes = await pool.query(`
+      SELECT u.id, u.register_number, u.full_name, u.class_id, u.department_id, c.year, c.name as class_name
+      FROM users u
+      LEFT JOIN classes c ON u.class_id = c.id
+      WHERE u.id = $1 LIMIT 1
+    `, [studentId]);
+
+    if (stdRes.rowCount === 0) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    const student = stdRes.rows[0];
+    const enriched = (await enrichStudentProgressBatch([student], dateStr))[0];
+
+    const dailyHistory = await pool.query(`
+      SELECT date, solved_today, daily_target, status
+      FROM leetcode_daily_progress
+      WHERE user_id = $1 AND total_solved IS NOT NULL
+      ORDER BY date DESC LIMIT 30
+    `, [studentId]);
+
+    const weeklyHistoryQuery = `
+      SELECT 
+        DATE_TRUNC('week', date) as week_start,
+        SUM(solved_today) as solved_week,
+        MAX(daily_target) * 5 as weekly_target_estimated
+      FROM leetcode_daily_progress
+      WHERE user_id = $1 AND total_solved IS NOT NULL
+      GROUP BY DATE_TRUNC('week', date)
+      ORDER BY week_start DESC LIMIT 4
+    `;
+    const weeklyHistoryRes = await pool.query(weeklyHistoryQuery, [studentId]);
+
+    const dailyPoints = dailyHistory.rows.map(r => ({
+      date: new Date(r.date).toISOString().split('T')[0],
+      actual: Number(r.solved_today),
+      target: Number(r.daily_target)
+    })).reverse();
+
+    const weeklyPoints: any[] = [];
+    const activeTarget = await getActiveTargetForStudent(pool, student.id, student.class_id, student.year ? Number(student.year) : null, student.department_id, dateStr);
+    
+    for (let k = 0; k < 4; k++) {
+      const offsetDate = new Date();
+      offsetDate.setDate(offsetDate.getDate() - k * 7);
+      const week = getWeekRange(offsetDate.toISOString().split('T')[0]);
+      
+      const dataRes = await pool.query(`
+        SELECT SUM(solved_today) as actual_total, MAX(daily_target) * 5 as target_total
+        FROM leetcode_daily_progress
+        WHERE user_id = $1 AND date >= $2 AND date <= $3 AND total_solved IS NOT NULL
+      `, [studentId, week.start, week.end]);
+
+      weeklyPoints.push({
+        week: `Week ${4-k}`,
+        start: week.start,
+        end: week.end,
+        actual: Number(dataRes.rows[0]?.actual_total) || 0,
+        target: Number(dataRes.rows[0]?.target_total) || 0
+      });
+    }
+
+    res.json({ daily: dailyPoints, weekly: weeklyPoints });
+  }));
+
+  // ─── LeetCode Excel Exports ─────────────────────────────────────────────────
+
+  // 1. Daily Excel Report
+  app.get('/api/leetcode/export/daily', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+    const statusFilter = req.query.status ? req.query.status.toString() : 'ALL';
+    const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
+
+    const studentRows = await fetchStudentsForScope(scope);
+    const enrichedList = await enrichStudentProgressBatch(studentRows, dateStr);
+
+    let filtered = enrichedList.filter(row => {
+      const matchSearch = row.fullName.toLowerCase().includes(search) || row.registerNumber.toLowerCase().includes(search);
+      if (!matchSearch) return false;
+      if (statusFilter !== 'ALL') {
+        const rowStatus = row.dailyStatus.replace('_', ' ').toUpperCase();
+        const filterUpper = statusFilter.replace('_', ' ').toUpperCase();
+        return rowStatus === filterUpper;
+      }
+      return true;
+    });
+
+    const excelData = filtered.map(row => ({
+      'Register No': row.registerNumber,
+      'Student Name': row.fullName,
+      'Section': row.className,
+      'LeetCode Profile': row.leetcodeUrl,
+      'Daily Target': row.dailyTarget,
+      'Solved Today': row.solvedToday,
+      'Remaining': row.remainingDaily,
+      'Completion %': `${row.completionDailyPct}%`,
+      'Status': row.dailyStatus.replace('_', ' ')
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    
+    // Auto-size columns
+    const colWidths = Object.keys(excelData[0] || {}).map(key => {
+      let maxLen = key.length;
+      for (const row of excelData) {
+        const val = (row as any)[key];
+        if (val !== undefined && val !== null) {
+          maxLen = Math.max(maxLen, String(val).length);
+        }
+      }
+      return { wch: maxLen + 3 };
+    });
+    ws['!cols'] = colWidths;
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Daily LeetCode Report');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=Leetcode_Daily_Report_${dateStr}.xlsx`);
+    res.send(buf);
+  }));
+
+  // 2. Weekly Excel Report
+  app.get('/api/leetcode/export/weekly', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+    const statusFilter = req.query.status ? req.query.status.toString() : 'ALL';
+    const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
+    const week = getWeekRange(dateStr);
+
+    const studentRows = await fetchStudentsForScope(scope);
+    const enrichedList = await enrichStudentProgressBatch(studentRows, dateStr);
+
+    let filtered = enrichedList.filter(row => {
+      const matchSearch = row.fullName.toLowerCase().includes(search) || row.registerNumber.toLowerCase().includes(search);
+      if (!matchSearch) return false;
+      if (statusFilter !== 'ALL') {
+        const rowStatus = row.weeklyStatus.replace('_', ' ').toUpperCase();
+        const filterUpper = statusFilter.replace('_', ' ').toUpperCase();
+        return rowStatus === filterUpper;
+      }
+      return true;
+    });
+
+    const excelData = filtered.map(row => ({
+      'Register No': row.registerNumber,
+      'Student Name': row.fullName,
+      'Section': row.className,
+      'Weekly Target': row.weeklyTarget,
+      'Solved This Week': row.solvedThisWeek,
+      'Remaining': row.remainingWeekly,
+      'Completion %': `${row.completionWeeklyPct}%`,
+      'Status': row.weeklyStatus.replace('_', ' ')
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    
+    const colWidths = Object.keys(excelData[0] || {}).map(key => {
+      let maxLen = key.length;
+      for (const row of excelData) {
+        const val = (row as any)[key];
+        if (val !== undefined && val !== null) {
+          maxLen = Math.max(maxLen, String(val).length);
+        }
+      }
+      return { wch: maxLen + 3 };
+    });
+    ws['!cols'] = colWidths;
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Weekly LeetCode Report');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=Leetcode_Weekly_Report_${week.start}_to_${week.end}.xlsx`);
+    res.send(buf);
+  }));
+
+  // 3. Weekly Detailed Excel Report (Monday -> Sunday breakdown)
+  app.get('/api/leetcode/export/weekly-detailed', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+    const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
+    const week = getWeekRange(dateStr);
+
+    const studentRows = await fetchStudentsForScope(scope);
+    const enrichedList = await enrichStudentProgressBatch(studentRows, dateStr);
+
+    let filtered = enrichedList.filter(row => {
+      return row.fullName.toLowerCase().includes(search) || row.registerNumber.toLowerCase().includes(search);
+    });
+
+    const weekProgressRes = await pool.query(
+      'SELECT user_id, date, solved_today FROM leetcode_daily_progress WHERE user_id = ANY($1) AND date >= $2 AND date <= $3',
+      [studentRows.map(s => s.id), week.start, week.end]
+    );
+    const dayMap = new Map();
+    for (const r of weekProgressRes.rows) {
+      const dStr = typeof r.date === 'string' ? r.date.split('T')[0] : new Date(r.date).toISOString().split('T')[0];
+      dayMap.set(`${r.user_id}_${dStr}`, Number(r.solved_today) || 0);
+    }
+
+    const detailedList = filtered.map(row => {
+      const studentId = row.studentId;
+      const mon = dayMap.get(`${studentId}_${week.start}`) || 0;
+      const tueDate = new Date(week.start); tueDate.setDate(tueDate.getDate() + 1);
+      const tue = dayMap.get(`${studentId}_${tueDate.toISOString().split('T')[0]}`) || 0;
+      const wedDate = new Date(week.start); wedDate.setDate(wedDate.getDate() + 2);
+      const wed = dayMap.get(`${studentId}_${wedDate.toISOString().split('T')[0]}`) || 0;
+      const thuDate = new Date(week.start); thuDate.setDate(thuDate.getDate() + 3);
+      const thu = dayMap.get(`${studentId}_${thuDate.toISOString().split('T')[0]}`) || 0;
+      const friDate = new Date(week.start); friDate.setDate(friDate.getDate() + 4);
+      const fri = dayMap.get(`${studentId}_${friDate.toISOString().split('T')[0]}`) || 0;
+      const satDate = new Date(week.start); satDate.setDate(satDate.getDate() + 5);
+      const sat = dayMap.get(`${studentId}_${satDate.toISOString().split('T')[0]}`) || 0;
+      const sun = dayMap.get(`${studentId}_${week.end}`) || 0;
+
+      return {
+        'Register No': row.registerNumber,
+        'Student Name': row.fullName,
+        'Section': row.className,
+        'Mon': mon,
+        'Tue': tue,
+        'Wed': wed,
+        'Thu': thu,
+        'Fri': fri,
+        'Sat': sat,
+        'Sun': sun,
+        'Weekly Solved': row.solvedThisWeek,
+        'Weekly Target': row.weeklyTarget,
+        'Completion %': `${row.completionWeeklyPct}%`,
+        'Status': row.weeklyStatus.replace('_', ' ')
+      };
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(detailedList);
+    
+    const colWidths = Object.keys(detailedList[0] || {}).map(key => {
+      let maxLen = key.length;
+      for (const row of detailedList) {
+        const val = (row as any)[key];
+        if (val !== undefined && val !== null) {
+          maxLen = Math.max(maxLen, String(val).length);
+        }
+      }
+      return { wch: maxLen + 3 };
+    });
+    ws['!cols'] = colWidths;
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Detailed Weekly Report');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=Leetcode_Weekly_Detailed_${week.start}_to_${week.end}.xlsx`);
+    res.send(buf);
+  }));
+
+  // 4. Incomplete Students Excel Report
+  app.get('/api/leetcode/export/incomplete', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+    const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
+
+    const studentRows = await fetchStudentsForScope(scope);
+    const enrichedList = await enrichStudentProgressBatch(studentRows, dateStr);
+
+    let filtered = enrichedList.filter(row => {
+      const matchSearch = row.fullName.toLowerCase().includes(search) || row.registerNumber.toLowerCase().includes(search);
+      if (!matchSearch) return false;
+      return row.dailyStatus === 'NOT_COMPLETED' || row.weeklyStatus === 'NOT_COMPLETED';
+    });
+
+    const excelData = filtered.map(row => ({
+      'Register No': row.registerNumber,
+      'Student Name': row.fullName,
+      'Section': row.className,
+      'Daily Target': row.dailyTarget,
+      'Solved Today': row.solvedToday,
+      'Daily Status': row.dailyStatus.replace('_', ' '),
+      'Weekly Target': row.weeklyTarget,
+      'Solved This Week': row.solvedThisWeek,
+      'Weekly Status': row.weeklyStatus.replace('_', ' ')
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    
+    const colWidths = Object.keys(excelData[0] || {}).map(key => {
+      let maxLen = key.length;
+      for (const row of excelData) {
+        const val = (row as any)[key];
+        if (val !== undefined && val !== null) {
+          maxLen = Math.max(maxLen, String(val).length);
+        }
+      }
+      return { wch: maxLen + 3 };
+    });
+    ws['!cols'] = colWidths;
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Defaulters Report');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=Leetcode_Defaulters_${dateStr}.xlsx`);
+    res.send(buf);
+  }));
+
+  // Daily LeetCode Sync Daemon at 11:50 PM IST
+  function scheduleDailySync() {
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const nowIST = new Date(now.getTime() + istOffset);
+    
+    const targetIST = new Date(nowIST);
+    targetIST.setUTCHours(23, 50, 0, 0); // 11:50 PM IST
+    
+    if (nowIST.getTime() >= targetIST.getTime()) {
+      targetIST.setUTCDate(targetIST.getUTCDate() + 1);
+    }
+    
+    const timeUntilSync = targetIST.getTime() - nowIST.getTime();
+    console.log(`[LeetCode Sync Daemon] Scheduled next sync in ${Math.round(timeUntilSync / 1000 / 60)} minutes.`);
+    
+    setTimeout(async () => {
+      console.log('[LeetCode Sync Daemon] Running scheduled daily sync...');
+      try {
+        await syncLeetcodeProgressForScope();
+        console.log('[LeetCode Sync Daemon] Daily sync completed.');
+      } catch (err) {
+        console.error('[LeetCode Sync Daemon] Scheduled sync failed:', err);
+      }
+      scheduleDailySync();
+    }, timeUntilSync);
+  }
+
+  // Trigger startup sync & start daemon scheduler
+  syncLeetcodeProgressForScope().catch(err => console.error('[LeetCode Sync] Startup sync error:', err));
+  scheduleDailySync();
+
+  // ── GitHub Targets & Progress API Module ─────────────────────────────────────
+
+  // Utility: Extract GitHub username from profile URL or raw username
+  function extractGitHubUsername(urlOrUsername: string): string {
+    if (!urlOrUsername || !urlOrUsername.trim()) return '';
+    const clean = urlOrUsername.trim().replace(/\/$/, '');
+    const match = clean.match(/github\.com\/([^/?#]+)/);
+    return match && match[1] ? match[1] : clean;
+  }
+
+  // Utility: Fetch GitHub stats (commits today + total public repos)
+  async function fetchGitHubStats(usernameOrUrl: string, dateStr: string): Promise<{ totalRepos: number; commitsToday: number } | null> {
+    const username = extractGitHubUsername(usernameOrUrl);
+    if (!username) return null;
+
+    const token = process.env.GITHUB_TOKEN;
+    if (!token) {
+      console.warn('[GitHub] GITHUB_TOKEN not set — GitHub tracking disabled');
+      return null;
+    }
+
+    const query = `
+      query($username: String!, $from: DateTime!, $to: DateTime!) {
+        user(login: $username) {
+          repositories(privacy: PUBLIC, first: 1, ownerAffiliations: OWNER) {
+            totalCount
+          }
+          contributionsCollection(from: $from, to: $to) {
+            contributionCalendar {
+              weeks {
+                contributionDays {
+                  date
+                  contributionCount
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const fromISO = `${dateStr}T00:00:00Z`;
+    const toISO = `${dateStr}T23:59:59Z`;
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const response = await fetch('https://api.github.com/graphql', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'User-Agent': 'IT-TaskManager-CodingTracker/1.0',
+          },
+          body: JSON.stringify({ query, variables: { username, from: fromISO, to: toISO } }),
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (!response.ok) {
+          if (response.status === 401 || response.status === 403) {
+            console.error(`[GitHub] Auth error for ${username}: ${response.status}`);
+            return null;
+          }
+          if (response.status === 429 && attempt < 3) {
+            await new Promise(res => setTimeout(res, 2000 * attempt));
+            continue;
+          }
+          return null;
+        }
+
+        const data: any = await response.json();
+        if (data.errors) {
+          const notFound = data.errors.some((e: any) => e.type === 'NOT_FOUND' || e.message?.includes('Could not resolve'));
+          if (notFound) return null;
+          if (attempt < 3) {
+            await new Promise(res => setTimeout(res, 2000));
+            continue;
+          }
+          return null;
+        }
+
+        const user = data?.data?.user;
+        if (!user) return null;
+
+        const totalRepos = Number(user.repositories?.totalCount) || 0;
+
+        // Sum commits on the target date
+        let commitsToday = 0;
+        const weeks = user.contributionsCollection?.contributionCalendar?.weeks || [];
+        for (const week of weeks) {
+          for (const day of (week.contributionDays || [])) {
+            if (day.date === dateStr) {
+              commitsToday = Number(day.contributionCount) || 0;
+              break;
+            }
+          }
+        }
+
+        return { totalRepos, commitsToday };
+      } catch (err: any) {
+        if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+          if (attempt < 3) { await new Promise(res => setTimeout(res, 2000)); continue; }
+          return null;
+        }
+        if (attempt < 3) { await new Promise(res => setTimeout(res, 2000)); continue; }
+        return null;
+      }
+    }
+    return null;
+  }
+
+  // Utility: Resolve active GitHub target for a student (4-level priority)
+  async function getActiveGitHubTargetForStudent(
+    client: any,
+    userId: string,
+    classId: string | null,
+    year: number | null,
+    departmentId: string | null,
+    dateStr: string
+  ) {
+    const nullTarget = { id: null, daily_commit_target: 0, weekly_commit_target: 0, daily_repo_target: 0, weekly_repo_target: 0 };
+    try {
+      // Level 1: Student-level
+      if (userId) {
+        const r = await client.query(
+          `SELECT * FROM github_targets WHERE user_id = $1 AND start_date <= $2 AND end_date >= $2 ORDER BY created_at DESC LIMIT 1`,
+          [userId, dateStr]
+        );
+        if (r.rows.length > 0) return r.rows[0];
+      }
+      // Level 2: Class-level
+      if (classId) {
+        const r = await client.query(
+          `SELECT * FROM github_targets WHERE class_id = $1 AND user_id IS NULL AND start_date <= $2 AND end_date >= $2 ORDER BY created_at DESC LIMIT 1`,
+          [classId, dateStr]
+        );
+        if (r.rows.length > 0) return r.rows[0];
+      }
+      // Level 3: Year-level
+      if (year !== null && departmentId) {
+        const r = await client.query(
+          `SELECT * FROM github_targets WHERE year = $1 AND department_id = $2 AND user_id IS NULL AND class_id IS NULL AND start_date <= $3 AND end_date >= $3 ORDER BY created_at DESC LIMIT 1`,
+          [year, departmentId, dateStr]
+        );
+        if (r.rows.length > 0) return r.rows[0];
+      }
+      // Level 4: Department-level
+      if (departmentId) {
+        const r = await client.query(
+          `SELECT * FROM github_targets WHERE department_id = $1 AND user_id IS NULL AND class_id IS NULL AND year IS NULL AND start_date <= $2 AND end_date >= $2 ORDER BY created_at DESC LIMIT 1`,
+          [departmentId, dateStr]
+        );
+        if (r.rows.length > 0) return r.rows[0];
+      }
+      return nullTarget;
+    } catch {
+      return nullTarget;
+    }
+  }
+
+  // Utility: Resolve GitHub target in-memory from a pre-fetched targets list
+  function resolveGitHubTargetInMemory(student: any, activeTargets: any[]) {
+    const nullTarget = { id: null, daily_commit_target: 0, weekly_commit_target: 0, daily_repo_target: 0, weekly_repo_target: 0 };
+
+    // Level 1: Student
+    const studentTarget = activeTargets.find(t => t.user_id === student.id);
+    if (studentTarget) return studentTarget;
+
+    // Level 2: Class
+    const classTarget = activeTargets.find(t => !t.user_id && t.class_id && t.class_id === student.class_id);
+    if (classTarget) return classTarget;
+
+    // Level 3: Year (must also match department)
+    const yearTarget = activeTargets.find(t =>
+      !t.user_id && !t.class_id && t.year !== null &&
+      t.year === Number(student.year) && t.department_id === student.department_id
+    );
+    if (yearTarget) return yearTarget;
+
+    // Level 4: Department (only if user_id, class_id, year are all null)
+    const deptTarget = activeTargets.find(t =>
+      !t.user_id && !t.class_id && t.year === null &&
+      t.department_id === student.department_id
+    );
+    if (deptTarget) return deptTarget;
+
+    return nullTarget;
+  }
+
+  // Core: Sync GitHub progress for all (or scoped) students
+  async function syncGitHubProgressForScope(scopeFilter?: { departmentId?: string; classId?: string; year?: number; userId?: string }) {
+    const dateStr = getISTDateStr();
+    let synced = 0, failed = 0;
+
+    try {
+      let query = `
+        SELECT u.id, u.register_number, u.full_name, u.class_id, u.department_id, c.year, c.name as class_name
+        FROM users u
+        LEFT JOIN classes c ON u.class_id = c.id
+        WHERE u.role = 'STUDENT'
+      `;
+      const params: any[] = [];
+
+      if (scopeFilter?.userId) {
+        params.push(scopeFilter.userId); query += ` AND u.id = $${params.length}`;
+      } else if (scopeFilter?.classId) {
+        params.push(scopeFilter.classId); query += ` AND u.class_id = $${params.length}`;
+      } else if (scopeFilter?.year) {
+        params.push(scopeFilter.year); query += ` AND c.year = $${params.length}`;
+        if (scopeFilter.departmentId) { params.push(scopeFilter.departmentId); query += ` AND u.department_id = $${params.length}`; }
+      } else if (scopeFilter?.departmentId) {
+        params.push(scopeFilter.departmentId); query += ` AND u.department_id = $${params.length}`;
+      }
+
+      const students = (await pool.query(query, params)).rows;
+      const total = students.length;
+      console.log(`[GitHub Sync] Starting sync for ${total} students on ${dateStr}...`);
+
+      // Process in batches of 10 (GitHub GraphQL rate limit: 5000 pts/hr)
+      const BATCH_SIZE = 10;
+      const BATCH_DELAY_MS = 500;
+
+      for (let i = 0; i < students.length; i += BATCH_SIZE) {
+        const batch = students.slice(i, i + BATCH_SIZE);
+
+        await Promise.all(batch.map(async (student) => {
+          const studentDir = constantStudentByIdMap.get(student.id);
+          const githubProfile = studentDir?.github || '';
+
+          if (!githubProfile) {
+            // No GitHub username — record as DATA_UNAVAILABLE
+            await pool.query(`
+              INSERT INTO github_daily_progress
+                (user_id, date, github_username, commits_today, new_repos_today, total_repos, commit_status, repo_status, sync_status)
+              VALUES ($1, $2, '', 0, 0, NULL, 'DATA_UNAVAILABLE', 'DATA_UNAVAILABLE', 'NO_PROFILE')
+              ON CONFLICT (user_id, date) DO UPDATE
+                SET sync_status = 'NO_PROFILE', commit_status = 'DATA_UNAVAILABLE', repo_status = 'DATA_UNAVAILABLE', updated_at = CURRENT_TIMESTAMP
+            `, [student.id, dateStr]);
+            return;
+          }
+
+          try {
+            const stats = await fetchGitHubStats(githubProfile, dateStr);
+
+            if (stats === null) {
+              // Fetch failed — preserve existing data, mark FETCH_FAILED
+              await pool.query(`
+                INSERT INTO github_daily_progress
+                  (user_id, date, github_username, commits_today, new_repos_today, total_repos, commit_status, repo_status, sync_status, error_message)
+                VALUES ($1, $2, $3, 0, 0, NULL, 'FETCH_FAILED', 'FETCH_FAILED', 'ERROR', 'GitHub API fetch failed')
+                ON CONFLICT (user_id, date) DO UPDATE
+                  SET sync_status = 'ERROR', commit_status = CASE WHEN github_daily_progress.commit_status = 'NO_TARGET' THEN 'FETCH_FAILED' ELSE github_daily_progress.commit_status END,
+                      error_message = 'GitHub API fetch failed', updated_at = CURRENT_TIMESTAMP
+              `, [student.id, dateStr, extractGitHubUsername(githubProfile)]);
+              failed++;
+              return;
+            }
+
+            const { totalRepos, commitsToday } = stats;
+
+            // Calculate new repos today (baseline-aware)
+            const prevDayDate = new Date(dateStr);
+            prevDayDate.setDate(prevDayDate.getDate() - 1);
+            const prevDateStr = prevDayDate.toISOString().split('T')[0];
+
+            const prevRes = await pool.query(
+              `SELECT total_repos FROM github_daily_progress WHERE user_id = $1 AND date = $2`,
+              [student.id, prevDateStr]
+            );
+
+            // Check if there's a same-day existing record
+            const todayRes = await pool.query(
+              `SELECT total_repos, new_repos_today FROM github_daily_progress WHERE user_id = $1 AND date = $2`,
+              [student.id, dateStr]
+            );
+
+            let newReposToday = 0;
+            if (todayRes.rows.length > 0 && todayRes.rows[0].total_repos !== null) {
+              // Same-day re-sync: diff from today's opening snapshot
+              const baselineRepos = todayRes.rows[0].total_repos - todayRes.rows[0].new_repos_today;
+              newReposToday = Math.max(0, totalRepos - baselineRepos);
+            } else if (prevRes.rows.length > 0 && prevRes.rows[0].total_repos !== null) {
+              // New day: diff from yesterday
+              newReposToday = Math.max(0, totalRepos - Number(prevRes.rows[0].total_repos));
+            } else {
+              // First-ever sync — establish baseline
+              newReposToday = 0;
+            }
+
+            // Resolve active target
+            const activeTarget = await getActiveGitHubTargetForStudent(pool, student.id, student.class_id, student.year ? Number(student.year) : null, student.department_id, dateStr);
+
+            const commitTarget = Number(activeTarget.daily_commit_target) || 0;
+            const repoTarget = Number(activeTarget.daily_repo_target) || 0;
+            const weeklyCommitTarget = Number(activeTarget.weekly_commit_target) || 0;
+            const weeklyRepoTarget = Number(activeTarget.weekly_repo_target) || 0;
+
+            let commitStatus = 'NO_TARGET';
+            let repoStatus = 'NO_TARGET';
+
+            if (activeTarget.id !== null) {
+              commitStatus = commitsToday >= commitTarget ? 'COMPLETED' : 'NOT_COMPLETED';
+              if (repoTarget > 0) {
+                repoStatus = newReposToday >= repoTarget ? 'COMPLETED' : 'NOT_COMPLETED';
+              } else {
+                repoStatus = 'NO_TARGET';
+              }
+            }
+
+            await pool.query(`
+              INSERT INTO github_daily_progress
+                (user_id, date, github_username, total_repos, new_repos_today, commits_today,
+                 commit_target, repo_target, weekly_commit_target, weekly_repo_target,
+                 commit_status, repo_status, sync_status, error_message)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'SUCCESS', NULL)
+              ON CONFLICT (user_id, date) DO UPDATE
+                SET github_username = EXCLUDED.github_username,
+                    total_repos = EXCLUDED.total_repos,
+                    new_repos_today = EXCLUDED.new_repos_today,
+                    commits_today = EXCLUDED.commits_today,
+                    commit_target = EXCLUDED.commit_target,
+                    repo_target = EXCLUDED.repo_target,
+                    weekly_commit_target = EXCLUDED.weekly_commit_target,
+                    weekly_repo_target = EXCLUDED.weekly_repo_target,
+                    commit_status = EXCLUDED.commit_status,
+                    repo_status = EXCLUDED.repo_status,
+                    sync_status = 'SUCCESS',
+                    error_message = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+            `, [student.id, dateStr, extractGitHubUsername(githubProfile), totalRepos, newReposToday,
+                commitsToday, commitTarget, repoTarget, weeklyCommitTarget, weeklyRepoTarget,
+                commitStatus, repoStatus]);
+
+            synced++;
+          } catch (err: any) {
+            console.error(`[GitHub Sync] Error for student ${student.register_number}:`, err.message);
+            failed++;
+          }
+        }));
+
+        if (i + BATCH_SIZE < students.length) {
+          await new Promise(res => setTimeout(res, BATCH_DELAY_MS));
+        }
+      }
+
+      console.log(`[GitHub Sync] Completed. Synced: ${synced}, Failed: ${failed}, Total: ${total}`);
+      return { synced, failed, total };
+    } catch (err) {
+      console.error('[syncGitHubProgressForScope] Error:', err);
+      throw err;
+    }
+  }
+
+  // Enrich student list with GitHub progress data (batch-optimized for 400 students)
+  async function enrichStudentGitHubProgressBatch(students: any[], dateStr: string) {
+    if (!students || students.length === 0) return [];
+
+    const week = getWeekRange(dateStr);
+    const studentIds = students.map(s => s.id);
+
+    // 1. Fetch all active GitHub targets
+    const targetsRes = await pool.query(`
+      SELECT * FROM github_targets
+      WHERE start_date <= $1 AND end_date >= $1
+      ORDER BY
+        CASE
+          WHEN user_id IS NOT NULL THEN 1
+          WHEN class_id IS NOT NULL THEN 2
+          WHEN year IS NOT NULL THEN 3
+          WHEN department_id IS NOT NULL THEN 4
+          ELSE 5
+        END ASC,
+        created_at DESC
+    `, [dateStr]);
+    const activeTargets = targetsRes.rows;
+
+    // 2. Fetch daily GitHub progress for all students
+    const dailyRes = await pool.query(`
+      SELECT user_id, github_username, total_repos, new_repos_today, commits_today,
+             commit_target, repo_target, commit_status, repo_status, sync_status
+      FROM github_daily_progress
+      WHERE user_id = ANY($1) AND date = $2
+    `, [studentIds, dateStr]);
+    const dailyMap = new Map<string, any>();
+    for (const row of dailyRes.rows) dailyMap.set(row.user_id, row);
+
+    // 3. Fetch weekly GitHub aggregate
+    const weeklyRes = await pool.query(`
+      SELECT user_id,
+             SUM(commits_today) as commits_week,
+             SUM(new_repos_today) as repos_week
+      FROM github_daily_progress
+      WHERE user_id = ANY($1) AND date >= $2 AND date <= $3
+      GROUP BY user_id
+    `, [studentIds, week.start, week.end]);
+    const weeklyMap = new Map<string, any>();
+    for (const row of weeklyRes.rows) weeklyMap.set(row.user_id, row);
+
+    // 4. Enrich each student
+    return students.map(student => {
+      const activeTarget = resolveGitHubTargetInMemory(student, activeTargets);
+      const studentDir = constantStudentByIdMap.get(student.id);
+      const githubUrl = studentDir?.github || '';
+      const githubUsername = extractGitHubUsername(githubUrl);
+
+      const dailyRow = dailyMap.get(student.id);
+      const commitsToday = dailyRow?.sync_status === 'SUCCESS' ? Number(dailyRow.commits_today) || 0 : 0;
+      const newReposToday = dailyRow?.sync_status === 'SUCCESS' ? Number(dailyRow.new_repos_today) || 0 : 0;
+
+      let commitStatus = 'NO_TARGET';
+      let repoStatus = 'NO_TARGET';
+      if (dailyRow) {
+        commitStatus = dailyRow.commit_status || 'NO_TARGET';
+        repoStatus = dailyRow.repo_status || 'NO_TARGET';
+      } else if (activeTarget.id !== null) {
+        commitStatus = 'DATA_UNAVAILABLE';
+        repoStatus = 'DATA_UNAVAILABLE';
+      }
+
+      const commitTarget = activeTarget.id !== null ? Number(activeTarget.daily_commit_target) || 0 : 0;
+      const repoTarget = activeTarget.id !== null ? Number(activeTarget.daily_repo_target) || 0 : 0;
+      const weeklyCommitTarget = activeTarget.id !== null ? Number(activeTarget.weekly_commit_target) || 0 : 0;
+      const weeklyRepoTarget = activeTarget.id !== null ? Number(activeTarget.weekly_repo_target) || 0 : 0;
+
+      const remainingCommits = commitTarget > 0 ? Math.max(0, commitTarget - commitsToday) : 0;
+      const completionCommitPct = commitTarget > 0 ? Math.round((commitsToday / commitTarget) * 100) : 0;
+
+      const weeklyRow = weeklyMap.get(student.id);
+      const commitsThisWeek = Number(weeklyRow?.commits_week) || 0;
+      const reposThisWeek = Number(weeklyRow?.repos_week) || 0;
+
+      let weeklyCommitStatus = 'NO_TARGET';
+      if (activeTarget.id !== null) {
+        weeklyCommitStatus = commitsThisWeek >= weeklyCommitTarget ? 'COMPLETED' : 'NOT_COMPLETED';
+      }
+
+      const remainingWeeklyCommits = weeklyCommitTarget > 0 ? Math.max(0, weeklyCommitTarget - commitsThisWeek) : 0;
+      const completionWeeklyCommitPct = weeklyCommitTarget > 0 ? Math.round((commitsThisWeek / weeklyCommitTarget) * 100) : 0;
+
+      return {
+        studentId: student.id,
+        registerNumber: student.register_number,
+        fullName: student.full_name,
+        className: student.class_name || student.class_id || 'Unassigned',
+        githubUrl,
+        githubUsername,
+        commitsToday,
+        newReposToday,
+        commitTarget,
+        repoTarget,
+        weeklyCommitTarget,
+        weeklyRepoTarget,
+        remainingCommits,
+        completionCommitPct,
+        commitStatus,
+        repoStatus,
+        commitsThisWeek,
+        reposThisWeek,
+        remainingWeeklyCommits,
+        completionWeeklyCommitPct,
+        weeklyCommitStatus,
+        syncStatus: dailyRow?.sync_status || 'NOT_SYNCED',
+      };
+    });
+  }
+
+  // ── GitHub REST API Routes ───────────────────────────────────────────────────
+
+  app.get('/api/github/targets', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    let query = `
+      SELECT t.*, u.full_name as student_name, c.name as class_name,
+             d.name as dept_name, cb.full_name as created_by_name
+      FROM github_targets t
+      LEFT JOIN users u ON t.user_id = u.id
+      LEFT JOIN classes c ON t.class_id = c.id
+      LEFT JOIN departments d ON t.department_id = d.id
+      LEFT JOIN users cb ON t.created_by = cb.id
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+    if (scope.classId) {
+      params.push(scope.classId);
+      query += ` AND (t.class_id = $${params.length} OR t.user_id IN (SELECT id FROM users WHERE class_id = $${params.length}) OR t.year = (SELECT year FROM classes WHERE id = $${params.length}) OR (t.department_id = (SELECT department_id FROM classes WHERE id = $${params.length}) AND t.class_id IS NULL AND t.year IS NULL AND t.user_id IS NULL))`;
+    } else if (scope.year) {
+      params.push(scope.year);
+      query += ` AND (t.year = $${params.length} OR t.class_id IN (SELECT id FROM classes WHERE year = $${params.length}))`;
+    } else if (scope.departmentId) {
+      params.push(scope.departmentId);
+      query += ` AND (t.department_id = $${params.length} OR t.department_id IS NULL)`;
+    }
+    query += ` ORDER BY t.created_at DESC`;
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  }));
+
+  // 2. Create / Update GitHub Target (upsert by scope+dates)
+  app.post('/api/github/targets', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const { daily_commit_target, weekly_commit_target, daily_repo_target, weekly_repo_target,
+            start_date, end_date, user_id, class_id, year, department_id } = req.body;
+
+    if (!start_date || !end_date) return res.status(400).json({ error: 'start_date and end_date are required' });
+
+    const existingRes = await pool.query(`
+      SELECT id FROM github_targets
+      WHERE start_date = $1 AND end_date = $2
+        AND COALESCE(user_id::text, '') = COALESCE($3::text, '')
+        AND COALESCE(class_id::text, '') = COALESCE($4::text, '')
+        AND COALESCE(year::text, '') = COALESCE($5::text, '')
+        AND COALESCE(department_id::text, '') = COALESCE($6::text, '')
+      LIMIT 1
+    `, [start_date, end_date, user_id || null, class_id || null, year || null, department_id || null]);
+
+    let target;
+    if (existingRes.rows.length > 0) {
+      const upd = await pool.query(`
+        UPDATE github_targets SET
+          daily_commit_target = $1, weekly_commit_target = $2,
+          daily_repo_target = $3, weekly_repo_target = $4,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = $5 RETURNING *
+      `, [daily_commit_target || 0, weekly_commit_target || 0, daily_repo_target || 0, weekly_repo_target || 0, existingRes.rows[0].id]);
+      target = upd.rows[0];
+    } else {
+      const ins = await pool.query(`
+        INSERT INTO github_targets
+          (daily_commit_target, weekly_commit_target, daily_repo_target, weekly_repo_target,
+           start_date, end_date, user_id, class_id, year, department_id, created_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING *
+      `, [daily_commit_target || 0, weekly_commit_target || 0, daily_repo_target || 0, weekly_repo_target || 0,
+          start_date, end_date, user_id || null, class_id || null, year || null, department_id || null, req.user.id]);
+      target = ins.rows[0];
+    }
+    res.json({ success: true, target });
+  }));
+
+  // 3. Delete GitHub Target
+  app.delete('/api/github/targets/:id', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const { id } = req.params;
+    const chk = await pool.query('SELECT id FROM github_targets WHERE id = $1', [id]);
+    if (chk.rowCount === 0) return res.status(404).json({ error: 'Target not found' });
+    await pool.query('DELETE FROM github_targets WHERE id = $1', [id]);
+    res.json({ success: true });
+  }));
+
+  // 4. Manual GitHub Sync Trigger
+  app.post('/api/github/sync', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const { departmentId, classId, year, userId } = req.body || {};
+    const scope = enforceUserScopeFilter(req.user, { departmentId, classId, year, userId });
+    res.json({ message: 'GitHub sync started in background' });
+    syncGitHubProgressForScope(scope).catch(err => console.error('[GitHub Sync] Manual sync error:', err));
+  }));
+
+  app.get('/api/github/stats', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+
+    const studentRows = await fetchStudentsForScope(scope);
+    const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
+
+    const week = getWeekRange(dateStr);
+    const weeklyAgg = await pool.query(`
+      SELECT SUM(commits_today) as total_commits, SUM(new_repos_today) as total_repos
+      FROM github_daily_progress
+      WHERE user_id = ANY($1) AND date >= $2 AND date <= $3
+    `, [studentRows.map(s => s.id), week.start, week.end]);
+
+    const totalStudents = studentRows.length;
+    let metDaily = 0;
+    let inProgressDaily = 0;
+    let dailyCompleted = 0;
+    let dailyNotCompleted = 0;
+    let weeklyCompleted = 0;
+    let weeklyNotCompleted = 0;
+    let commitsToday = 0;
+    let newReposToday = 0;
+
+    for (const item of enrichedList) {
+      commitsToday += item.commitsToday;
+      newReposToday += item.newReposToday;
+      if (item.commitsToday > 0) inProgressDaily++;
+      if (item.commitStatus === 'COMPLETED') {
+        metDaily++;
+        dailyCompleted++;
+      } else if (item.commitStatus === 'NOT_COMPLETED' || item.commitStatus === 'DATA_UNAVAILABLE') {
+        dailyNotCompleted++;
+      }
+      if (item.weeklyCommitStatus === 'COMPLETED') weeklyCompleted++;
+      else if (item.weeklyCommitStatus === 'NOT_COMPLETED') weeklyNotCompleted++;
+    }
+
+    const completionDailyRate = totalStudents > 0 ? Math.round((metDaily / totalStudents) * 100) : 0;
+
+    res.json({
+      totalStudents,
+      metDaily,
+      inProgressDaily,
+      completionDailyRate,
+      commitsToday,
+      commitsThisWeek: Number(weeklyAgg.rows[0]?.total_commits) || 0,
+      newReposToday,
+      newReposThisWeek: Number(weeklyAgg.rows[0]?.total_repos) || 0,
+      dailyCompleted,
+      dailyNotCompleted,
+      weeklyCompleted,
+      weeklyNotCompleted
+    });
+  }));
+
+  // 6. GitHub Daily Progress Grid
+  app.get('/api/github/progress/daily', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+    const statusFilter = req.query.status ? req.query.status.toString() : 'ALL';
+    const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
+
+    const studentRows = await fetchStudentsForScope(scope);
+    const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
+
+    const filtered = enrichedList.filter(row => {
+      const matchSearch = row.fullName.toLowerCase().includes(search) || row.registerNumber.toLowerCase().includes(search) || row.githubUsername.toLowerCase().includes(search);
+      if (!matchSearch) return false;
+      if (statusFilter !== 'ALL') return row.commitStatus.toUpperCase() === statusFilter.toUpperCase();
+      return true;
+    });
+
+    res.json(filtered);
+  }));
+
+  // 7. GitHub Weekly Progress Grid
+  app.get('/api/github/progress/weekly', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+    const statusFilter = req.query.status ? req.query.status.toString() : 'ALL';
+    const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
+
+    const studentRows = await fetchStudentsForScope(scope);
+    const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
+
+    const filtered = enrichedList.filter(row => {
+      const matchSearch = row.fullName.toLowerCase().includes(search) || row.registerNumber.toLowerCase().includes(search);
+      if (!matchSearch) return false;
+      if (statusFilter !== 'ALL') return row.weeklyCommitStatus.toUpperCase() === statusFilter.toUpperCase();
+      return true;
+    });
+
+    res.json(filtered);
+  }));
+
+  // 8. Student's own GitHub progress
+  app.get('/api/github/progress/my', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const studentId = req.user.id;
+    const dateStr = getISTDateStr();
+    const stdRes = await pool.query(`
+      SELECT u.id, u.register_number, u.full_name, u.class_id, u.department_id, c.year, c.name as class_name
+      FROM users u LEFT JOIN classes c ON u.class_id = c.id
+      WHERE u.id = $1 LIMIT 1
+    `, [studentId]);
+    if (stdRes.rowCount === 0) return res.status(404).json({ error: 'Student not found' });
+    const enriched = (await enrichStudentGitHubProgressBatch([stdRes.rows[0]], dateStr))[0];
+    res.json(enriched);
+  }));
+
+  // 9. Specific student GitHub progress history
+  app.get('/api/github/progress/student/:studentId', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const { studentId } = req.params;
+    const dateStr = getISTDateStr();
+    const stdRes = await pool.query(`
+      SELECT u.id, u.register_number, u.full_name, u.class_id, u.department_id, c.year, c.name as class_name
+      FROM users u LEFT JOIN classes c ON u.class_id = c.id
+      WHERE u.id = $1 LIMIT 1
+    `, [studentId]);
+    if (stdRes.rowCount === 0) return res.status(404).json({ error: 'Student not found' });
+
+    const enriched = (await enrichStudentGitHubProgressBatch([stdRes.rows[0]], dateStr))[0];
+
+    const history = await pool.query(`
+      SELECT date, commits_today, new_repos_today, commit_target, commit_status, repo_status, sync_status
+      FROM github_daily_progress
+      WHERE user_id = $1
+      ORDER BY date DESC LIMIT 30
+    `, [studentId]);
+
+    const dailyPoints = history.rows.map(r => ({
+      date: typeof r.date === 'string' ? r.date.split('T')[0] : new Date(r.date).toISOString().split('T')[0],
+      commits: Number(r.commits_today),
+      repos: Number(r.new_repos_today),
+      target: Number(r.commit_target),
+      status: r.commit_status,
+    })).reverse();
+
+    res.json({ ...enriched, history: dailyPoints });
+  }));
+
+  // ── Combined Coding Progress (LeetCode + GitHub) ─────────────────────────────
+
+  app.get('/api/coding/progress/combined', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+    const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
+
+    let baseQuery = `
+      SELECT u.id, u.register_number, u.full_name, u.class_id, u.department_id, c.year, c.batch, c.name as class_name
+      FROM users u LEFT JOIN classes c ON u.class_id = c.id
+      WHERE u.role = 'STUDENT'
+    `;
+    const params: any[] = [];
+    if (scope.classId) { params.push(scope.classId); baseQuery += ` AND u.class_id = $${params.length}`; }
+    if (scope.year) { params.push(scope.year); baseQuery += ` AND c.year = $${params.length}`; }
+    if (scope.departmentId) { params.push(scope.departmentId); baseQuery += ` AND u.department_id = $${params.length}`; }
+    baseQuery += ` ORDER BY u.register_number ASC`;
+
+    const students = await pool.query(baseQuery, params);
+
+    const [lcList, ghList] = await Promise.all([
+      enrichStudentProgressBatch(students.rows, dateStr),
+      enrichStudentGitHubProgressBatch(students.rows, dateStr),
+    ]);
+
+    const ghMap = new Map(ghList.map(g => [g.studentId, g]));
+    const combined = lcList.map(lc => {
+      const gh = ghMap.get(lc.studentId) || {};
+      return { ...lc, ...gh, studentId: lc.studentId };
+    }).filter(row => {
+      return !search || row.fullName.toLowerCase().includes(search) || row.registerNumber.toLowerCase().includes(search);
+    });
+
+    res.json(combined);
+  }));
+
+  // ── GitHub Excel Exports ─────────────────────────────────────────────────────
+
+  // Daily GitHub Report
+  app.get('/api/github/export/daily', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+    const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
+
+    const studentRows = await fetchStudentsForScope(scope);
+    const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
+    const filtered = enrichedList.filter(r => !search || r.fullName.toLowerCase().includes(search) || r.registerNumber.toLowerCase().includes(search));
+
+    const excelData = filtered.map(r => ({
+      'Register No': r.registerNumber, 'Student Name': r.fullName, 'Section': r.className,
+      'GitHub Username': r.githubUsername,
+      'Commit Target': r.commitTarget, 'Commits Today': r.commitsToday,
+      'Remaining': r.remainingCommits, 'Commit %': `${r.completionCommitPct}%`,
+      'Commit Status': r.commitStatus.replace('_', ' '),
+      'Repo Target': r.repoTarget, 'New Repos Today': r.newReposToday,
+      'Repo Status': r.repoStatus.replace('_', ' '),
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    ws['!cols'] = Object.keys(excelData[0] || {}).map(k => { let m = k.length; for (const r of excelData) { const v = (r as any)[k]; if (v) m = Math.max(m, String(v).length); } return { wch: m + 3 }; });
+    XLSX.utils.book_append_sheet(wb, ws, 'GitHub Daily Report');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=GitHub_Daily_Report_${dateStr}.xlsx`);
+    res.send(buf);
+  }));
+
+  // Weekly GitHub Report
+  app.get('/api/github/export/weekly', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+    const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
+    const week = getWeekRange(dateStr);
+
+    const studentRows = await fetchStudentsForScope(scope);
+    const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
+    const filtered = enrichedList.filter(r => !search || r.fullName.toLowerCase().includes(search) || r.registerNumber.toLowerCase().includes(search));
+
+    const excelData = filtered.map(r => ({
+      'Register No': r.registerNumber, 'Student Name': r.fullName, 'Section': r.className,
+      'GitHub Username': r.githubUsername,
+      'Weekly Commit Target': r.weeklyCommitTarget, 'Commits This Week': r.commitsThisWeek,
+      'Remaining': r.remainingWeeklyCommits, 'Commit %': `${r.completionWeeklyCommitPct}%`,
+      'Weekly Commit Status': r.weeklyCommitStatus.replace('_', ' '),
+      'Weekly Repo Target': r.weeklyRepoTarget, 'New Repos This Week': r.reposThisWeek,
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    ws['!cols'] = Object.keys(excelData[0] || {}).map(k => { let m = k.length; for (const r of excelData) { const v = (r as any)[k]; if (v) m = Math.max(m, String(v).length); } return { wch: m + 3 }; });
+    XLSX.utils.book_append_sheet(wb, ws, 'GitHub Weekly Report');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=GitHub_Weekly_Report_${week.start}_to_${week.end}.xlsx`);
+    res.send(buf);
+  }));
+
+  // Weekly Detailed GitHub Report (Mon→Sun breakdown)
+  app.get('/api/github/export/weekly-detailed', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+    const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
+    const week = getWeekRange(dateStr);
+
+    const studentRows = await fetchStudentsForScope(scope);
+    const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
+    const filtered = enrichedList.filter(r => !search || r.fullName.toLowerCase().includes(search) || r.registerNumber.toLowerCase().includes(search));
+
+    const weekProgressRes = await pool.query(
+      'SELECT user_id, date, commits_today, new_repos_today FROM github_daily_progress WHERE user_id = ANY($1) AND date >= $2 AND date <= $3',
+      [studentRows.map(s => s.id), week.start, week.end]
+    );
+    const dayMap = new Map<string, { commits: number; repos: number }>();
+    for (const r of weekProgressRes.rows) {
+      const dStr = typeof r.date === 'string' ? r.date.split('T')[0] : new Date(r.date).toISOString().split('T')[0];
+      dayMap.set(`${r.user_id}_${dStr}`, { commits: Number(r.commits_today) || 0, repos: Number(r.new_repos_today) || 0 });
+    }
+
+    const getDay = (id: string, offset: number) => {
+      const d = new Date(week.start); d.setDate(d.getDate() + offset);
+      return dayMap.get(`${id}_${d.toISOString().split('T')[0]}`) || { commits: 0, repos: 0 };
+    };
+
+    const detailedList = filtered.map(r => {
+      const id = r.studentId;
+      return {
+        'Register No': r.registerNumber, 'Student Name': r.fullName, 'Section': r.className,
+        'GitHub': r.githubUsername,
+        'Mon Commits': getDay(id, 0).commits, 'Tue Commits': getDay(id, 1).commits,
+        'Wed Commits': getDay(id, 2).commits, 'Thu Commits': getDay(id, 3).commits,
+        'Fri Commits': getDay(id, 4).commits, 'Sat Commits': getDay(id, 5).commits,
+        'Sun Commits': getDay(id, 6).commits,
+        'Total Commits': r.commitsThisWeek, 'Commit Target': r.weeklyCommitTarget,
+        'Commit %': `${r.completionWeeklyCommitPct}%`, 'Status': r.weeklyCommitStatus.replace('_', ' '),
+        'New Repos This Week': r.reposThisWeek,
+      };
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(detailedList);
+    ws['!cols'] = Object.keys(detailedList[0] || {}).map(k => { let m = k.length; for (const r of detailedList) { const v = (r as any)[k]; if (v) m = Math.max(m, String(v).length); } return { wch: m + 3 }; });
+    XLSX.utils.book_append_sheet(wb, ws, 'GitHub Detailed Weekly');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=GitHub_Weekly_Detailed_${week.start}_to_${week.end}.xlsx`);
+    res.send(buf);
+  }));
+
+  // GitHub Defaulters Excel Report
+  app.get('/api/github/export/incomplete', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+    const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
+
+    const studentRows = await fetchStudentsForScope(scope);
+    const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
+    const filtered = enrichedList.filter(r => {
+      const matchSearch = !search || r.fullName.toLowerCase().includes(search) || r.registerNumber.toLowerCase().includes(search);
+      return matchSearch && (r.commitStatus === 'NOT_COMPLETED' || r.weeklyCommitStatus === 'NOT_COMPLETED');
+    });
+
+    const excelData = filtered.map(r => ({
+      'Register No': r.registerNumber, 'Student Name': r.fullName, 'Section': r.className,
+      'GitHub': r.githubUsername,
+      'Daily Commit Target': r.commitTarget, 'Commits Today': r.commitsToday,
+      'Daily Status': r.commitStatus.replace('_', ' '),
+      'Weekly Commit Target': r.weeklyCommitTarget, 'Commits This Week': r.commitsThisWeek,
+      'Weekly Status': r.weeklyCommitStatus.replace('_', ' '),
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    ws['!cols'] = Object.keys(excelData[0] || {}).map(k => { let m = k.length; for (const r of excelData) { const v = (r as any)[k]; if (v) m = Math.max(m, String(v).length); } return { wch: m + 3 }; });
+    XLSX.utils.book_append_sheet(wb, ws, 'GitHub Defaulters');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=GitHub_Defaulters_${dateStr}.xlsx`);
+    res.send(buf);
+  }));
+
+  // Export Excel for Coding Progress
+  app.get('/api/coding/export-excel', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+    const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
+    const view = req.query.view ? req.query.view.toString() : 'LEETCODE';
+
+    const studentRows = await fetchStudentsForScope(scope);
+    const studentIds = studentRows.map(s => s.id);
+    const week = getWeekRange(dateStr);
+    
+    // Calculate previous week range (subtract 7 days from start and end)
+    const prevWeekStart = new Date(week.start);
+    prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+    const prevWeekEnd = new Date(week.end);
+    prevWeekEnd.setDate(prevWeekEnd.getDate() - 7);
+    
+    const prevWeekStartStr = prevWeekStart.toISOString().split('T')[0];
+    const prevWeekEndStr = prevWeekEnd.toISOString().split('T')[0];
+
+    let excelData: any[] = [];
+
+    if (view === 'GITHUB') {
+      const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
+      
+      const prevWeeklyRes = await pool.query(`
+        SELECT user_id, SUM(commits_today) as commits_prev_week
+        FROM github_daily_progress 
+        WHERE user_id = ANY($1) AND date >= $2 AND date <= $3
+        GROUP BY user_id
+      `, [studentIds, prevWeekStartStr, prevWeekEndStr]);
+      
+      const prevWeeklyMap = new Map();
+      for (const row of prevWeeklyRes.rows) prevWeeklyMap.set(row.user_id, Number(row.commits_prev_week) || 0);
+
+      let sno = 1;
+      excelData = enrichedList
+        .filter(r => !search || r.fullName.toLowerCase().includes(search) || r.registerNumber.toLowerCase().includes(search))
+        .map(gh => ({
+          'S.No': sno++,
+          'Name': gh.fullName,
+          'Reg No': gh.registerNumber,
+          'GitHub ID': gh.githubUsername || '',
+          'Previous Week Progress Count': prevWeeklyMap.get(gh.studentId) || 0,
+          'This Week Progress Count': gh.commitsThisWeek || 0
+        }));
+    } else {
+      const enrichedList = await enrichStudentProgressBatch(studentRows, dateStr);
+      
+      const prevWeeklyRes = await pool.query(`
+        SELECT user_id, SUM(solved_today) as solved_prev_week
+        FROM leetcode_daily_progress 
+        WHERE user_id = ANY($1) AND date >= $2 AND date <= $3
+        GROUP BY user_id
+      `, [studentIds, prevWeekStartStr, prevWeekEndStr]);
+      
+      const prevWeeklyMap = new Map();
+      for (const row of prevWeeklyRes.rows) prevWeeklyMap.set(row.user_id, Number(row.solved_prev_week) || 0);
+
+      let sno = 1;
+      excelData = enrichedList
+        .filter(r => !search || r.fullName.toLowerCase().includes(search) || r.registerNumber.toLowerCase().includes(search))
+        .map(lc => ({
+          'S.No': sno++,
+          'Name': lc.fullName,
+          'Reg No': lc.registerNumber,
+          'LeetCode ID': lc.leetcodeUrl ? lc.leetcodeUrl.split('/').filter(Boolean).pop() : '',
+          'Previous Week Progress Count': prevWeeklyMap.get(lc.studentId) || 0,
+          'This Week Progress Count': lc.solvedThisWeek || 0
+        }));
+    }
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    ws['!cols'] = Object.keys(excelData[0] || {}).map(k => { let m = k.length; for (const r of excelData) { const v = (r as any)[k]; if (v) m = Math.max(m, String(v).length); } return { wch: m + 3 }; });
+    XLSX.utils.book_append_sheet(wb, ws, `${view} Report`);
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=${view}_Progress_Report_${dateStr}.xlsx`);
+    res.send(buf);
+  }));
+
+  // ── GitHub Nightly Sync Daemon at 23:55 IST ──────────────────────────────────
+  function scheduleGitHubDailySync() {
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const nowIST = new Date(now.getTime() + istOffset);
+    const targetIST = new Date(nowIST);
+    targetIST.setUTCHours(18, 25, 0, 0); // 23:55 IST = 18:25 UTC
+    if (nowIST.getTime() >= targetIST.getTime()) {
+      targetIST.setUTCDate(targetIST.getUTCDate() + 1);
+    }
+    const timeUntilSync = targetIST.getTime() - nowIST.getTime();
+    console.log(`[GitHub Sync Daemon] Scheduled next sync in ${Math.round(timeUntilSync / 1000 / 60)} minutes.`);
+    setTimeout(async () => {
+      console.log('[GitHub Sync Daemon] Running scheduled daily sync...');
+      try {
+        const result = await syncGitHubProgressForScope();
+        console.log(`[GitHub Sync Daemon] Done. Synced: ${result.synced}, Failed: ${result.failed}`);
+      } catch (err) {
+        console.error('[GitHub Sync Daemon] Error:', err);
+      }
+      scheduleGitHubDailySync();
+    }, timeUntilSync);
+  }
+
+  // GitHub startup sync + schedule daemon
+  if (process.env.GITHUB_TOKEN) {
+    syncGitHubProgressForScope().catch(err => console.error('[GitHub Sync] Startup sync error:', err));
+    scheduleGitHubDailySync();
+  }
+
+  // ── Protected Cron Webhook (Render / External Cron Support) ─────────────────
+  app.post('/api/cron/sync-coding-progress', asyncHandler(async (req: Request, res: Response) => {
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret) {
+      const authHeader = req.headers.authorization || req.headers['x-cron-secret'];
+      if (authHeader !== cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+        return res.status(401).json({ error: 'Unauthorized cron request: Invalid secret key' });
+      }
+    }
+
+    console.log('[Cron Webhook] Executing on-demand daily sync for LeetCode & GitHub...');
+    const leetcodeRes = await syncLeetcodeProgressForScope();
+    let githubRes = null;
+    if (process.env.GITHUB_TOKEN) {
+      githubRes = await syncGitHubProgressForScope();
+    }
+    return res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      leetcode: leetcodeRes,
+      github: githubRes
+    });
+  }));
+
   // ── API 404 Fallback ──────────────────────────────────────────────────────
   app.use('/api/*', (req, res) => {
     res.status(404).json({ error: `API route ${req.originalUrl} not found` });
   });
+
 
   // ── Vite & Static Serving ─────────────────────────────────────────────────
   if (process.env.NODE_ENV !== 'production') {

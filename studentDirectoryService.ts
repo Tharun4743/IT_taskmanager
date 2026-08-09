@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { pool } from './db';
+import { pool } from './db.js';
 
 export interface ConstantStudent {
   id: string;
@@ -14,6 +14,8 @@ export interface ConstantStudent {
   department_name: string;
   year: number | string;
   batch: string;
+  leetcode?: string;
+  github?: string;
 }
 
 // In-Memory Constant Caches
@@ -42,6 +44,16 @@ export function loadDirectoryFromDisk() {
                 if (s.id) constantStudentByIdMap.set(s.id.toString(), s);
                 if (s.register_number) constantStudentByRegNoMap.set(s.register_number.toLowerCase().trim(), s);
                 if (s.email) constantStudentByEmailMap.set(s.email.toLowerCase().trim(), s);
+                if (s.class_id) {
+                  const classKey = s.class_id.toString();
+                  if (!constantStudentsByClassMap.has(classKey)) constantStudentsByClassMap.set(classKey, []);
+                  constantStudentsByClassMap.get(classKey)!.push(s);
+                }
+                if (s.year) {
+                  const yearKey = String(s.year);
+                  if (!constantStudentsByYearMap.has(yearKey)) constantStudentsByYearMap.set(yearKey, []);
+                  constantStudentsByYearMap.get(yearKey)!.push(s);
+                }
               }
             }
           } catch (e) {
@@ -106,6 +118,12 @@ export async function syncAndGenerateStudentDirectory() {
     const yearSectionGroup: Record<string, Record<string, ConstantStudent[]>> = {};
 
     for (const student of students) {
+      // Merge LeetCode and GitHub URL from existing disk files to keep it strictly file-based
+      const regKey = student.register_number ? student.register_number.toLowerCase().trim() : '';
+      const existing = constantStudentByRegNoMap.get(regKey);
+      student.leetcode = existing?.leetcode || '';
+      student.github = existing?.github || '';
+
       // 1. Populate In-Memory Caches
       constantStudentByIdMap.set(student.id.toString(), student);
       if (student.register_number) {
@@ -151,14 +169,15 @@ export async function syncAndGenerateStudentDirectory() {
 
         // Write Section CSV file
         const csvFilePath = path.join(yearDirPath, `Section_${sectionName}.csv`);
-        const csvHeaders = 'Register_Number,Full_Name,Email,Gender,Class_Name,Department_Name,Year,Batch,Class_ID,Department_ID\n';
+        const csvHeaders = 'Register_Number,Full_Name,Email,Gender,Class_Name,Department_Name,Year,Batch,Class_ID,Department_ID,Leetcode,Github\n';
         const csvRows = list.map(s => 
-          `"${s.register_number}","${s.full_name}","${s.email}","${s.gender}","${s.class_name}","${s.department_name}","${s.year}","${s.batch}","${s.class_id}","${s.department_id}"`
+          `"${s.register_number}","${s.full_name}","${s.email}","${s.gender}","${s.class_name}","${s.department_name}","${s.year}","${s.batch}","${s.class_id}","${s.department_id}","${s.leetcode || ''}","${s.github || ''}"`
         ).join('\n');
 
         fs.writeFileSync(csvFilePath, csvHeaders + csvRows, 'utf-8');
       }
     }
+
 
     console.log(`[StudentDirectory] Synced ${students.length} students into Year folders & Section files at: ${outputBaseDir}`);
     return {

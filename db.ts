@@ -14,9 +14,9 @@ if (!databaseUrl) {
 
 export const pool = new Pool({
   connectionString: databaseUrl,
-  max: 25,
-  min: 5,
-  idleTimeoutMillis: 60000,
+  max: 10,
+  min: 1,
+  idleTimeoutMillis: 15000,
   connectionTimeoutMillis: 5000,
   statement_timeout: 10000,
   keepAlive: true,
@@ -511,6 +511,114 @@ export async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_submissions_submitted_at ON task_submissions(submitted_at);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_submissions_verified_at ON task_submissions(verified_at);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_submissions_cloudinary ON task_submissions(cloudinary_public_id);`);
+
+    // ─── Module 5: LeetCode Targets & Progress Tracking ───────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leetcode_targets (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        daily_target INT NOT NULL DEFAULT 0,
+        weekly_target INT NOT NULL DEFAULT 0,
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        class_id UUID REFERENCES classes(id) ON DELETE CASCADE,
+        year INT,
+        department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
+        created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leetcode_daily_progress (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        date DATE NOT NULL,
+        total_solved INT,
+        solved_today INT NOT NULL DEFAULT 0,
+        daily_target INT NOT NULL DEFAULT 0,
+        status VARCHAR(50) NOT NULL, -- 'COMPLETED', 'NOT_COMPLETED', 'DATA_UNAVAILABLE'
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (user_id, date)
+      );
+    `);
+
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_leetcode_targets_scope ON leetcode_targets(user_id, class_id, year, department_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_leetcode_targets_dates ON leetcode_targets(start_date, end_date);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_leetcode_progress_date ON leetcode_daily_progress(user_id, date);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_leetcode_progress_date_range ON leetcode_daily_progress(date, user_id);`);
+
+    // ─── Module 6: GitHub Targets & Progress Tracking ─────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS github_targets (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        daily_commit_target INT NOT NULL DEFAULT 0,
+        weekly_commit_target INT NOT NULL DEFAULT 0,
+        daily_repo_target INT NOT NULL DEFAULT 0,
+        weekly_repo_target INT NOT NULL DEFAULT 0,
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        class_id UUID REFERENCES classes(id) ON DELETE CASCADE,
+        year INT,
+        department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
+        created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS github_daily_progress (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        date DATE NOT NULL,
+        github_username VARCHAR(255),
+        total_repos INT,
+        new_repos_today INT NOT NULL DEFAULT 0,
+        commits_today INT NOT NULL DEFAULT 0,
+        commit_target INT NOT NULL DEFAULT 0,
+        repo_target INT NOT NULL DEFAULT 0,
+        weekly_commit_target INT NOT NULL DEFAULT 0,
+        weekly_repo_target INT NOT NULL DEFAULT 0,
+        commit_status VARCHAR(50) NOT NULL DEFAULT 'NO_TARGET',
+        repo_status VARCHAR(50) NOT NULL DEFAULT 'NO_TARGET',
+        sync_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+        error_message TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (user_id, date)
+      );
+    `);
+
+    // Ensure leetcode_url and github_url columns exist on users table
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS leetcode_url VARCHAR(255);`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS github_url VARCHAR(255);`);
+
+    // GitHub table indexes
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_github_targets_scope ON github_targets(user_id, class_id, year, department_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_github_targets_dates ON github_targets(start_date, end_date);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_github_progress_user_date ON github_daily_progress(user_id, date);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_github_progress_date_range ON github_daily_progress(date, user_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_github_progress_status ON github_daily_progress(commit_status, date);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_leetcode_progress_status_date ON leetcode_daily_progress(status, date);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_leetcode_daily_user_date_status ON leetcode_daily_progress(user_id, date, status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_github_daily_user_date_status ON github_daily_progress(user_id, date, commit_status);`);
+
+    // Clean up duplicate target configuration rows if any exist
+    await client.query(`
+      DELETE FROM leetcode_targets t1
+      USING leetcode_targets t2
+      WHERE t1.created_at < t2.created_at
+        AND t1.start_date = t2.start_date
+        AND t1.end_date = t2.end_date
+        AND COALESCE(t1.user_id, '00000000-0000-0000-0000-000000000000'::uuid) = COALESCE(t2.user_id, '00000000-0000-0000-0000-000000000000'::uuid)
+        AND COALESCE(t1.class_id, '00000000-0000-0000-0000-000000000000'::uuid) = COALESCE(t2.class_id, '00000000-0000-0000-0000-000000000000'::uuid)
+        AND COALESCE(t1.year, -1) = COALESCE(t2.year, -1)
+        AND COALESCE(t1.department_id, '00000000-0000-0000-0000-000000000000'::uuid) = COALESCE(t2.department_id, '00000000-0000-0000-0000-000000000000'::uuid);
+    `);
 
     // Seed Supreme Admin if not exists
     const adminRes = await client.query(`SELECT * FROM users WHERE role = 'SUPREME_ADMIN' LIMIT 1;`);

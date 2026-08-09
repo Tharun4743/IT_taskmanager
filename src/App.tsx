@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { API_URL } from './config';
 import {
   LayoutDashboard,
@@ -57,6 +57,7 @@ import {
   Activity,
   Check,
   Github,
+  BarChart3,
   Linkedin,
   Globe,
   Code,
@@ -74,7 +75,12 @@ import {
   MessageCircle,
   Send,
   Filter,
-  Paperclip
+  Paperclip,
+  Zap,
+  Target,
+  Hourglass,
+  TrendingUp,
+  Terminal
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
@@ -597,12 +603,12 @@ function CategoryDropdown({ value, onChange }: { value: string; onChange: (val: 
 }
 
 const STATUS_OPTIONS = [
-  { value: 'ALL',               label: 'All',               icon: LayoutDashboard,  color: 'text-zinc-500' },
-  { value: 'VERIFIED',          label: 'Verified',          icon: CheckCircle2,     color: 'text-emerald-600' },
-  { value: 'SUBMITTED',         label: 'Submitted',         icon: Upload,           color: 'text-blue-600' },
-  { value: 'REJECTED',          label: 'Rejected',          icon: XCircle,          color: 'text-red-500' },
-  { value: 'NOT_SUBMITTED',     label: 'Not Submitted',     icon: Clock,            color: 'text-amber-500' },
-  { value: 'NOT_PARTICIPATING', label: 'Not Participating', icon: AlertTriangle,    color: 'text-orange-500' },
+  { value: 'ALL', label: 'All', icon: LayoutDashboard, color: 'text-zinc-500' },
+  { value: 'VERIFIED', label: 'Verified', icon: CheckCircle2, color: 'text-emerald-600' },
+  { value: 'SUBMITTED', label: 'Submitted', icon: Upload, color: 'text-blue-600' },
+  { value: 'REJECTED', label: 'Rejected', icon: XCircle, color: 'text-red-500' },
+  { value: 'NOT_SUBMITTED', label: 'Not Submitted', icon: Clock, color: 'text-amber-500' },
+  { value: 'NOT_PARTICIPATING', label: 'Not Participating', icon: AlertTriangle, color: 'text-orange-500' },
 ];
 
 function StatusDropdown({ value, onChange }: { value: string; onChange: (val: string) => void }) {
@@ -2791,6 +2797,95 @@ function StaffStudentProfileModal({
   );
 }
 
+function HistoryChartWrapper({ studentId, type, token }: { studentId: string; type: 'daily' | 'weekly'; token: string | null }) {
+  const [history, setHistory] = useState<any>(null);
+  useEffect(() => {
+    let isMounted = true;
+    const fetchHistory = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/leetcode/progress/student/${studentId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted) setHistory(data);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    if (studentId) fetchHistory();
+    return () => { isMounted = false; };
+  }, [studentId, token]);
+
+  if (!history) return <div className="text-zinc-400 text-xs font-semibold py-10">Fetching history logs...</div>;
+
+  const data = type === 'daily' ? history.daily : history.weekly;
+  if (!data || data.length === 0) return <div className="text-zinc-400 text-xs font-semibold py-10">No progress logs found</div>;
+
+  const maxVal = Math.max(...data.map((d: any) => Math.max(d.actual, d.target)), 5);
+  const height = 120;
+  const width = 500;
+  const paddingLeft = 30;
+  const paddingRight = 10;
+  const paddingTop = 10;
+  const paddingBottom = 20;
+  const chartHeight = height - paddingTop - paddingBottom;
+  const chartWidth = width - paddingLeft - paddingRight;
+
+  if (type === 'daily') {
+    return (
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full">
+        <line x1={paddingLeft} y1={paddingTop} x2={width - paddingRight} y2={paddingTop} stroke="#e4e4e7" strokeDasharray="3,3" />
+        <line x1={paddingLeft} y1={paddingTop + chartHeight / 2} x2={width - paddingRight} y2={paddingTop + chartHeight / 2} stroke="#e4e4e7" strokeDasharray="3,3" />
+        <line x1={paddingLeft} y1={height - paddingBottom} x2={width - paddingRight} y2={height - paddingBottom} stroke="#e4e4e7" />
+        {data.map((d: any, i: number) => {
+          const x = paddingLeft + (i * (chartWidth / data.length));
+          const barWidth = Math.max(2, (chartWidth / data.length) - 4);
+          const barHeight = (d.actual / maxVal) * chartHeight;
+          const targetY = height - paddingBottom - (d.target / maxVal) * chartHeight;
+          return (
+            <g key={i}>
+              <rect x={x} y={height - paddingBottom - barHeight} width={barWidth} height={barHeight} fill="#f97316" rx={1} />
+              {d.target > 0 && <circle cx={x + barWidth / 2} cy={targetY} r={2} fill="#ef4444" />}
+              <title>{`Date: ${d.date}\nSolved: ${d.actual}\nTarget: ${d.target}`}</title>
+            </g>
+          );
+        })}
+      </svg>
+    );
+  } else {
+    const points = data.map((d: any, i: number) => {
+      const x = paddingLeft + (i * (chartWidth / Math.max(1, data.length - 1)));
+      const y = height - paddingBottom - (d.actual / maxVal) * chartHeight;
+      return `${x},${y}`;
+    }).join(' ');
+    const areaPoints = `${paddingLeft},${height - paddingBottom} ${points} ${paddingLeft + chartWidth},${height - paddingBottom}`;
+
+    return (
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full">
+        <line x1={paddingLeft} y1={paddingTop} x2={width - paddingRight} y2={paddingTop} stroke="#e4e4e7" strokeDasharray="3,3" />
+        <line x1={paddingLeft} y1={height - paddingBottom} x2={width - paddingRight} y2={height - paddingBottom} stroke="#e4e4e7" />
+        <polygon points={areaPoints} fill="rgba(99, 102, 241, 0.1)" />
+        <polyline points={points} fill="none" stroke="#6366f1" strokeWidth={2} />
+        {data.map((d: any, i: number) => {
+          const x = paddingLeft + (i * (chartWidth / Math.max(1, data.length - 1)));
+          const y = height - paddingBottom - (d.actual / maxVal) * chartHeight;
+          const targetY = height - paddingBottom - (d.target / maxVal) * chartHeight;
+          return (
+            <g key={i}>
+              <circle cx={x} cy={y} r={4} fill="#6366f1" />
+              <line x1={x - 5} y1={targetY} x2={x + 5} y2={targetY} stroke="#dc2626" strokeWidth={1} />
+              <text x={x} y={height - 5} textAnchor="middle" className="text-[8px] font-semibold text-zinc-400">{d.week}</text>
+              <title>{`Week: ${d.start} to ${d.end}\nSolved: ${d.actual}\nTarget: ${d.target}`}</title>
+            </g>
+          );
+        })}
+      </svg>
+    );
+  }
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
@@ -2837,6 +2932,239 @@ export default function App() {
   const [reportFilters, setReportFilters] = useState<{ classIds: string[]; taskId: string; status: string }>({ classIds: [], taskId: '', status: 'ALL' });
   const [expandedClass, setExpandedClass] = useState<number | null>(null);
   const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
+
+  // LeetCode Target Tracking State
+  const [myLeetcodeProgress, setMyLeetcodeProgress] = useState<any>(null);
+  const [leetcodeStats, setLeetcodeStats] = useState<any>(null);
+  const [leetcodeProgressList, setLeetcodeProgressList] = useState<any[]>([]);
+  const [leetcodeTargets, setLeetcodeTargets] = useState<any[]>([]);
+  const [showAssignTargetModal, setShowAssignTargetModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [selectedStudentHistory, setSelectedStudentHistory] = useState<any>(null);
+  const [studentHistoryData, setStudentHistoryData] = useState<any>(null);
+  const [syncingLeetcode, setSyncingLeetcode] = useState(false);
+  const [submittingTarget, setSubmittingTarget] = useState(false);
+
+  const [leetcodeDate, setLeetcodeDate] = useState<string>(new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0]);
+  const [leetcodeStatusFilter, setLeetcodeStatusFilter] = useState<string>('ALL');
+  const [leetcodeSearch, setLeetcodeSearch] = useState<string>('');
+  const [leetcodeViewType, setLeetcodeViewType] = useState<'DAILY' | 'WEEKLY'>('DAILY');
+  const [leetcodeActiveTab, setLeetcodeActiveTab] = useState<'MONITOR' | 'TARGETS'>('MONITOR');
+  const [selectedLeetcodeDeptId, setSelectedLeetcodeDeptId] = useState<string>('ALL');
+  const [selectedLeetcodeYear, setSelectedLeetcodeYear] = useState<string>('ALL');
+  const [selectedLeetcodeClassId, setSelectedLeetcodeClassId] = useState<string>('ALL');
+  const [leetcodeSortColumn, setLeetcodeSortColumn] = useState<string>('registerNumber');
+  const [leetcodeSortOrder, setLeetcodeSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  useEffect(() => {
+    if (user && classes.length > 0) {
+      if (user.role === 'CLASS_ADVISOR' || (user.role === 'STUDENT' && user.is_coordinator)) {
+        if (user.class_id) setSelectedLeetcodeClassId(user.class_id.toString());
+        if (user.department_id) setSelectedLeetcodeDeptId(user.department_id.toString());
+        const userClassObj = classes.find(c => String(c.id) === String(user.class_id));
+        if (userClassObj?.year) setSelectedLeetcodeYear(String(userClassObj.year));
+      } else if (user.is_year_coordinator) {
+        if (user.year_scope || user.year) setSelectedLeetcodeYear(String(user.year_scope || user.year));
+        if (user.department_id) setSelectedLeetcodeDeptId(user.department_id.toString());
+      } else if (user.role === 'HOD') {
+        if (user.department_id) setSelectedLeetcodeDeptId(user.department_id.toString());
+      }
+    }
+  }, [user, classes]);
+
+  // GitHub & Combined Progress Tracking State
+  const [codingPlatformTab, setCodingPlatformTab] = useState<'COMBINED' | 'LEETCODE' | 'GITHUB'>('LEETCODE');
+  const [myGithubProgress, setMyGithubProgress] = useState<any>(null);
+  const [githubStats, setGithubStats] = useState<any>(null);
+  const [githubProgressList, setGithubProgressList] = useState<any[]>([]);
+  const [githubTargets, setGithubTargets] = useState<any[]>([]);
+  const [combinedProgressList, setCombinedProgressList] = useState<any[]>([]);
+  const [syncingGithub, setSyncingGithub] = useState(false);
+  const [showAssignGithubTargetModal, setShowAssignGithubTargetModal] = useState(false);
+  const [githubActiveTab, setGithubActiveTab] = useState<'MONITOR' | 'TARGETS'>('MONITOR');
+  const [assignGithubTargetForm, setAssignGithubTargetForm] = useState({
+    dailyTarget: '1',
+    weeklyTarget: '7',
+    startDate: new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0],
+    endDate: new Date(Date.now() + 5.5 * 60 * 60 * 1000 + 6 * 86400000).toISOString().split('T')[0],
+    scopeType: 'CLASS',
+    targetValue: ''
+  });
+
+  const sortedLeetcodeProgressList = useMemo(() => {
+    return [...leetcodeProgressList].sort((a, b) => {
+      let valA: any = '';
+      let valB: any = '';
+
+      switch (leetcodeSortColumn) {
+        case 'registerNumber':
+          valA = a.registerNumber || '';
+          valB = b.registerNumber || '';
+          break;
+        case 'fullName':
+          valA = a.fullName || '';
+          valB = b.fullName || '';
+          break;
+        case 'className':
+          valA = a.className || '';
+          valB = b.className || '';
+          break;
+        case 'hasProfile':
+          valA = a.leetcodeUsername ? 1 : 0;
+          valB = b.leetcodeUsername ? 1 : 0;
+          break;
+        case 'target':
+          valA = leetcodeViewType === 'DAILY' ? a.dailyTarget : a.weeklyTarget;
+          valB = leetcodeViewType === 'DAILY' ? b.dailyTarget : b.weeklyTarget;
+          break;
+        case 'solved':
+          valA = leetcodeViewType === 'DAILY' ? a.solvedToday : a.solvedThisWeek;
+          valB = leetcodeViewType === 'DAILY' ? b.solvedToday : b.solvedThisWeek;
+          break;
+        case 'completionPct':
+          valA = leetcodeViewType === 'DAILY' ? a.completionDailyPct : a.completionWeeklyPct;
+          valB = leetcodeViewType === 'DAILY' ? b.completionDailyPct : b.completionWeeklyPct;
+          break;
+        case 'status':
+          valA = leetcodeViewType === 'DAILY' ? a.dailyStatus : a.weeklyStatus;
+          valB = leetcodeViewType === 'DAILY' ? b.dailyStatus : b.weeklyStatus;
+          break;
+        default:
+          valA = a.registerNumber || '';
+          valB = b.registerNumber || '';
+      }
+
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        const comp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+        return leetcodeSortOrder === 'asc' ? comp : -comp;
+      }
+      const comp = valA > valB ? 1 : valA < valB ? -1 : 0;
+      return leetcodeSortOrder === 'asc' ? comp : -comp;
+    });
+  }, [leetcodeProgressList, leetcodeSortColumn, leetcodeSortOrder, leetcodeViewType]);
+
+  const sortedGithubProgressList = useMemo(() => {
+    return [...githubProgressList].sort((a, b) => {
+      let valA: any = '';
+      let valB: any = '';
+
+      switch (leetcodeSortColumn) {
+        case 'registerNumber':
+          valA = a.registerNumber || '';
+          valB = b.registerNumber || '';
+          break;
+        case 'fullName':
+          valA = a.fullName || '';
+          valB = b.fullName || '';
+          break;
+        case 'className':
+          valA = a.className || '';
+          valB = b.className || '';
+          break;
+        case 'hasProfile':
+          valA = a.githubUsername ? 1 : 0;
+          valB = b.githubUsername ? 1 : 0;
+          break;
+        case 'target':
+          valA = leetcodeViewType === 'DAILY' ? a.dailyTarget : a.weeklyTarget;
+          valB = leetcodeViewType === 'DAILY' ? b.dailyTarget : b.weeklyTarget;
+          break;
+        case 'solved':
+          valA = leetcodeViewType === 'DAILY' ? a.newReposToday : a.newReposThisWeek;
+          valB = leetcodeViewType === 'DAILY' ? b.newReposToday : b.newReposThisWeek;
+          break;
+        case 'completionPct':
+          valA = leetcodeViewType === 'DAILY' ? a.completionDailyPct : a.completionWeeklyPct;
+          valB = leetcodeViewType === 'DAILY' ? b.completionDailyPct : b.completionWeeklyPct;
+          break;
+        case 'status':
+          valA = leetcodeViewType === 'DAILY' ? a.dailyStatus : a.weeklyStatus;
+          valB = leetcodeViewType === 'DAILY' ? b.dailyStatus : b.weeklyStatus;
+          break;
+        default:
+          valA = a.registerNumber || '';
+          valB = b.registerNumber || '';
+      }
+
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        const comp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+        return leetcodeSortOrder === 'asc' ? comp : -comp;
+      }
+      const comp = valA > valB ? 1 : valA < valB ? -1 : 0;
+      return leetcodeSortOrder === 'asc' ? comp : -comp;
+    });
+  }, [githubProgressList, leetcodeSortColumn, leetcodeSortOrder, leetcodeViewType]);
+
+  const sortedCombinedProgressList = useMemo(() => {
+    return [...combinedProgressList].sort((a, b) => {
+      let valA: any = '';
+      let valB: any = '';
+
+      switch (leetcodeSortColumn) {
+        case 'registerNumber':
+          valA = a.registerNumber || '';
+          valB = b.registerNumber || '';
+          break;
+        case 'fullName':
+          valA = a.fullName || '';
+          valB = b.fullName || '';
+          break;
+        case 'className':
+          valA = a.className || '';
+          valB = b.className || '';
+          break;
+        case 'leetcodeStatus':
+          valA = leetcodeViewType === 'DAILY' ? a.leetcodeDailyStatus : a.leetcodeWeeklyStatus;
+          valB = leetcodeViewType === 'DAILY' ? b.leetcodeDailyStatus : b.leetcodeWeeklyStatus;
+          break;
+        case 'githubStatus':
+          valA = leetcodeViewType === 'DAILY' ? a.githubDailyStatus : a.githubWeeklyStatus;
+          valB = leetcodeViewType === 'DAILY' ? b.githubDailyStatus : b.githubWeeklyStatus;
+          break;
+        case 'overallStatus':
+          valA = leetcodeViewType === 'DAILY' ? a.overallDailyStatus : a.overallWeeklyStatus;
+          valB = leetcodeViewType === 'DAILY' ? b.overallDailyStatus : b.overallWeeklyStatus;
+          break;
+        default:
+          valA = a.registerNumber || '';
+          valB = b.registerNumber || '';
+      }
+
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        const comp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+        return leetcodeSortOrder === 'asc' ? comp : -comp;
+      }
+      const comp = valA > valB ? 1 : valA < valB ? -1 : 0;
+      return leetcodeSortOrder === 'asc' ? comp : -comp;
+    });
+  }, [combinedProgressList, leetcodeSortColumn, leetcodeSortOrder, leetcodeViewType]);
+
+  const handleSortHeader = (col: string) => {
+    if (leetcodeSortColumn === col) {
+      setLeetcodeSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setLeetcodeSortColumn(col);
+      setLeetcodeSortOrder('asc');
+    }
+  };
+
+  const getISTDateForTarget = () => {
+    return new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  };
+  const getEndDateForTarget = (date: Date) => {
+    const end = new Date(date);
+    end.setDate(date.getDate() + 6);
+    return end.toISOString().split('T')[0];
+  };
+
+  const [assignTargetForm, setAssignTargetForm] = useState({
+    dailyTarget: '2',
+    weeklyTarget: '14',
+    startDate: getISTDateForTarget().toISOString().split('T')[0],
+    endDate: getEndDateForTarget(getISTDateForTarget()),
+    scopeType: 'CLASS',
+    targetValue: ''
+  });
 
   // Reviews Timeline State
   const [selectedSubReviews, setSelectedSubReviews] = useState<any[]>([]);
@@ -2894,6 +3222,8 @@ export default function App() {
   const [hodCreationRole, setHodCreationRole] = useState<'CLASS_ADVISOR' | 'STUDENT'>('CLASS_ADVISOR');
   const [showTaskPreview, setShowTaskPreview] = useState(false);
   const [verificationFilter, setVerificationFilter] = useState<'PENDING' | 'VERIFIED' | 'REJECTED' | 'ALL'>('PENDING');
+  const [verificationDeptFilter, setVerificationDeptFilter] = useState('');
+  const [verificationYearFilter, setVerificationYearFilter] = useState('');
   const [verificationClassFilter, setVerificationClassFilter] = useState('');
   const [verificationTaskFilter, setVerificationTaskFilter] = useState('');
   const [studentFilter, setStudentFilter] = useState<'ALL' | 'COORDINATORS'>('ALL');
@@ -3321,12 +3651,12 @@ export default function App() {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000);
-        
+
         const res = await fetch(`${API_URL}/health`, {
           signal: controller.signal
         });
         clearTimeout(timeoutId);
-        
+
         if (res.ok) {
           const data = await res.json();
           if (data.status === 'ok') {
@@ -3341,6 +3671,180 @@ export default function App() {
     }
     setIsWakingServer(false);
     setHasError(true);
+  };
+
+  // ── Coding Targets & Progress Operations ──────────────────────────────
+  const fetchMyLeetcodeProgress = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/leetcode/progress/my`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMyLeetcodeProgress(data);
+      }
+    } catch (err) {
+      console.error('Error fetching personal LeetCode progress:', err);
+    }
+  };
+
+  const fetchLeetcodeStats = async () => {
+    try {
+      const deptParam = selectedLeetcodeDeptId !== 'ALL' ? `&departmentId=${selectedLeetcodeDeptId}` : '';
+      const yearParam = selectedLeetcodeYear !== 'ALL' ? `&year=${selectedLeetcodeYear}` : '';
+      const classParam = selectedLeetcodeClassId !== 'ALL' ? `&classId=${selectedLeetcodeClassId}` : '';
+      const res = await fetch(`${API_URL}/api/leetcode/stats?date=${leetcodeDate}${deptParam}${yearParam}${classParam}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLeetcodeStats(data);
+      }
+    } catch (err) {
+      console.error('Error fetching LeetCode stats:', err);
+    }
+  };
+
+  const fetchLeetcodeProgress = async () => {
+    try {
+      const endpoint = leetcodeViewType === 'DAILY' ? 'daily' : 'weekly';
+      const deptParam = selectedLeetcodeDeptId !== 'ALL' ? `&departmentId=${selectedLeetcodeDeptId}` : '';
+      const yearParam = selectedLeetcodeYear !== 'ALL' ? `&year=${selectedLeetcodeYear}` : '';
+      const classParam = selectedLeetcodeClassId !== 'ALL' ? `&classId=${selectedLeetcodeClassId}` : '';
+      const searchParam = leetcodeSearch ? `&search=${encodeURIComponent(leetcodeSearch)}` : '';
+      const res = await fetch(`${API_URL}/api/leetcode/progress/${endpoint}?date=${leetcodeDate}&status=${leetcodeStatusFilter}${searchParam}${deptParam}${yearParam}${classParam}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLeetcodeProgressList(data);
+      }
+    } catch (err) {
+      console.error('Error fetching LeetCode progress:', err);
+    }
+  };
+
+  const fetchLeetcodeTargets = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/leetcode/targets`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLeetcodeTargets(data);
+      }
+    } catch (err) {
+      console.error('Error fetching LeetCode targets:', err);
+    }
+  };
+
+  const fetchMyGithubProgress = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/github/progress/my`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) setMyGithubProgress(await res.json());
+    } catch (err) {
+      console.error('Error fetching personal GitHub progress:', err);
+    }
+  };
+
+  const fetchGithubStats = async () => {
+    try {
+      const deptParam = selectedLeetcodeDeptId !== 'ALL' ? `&departmentId=${selectedLeetcodeDeptId}` : '';
+      const yearParam = selectedLeetcodeYear !== 'ALL' ? `&year=${selectedLeetcodeYear}` : '';
+      const classParam = selectedLeetcodeClassId !== 'ALL' ? `&classId=${selectedLeetcodeClassId}` : '';
+      const res = await fetch(`${API_URL}/api/github/stats?date=${leetcodeDate}${deptParam}${yearParam}${classParam}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) setGithubStats(await res.json());
+    } catch (err) {
+      console.error('Error fetching GitHub stats:', err);
+    }
+  };
+
+  const fetchGithubProgress = async () => {
+    try {
+      const endpoint = leetcodeViewType === 'DAILY' ? 'daily' : 'weekly';
+      const deptParam = selectedLeetcodeDeptId !== 'ALL' ? `&departmentId=${selectedLeetcodeDeptId}` : '';
+      const yearParam = selectedLeetcodeYear !== 'ALL' ? `&year=${selectedLeetcodeYear}` : '';
+      const classParam = selectedLeetcodeClassId !== 'ALL' ? `&classId=${selectedLeetcodeClassId}` : '';
+      const searchParam = leetcodeSearch ? `&search=${encodeURIComponent(leetcodeSearch)}` : '';
+      const res = await fetch(`${API_URL}/api/github/progress/${endpoint}?date=${leetcodeDate}&status=${leetcodeStatusFilter}${searchParam}${deptParam}${yearParam}${classParam}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) setGithubProgressList(await res.json());
+    } catch (err) {
+      console.error('Error fetching GitHub progress:', err);
+    }
+  };
+
+  const fetchGithubTargets = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/github/targets`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) setGithubTargets(await res.json());
+    } catch (err) {
+      console.error('Error fetching GitHub targets:', err);
+    }
+  };
+
+  const fetchCombinedProgress = async () => {
+    try {
+      const deptParam = selectedLeetcodeDeptId !== 'ALL' ? `&departmentId=${selectedLeetcodeDeptId}` : '';
+      const yearParam = selectedLeetcodeYear !== 'ALL' ? `&year=${selectedLeetcodeYear}` : '';
+      const classParam = selectedLeetcodeClassId !== 'ALL' ? `&classId=${selectedLeetcodeClassId}` : '';
+      const searchParam = leetcodeSearch ? `&search=${encodeURIComponent(leetcodeSearch)}` : '';
+      const res = await fetch(`${API_URL}/api/coding/progress/combined?date=${leetcodeDate}&view=${leetcodeViewType}&status=${leetcodeStatusFilter}${searchParam}${deptParam}${yearParam}${classParam}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) setCombinedProgressList(await res.json());
+    } catch (err) {
+      console.error('Error fetching combined progress:', err);
+    }
+  };
+
+  const handleDeleteLeetcodeTarget = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this LeetCode target?')) return;
+    try {
+      const res = await fetch(`${API_URL}/api/leetcode/targets/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        addToast('LeetCode target deleted successfully', 'success');
+        fetchLeetcodeTargets();
+        fetchLeetcodeProgress();
+        fetchLeetcodeStats();
+      } else {
+        const data = await res.json();
+        addToast(data.error || 'Failed to delete LeetCode target', 'error');
+      }
+    } catch (err) {
+      addToast('Error deleting LeetCode target', 'error');
+    }
+  };
+
+  const handleDeleteGithubTarget = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this GitHub target?')) return;
+    try {
+      const res = await fetch(`${API_URL}/api/github/targets/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        addToast('GitHub target deleted successfully', 'success');
+        fetchGithubTargets();
+        fetchGithubProgress();
+        fetchGithubStats();
+      } else {
+        const data = await res.json();
+        addToast(data.error || 'Failed to delete GitHub target', 'error');
+      }
+    } catch (err) {
+      addToast('Error deleting GitHub target', 'error');
+    }
   };
 
   useEffect(() => {
@@ -3371,6 +3875,37 @@ export default function App() {
     }
   }, [view, token, user?.role]);
 
+  useEffect(() => {
+    if (token && (view === 'leetcode-targets' || view === 'coding-progress' || view === 'leetcode_targets' || view === 'coding_progress')) {
+      if (codingPlatformTab === 'LEETCODE') {
+        Promise.all([
+          fetchLeetcodeStats(),
+          fetchLeetcodeProgress(),
+          fetchLeetcodeTargets(),
+          ...(user?.role === 'STUDENT' ? [fetchMyLeetcodeProgress()] : [])
+        ]);
+      } else if (codingPlatformTab === 'GITHUB') {
+        Promise.all([
+          fetchGithubStats(),
+          fetchGithubProgress(),
+          fetchGithubTargets(),
+          ...(user?.role === 'STUDENT' ? [fetchMyGithubProgress()] : [])
+        ]);
+      } else {
+        Promise.all([
+          fetchCombinedProgress(),
+          fetchLeetcodeStats(),
+          fetchLeetcodeProgress(),
+          fetchLeetcodeTargets(),
+          fetchGithubStats(),
+          fetchGithubProgress(),
+          fetchGithubTargets(),
+          ...(user?.role === 'STUDENT' ? [fetchMyLeetcodeProgress(), fetchMyGithubProgress()] : [])
+        ]);
+      }
+    }
+  }, [view, codingPlatformTab, leetcodeViewType, leetcodeDate, leetcodeStatusFilter, leetcodeSearch, selectedLeetcodeDeptId, selectedLeetcodeYear, selectedLeetcodeClassId, token, user?.role]);
+
   const fetchInitialData = async () => {
     try {
       setHasError(false);
@@ -3390,7 +3925,7 @@ export default function App() {
       ]);
 
       const responses = [deptsRes, classesRes, usersRes, tasksRes, submissionsRes, notificationsRes].filter(Boolean) as Response[];
-      
+
       const hasAuthError = responses.some(r => r.status === 401);
       if (hasAuthError) {
         console.error("Auth error detected, clearing token:", responses.map(r => `${r.url}: ${r.status}`).join(', '));
@@ -3746,7 +4281,7 @@ export default function App() {
     setLoginRole(null);
     setLoginData({ username: '', password: '' });
     setView('dashboard');
-    
+
     // Clear all fetched state variables to prevent leakage
     setDepartments([]);
     setClasses([]);
@@ -4481,7 +5016,7 @@ export default function App() {
 
   const exportToExcel = async (filters?: { classIds?: string[]; taskId?: string; status?: string; }) => {
     const isAdminRole = user?.role === 'SUPREME_ADMIN';
-    const isHODRole   = user?.role === 'HOD';
+    const isHODRole = user?.role === 'HOD';
     const isYearCoordRole = user?.is_year_coordinator;
     const isClsRole = user?.role === 'CLASS_ADVISOR' || (user?.role === 'STUDENT' && user?.is_coordinator);
     const selectedClassIds = filters?.classIds || [];
@@ -4489,18 +5024,18 @@ export default function App() {
     // ── Small helpers ──────────────────────────────────────────────────────────
     const ACADEMIC_YEAR = '2024-2028';
     const romanYearMap: Record<number, string> = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
-    const toRomanYear  = (yr: number) => romanYearMap[yr] ? `${romanYearMap[yr]} YEAR` : `YEAR ${yr}`;
-    const getDeptAbbr  = (name: string) => {
+    const toRomanYear = (yr: number) => romanYearMap[yr] ? `${romanYearMap[yr]} YEAR` : `YEAR ${yr}`;
+    const getDeptAbbr = (name: string) => {
       const words = (name || '').toUpperCase().split(/\s+/).filter(w => w.length > 2);
       return words.length ? words.map(w => w[0]).join('') : (name || 'DEPT').slice(0, 4).toUpperCase();
     };
-    const getSection   = (cn: string) => { const m = cn.trim().match(/([A-Za-z])$/); return m ? m[1].toUpperCase() : ''; };
+    const getSection = (cn: string) => { const m = cn.trim().match(/([A-Za-z])$/); return m ? m[1].toUpperCase() : ''; };
 
     // Build "III YEAR IT SECTION A" style string from a Class object
     const buildClassInfo = (cls: Class): string => {
-      const yr   = cls.year ? toRomanYear(Number(cls.year)) : '';
+      const yr = cls.year ? toRomanYear(Number(cls.year)) : '';
       const dept = getDeptAbbr(cls.department_name || user?.department_name || 'IT');
-      const sec  = getSection(cls.name);
+      const sec = getSection(cls.name);
       return [yr, dept, sec ? `SECTION ${sec}` : ''].filter(Boolean).join(' ');
     };
 
@@ -4510,11 +5045,11 @@ export default function App() {
       const deptFull = (user?.department_name || 'INFORMATION TECHNOLOGY').toUpperCase();
 
       const aoaRows: any[][] = [
-        ['VSB ENGINEERING COLLEGE, KARUR',  ...Array(numCols - 1).fill(null)],
-        ['(AN AUTONOMOUS INSTITUTION)',      ...Array(numCols - 1).fill(null)],
-        [`DEPARTMENT OF ${deptFull}`,        ...Array(numCols - 1).fill(null)],
-        [`ACADEMIC YEAR ${ACADEMIC_YEAR}`,   ...Array(numCols - 1).fill(null)],
-        [line5,                              ...Array(numCols - 1).fill(null)],
+        ['VSB ENGINEERING COLLEGE, KARUR', ...Array(numCols - 1).fill(null)],
+        ['(AN AUTONOMOUS INSTITUTION)', ...Array(numCols - 1).fill(null)],
+        [`DEPARTMENT OF ${deptFull}`, ...Array(numCols - 1).fill(null)],
+        [`ACADEMIC YEAR ${ACADEMIC_YEAR}`, ...Array(numCols - 1).fill(null)],
+        [line5, ...Array(numCols - 1).fill(null)],
         Array(numCols).fill(null),           // blank separator
         [...cols],                           // column header row (index 6)
         ...dataRows.map(r => cols.map(c => r[c] ?? '')),
@@ -4598,13 +5133,13 @@ export default function App() {
       }
 
       // HOD/Admin with no specific class selected — gather from scoped students
-      const seen  = new Set<string>();
+      const seen = new Set<string>();
       const parts: string[] = [];
       targetStudents.forEach(st => {
         const cid = st.class_id?.toString() || '';
         if (!seen.has(cid)) {
           seen.add(cid);
-          const cls  = classes.find(c => c.id.toString() === cid);
+          const cls = classes.find(c => c.id.toString() === cid);
           const info = cls ? buildClassInfo(cls) : (st.class_name || cid);
           if (info) parts.push(info);
         }
@@ -4612,7 +5147,7 @@ export default function App() {
       return parts.length > 0 && parts.length <= 4 ? parts.join(' & ') : 'ALL CLASSES';
     };
 
-    const classInfoStr      = resolveClassInfoStr();
+    const classInfoStr = resolveClassInfoStr();
     const selectedTaskTitle = filters?.taskId
       ? (tasks.find(t => t.id?.toString() === filters.taskId)?.title || 'TASK REPORT')
       : 'ALL TASKS';
@@ -4635,29 +5170,29 @@ export default function App() {
         const isParticipating = rawStatus === 'SUBMITTED' || rawStatus === 'VERIFIED' || rawStatus === 'REJECTED';
 
         const statusLabel =
-          rawStatus === 'VERIFIED'          ? 'Verified'         :
-          rawStatus === 'SUBMITTED'         ? 'Submitted'        :
-          rawStatus === 'REJECTED'          ? 'Rejected'         :
-          rawStatus === 'NOT_PARTICIPATING' ? 'Not Interested'   : 'Not Submitted';
+          rawStatus === 'VERIFIED' ? 'Verified' :
+            rawStatus === 'SUBMITTED' ? 'Submitted' :
+              rawStatus === 'REJECTED' ? 'Rejected' :
+                rawStatus === 'NOT_PARTICIPATING' ? 'Not Interested' : 'Not Submitted';
 
         let include = false;
-        if (selectedStatus === 'ALL')                include = true;
-        else if (selectedStatus === 'VERIFIED')          include = rawStatus === 'VERIFIED';
-        else if (selectedStatus === 'SUBMITTED')         include = rawStatus === 'SUBMITTED';
-        else if (selectedStatus === 'REJECTED')          include = rawStatus === 'REJECTED';
-        else if (selectedStatus === 'NOT_SUBMITTED')     include = rawStatus === 'NOT_SUBMITTED';
+        if (selectedStatus === 'ALL') include = true;
+        else if (selectedStatus === 'VERIFIED') include = rawStatus === 'VERIFIED';
+        else if (selectedStatus === 'SUBMITTED') include = rawStatus === 'SUBMITTED';
+        else if (selectedStatus === 'REJECTED') include = rawStatus === 'REJECTED';
+        else if (selectedStatus === 'NOT_SUBMITTED') include = rawStatus === 'NOT_SUBMITTED';
         else if (selectedStatus === 'NOT_PARTICIPATING') include = rawStatus === 'NOT_PARTICIPATING';
 
         if (include) {
           detailedRows.push({
-            'S.No':                         sno++,
-            'Name':                         student.full_name || '—',
-            'Reg No':                       student.register_number || '—',
-            'Mail ID':                      student.email || '—',
-            'Task Name':                    task.title,
-            'Participating / Interested':   isParticipating ? 'Yes' : isNotParticipating ? 'No' : '—',
-            'Task Status':                  statusLabel,
-            'Custom Field':                 isParticipating ? (sub?.custom_field_value || '—') : '—',
+            'S.No': sno++,
+            'Name': student.full_name || '—',
+            'Reg No': student.register_number || '—',
+            'Mail ID': student.email || '—',
+            'Task Name': task.title,
+            'Participating / Interested': isParticipating ? 'Yes' : isNotParticipating ? 'No' : '—',
+            'Task Status': statusLabel,
+            'Custom Field': isParticipating ? (sub?.custom_field_value || '—') : '—',
             'Reason (If Not Participating)': isNotParticipating ? (sub?.not_participating_reason || '—') : '—',
           });
         }
@@ -4678,7 +5213,7 @@ export default function App() {
       });
     } else if (isClsRole) {
       const cid = (user?.class_id || myClass?.id)?.toString() || '';
-      const cls  = classes.find(c => c.id.toString() === cid);
+      const cls = classes.find(c => c.id.toString() === cid);
       classGroups.push({ classId: cid, className: cls?.name || cid });
     } else {
       const seen = new Set<string>();
@@ -4704,23 +5239,23 @@ export default function App() {
         let verifiedCount = 0, submittedCount = 0, rejectedCount = 0, notSubmittedCount = 0, notParticipatingCount = 0;
         classStudents.forEach(st => {
           const sub = getSub(st.id, st.register_number, task.id);
-          const rs  = sub ? sub.status : 'NOT_SUBMITTED';
-          if (rs === 'VERIFIED')              verifiedCount++;
-          else if (rs === 'SUBMITTED')        submittedCount++;
-          else if (rs === 'REJECTED')         rejectedCount++;
+          const rs = sub ? sub.status : 'NOT_SUBMITTED';
+          if (rs === 'VERIFIED') verifiedCount++;
+          else if (rs === 'SUBMITTED') submittedCount++;
+          else if (rs === 'REJECTED') rejectedCount++;
           else if (rs === 'NOT_PARTICIPATING') notParticipatingCount++;
-          else                                notSubmittedCount++;
+          else notSubmittedCount++;
         });
 
         summaryRows.push({
-          'Task Name':         task.title,
-          'Class':             className,
-          'Total Students':    classStudents.length,
-          'Verified':          verifiedCount,
-          'Submitted':         submittedCount,
-          'Rejected':          rejectedCount,
+          'Task Name': task.title,
+          'Class': className,
+          'Total Students': classStudents.length,
+          'Verified': verifiedCount,
+          'Submitted': submittedCount,
+          'Rejected': rejectedCount,
           'Not Participating': notParticipatingCount,
-          'Not Submitted':     notSubmittedCount,
+          'Not Submitted': notSubmittedCount,
         });
       });
     });
@@ -4806,8 +5341,8 @@ export default function App() {
     XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
     XLSX.utils.book_append_sheet(wb, ws3, 'Team Wise Report');
 
-    const dateTag   = new Date().toISOString().split('T')[0];
-    const roleTag   = isAdminRole ? 'SuperAdmin' : isHODRole ? 'HOD' : isYearCoordRole ? `Year${user?.year_scope}_Coord` : 'Class';
+    const dateTag = new Date().toISOString().split('T')[0];
+    const roleTag = isAdminRole ? 'SuperAdmin' : isHODRole ? 'HOD' : isYearCoordRole ? `Year${user?.year_scope}_Coord` : 'Class';
     const statusTag = selectedStatus === 'ALL' ? 'All' : selectedStatus.charAt(0) + selectedStatus.slice(1).toLowerCase();
     XLSX.writeFile(wb, `${roleTag}_Report_${statusTag}_${dateTag}.xlsx`);
     setShowExportModal(false);
@@ -4851,7 +5386,7 @@ export default function App() {
                   <p className="text-zinc-500 text-sm mt-1">Please enter your credentials</p>
                 </div>
 
-                 <form onSubmit={handleLogin} className="space-y-4">
+                <form onSubmit={handleLogin} className="space-y-4">
                   <div>
                     <label className="text-sm font-medium text-zinc-700 mb-1 block">Mail ID </label>
                     <Input
@@ -5061,7 +5596,11 @@ export default function App() {
               <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5 block">Departments</label>
               <Select
                 value={adminDeptFilter}
-                onChange={e => setAdminDeptFilter(e.target.value)}
+                onChange={e => {
+                  setAdminDeptFilter(e.target.value);
+                  setAnalyzerYearFilter('');
+                  setAnalyzerClassFilter('');
+                }}
               >
                 <option value="">All Departments</option>
                 {departments.map(d => <option key={d.id} value={d.id.toString()}>{d.name}</option>)}
@@ -5070,8 +5609,8 @@ export default function App() {
           )}
           {!isCls && (
             <>
-              {/* YEAR filter — HOD only */}
-              {isDept && (
+              {/* YEAR filter — HOD / Admin */}
+              {(isDept || isGlobal) && (
                 <div>
                   <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5 block">Year</label>
                   <Select
@@ -5082,30 +5621,26 @@ export default function App() {
                     }}
                   >
                     <option value="">All Years</option>
-                    {Array.from(new Set(
-                      classes
-                        .filter(c => currentDeptId ? c.department_id?.toString() === currentDeptId : true)
-                        .map(c => c.year)
-                        .filter(Boolean)
-                    )).sort().map(yr => (
-                      <option key={yr} value={String(yr)}>Year {yr}</option>
-                    ))}
+                    <option value="1">1st Year</option>
+                    <option value="2">2nd Year</option>
+                    <option value="3">3rd Year</option>
+                    <option value="4">4th Year</option>
                   </Select>
                 </div>
               )}
               <div>
-                <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5 block">Class</label>
+                <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5 block">Section / Class</label>
                 <Select
                   value={analyzerClassFilter}
                   onChange={e => setAnalyzerClassFilter(e.target.value)}
                 >
-                  <option value="">All Classes</option>
+                  <option value="">All Classes / Sections</option>
                   {classes.filter(c => {
+                    if (analyzerYearFilter && String(c.year) !== analyzerYearFilter) return false;
                     if (currentDeptId && c.department_id?.toString() !== currentDeptId) return false;
                     if (isYear && Number(c.year) !== currentYearScope) return false;
-                    if (isDept && analyzerYearFilter && String(c.year) !== analyzerYearFilter) return false;
                     return true;
-                  }).map(c => (
+                  }).sort((a, b) => (a.year || 0) - (b.year || 0) || (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' })).map(c => (
                     <option key={c.id} value={c.id.toString()}>{c.name}</option>
                   ))}
                 </Select>
@@ -5360,7 +5895,7 @@ export default function App() {
                     <TD className="text-center">
                       <Badge variant={
                         student.submissionStatus === 'VERIFIED' ? 'success' :
-                        student.submissionStatus === 'SUBMITTED' ? 'warning' : 'danger'
+                          student.submissionStatus === 'SUBMITTED' ? 'warning' : 'danger'
                       }>
                         {student.submissionStatus === 'SUBMITTED' && !analyzerTaskFilter ? 'In Progress' :
                           student.submissionStatus === 'SUBMITTED' && analyzerTaskFilter ? 'Submitted' :
@@ -5460,6 +5995,1473 @@ export default function App() {
     );
   }
 
+  const handleSyncGithubProgress = async () => {
+    setSyncingGithub(true);
+    try {
+      const res = await fetch(`${API_URL}/api/github/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({})
+      });
+      if (res.ok) {
+        const data = await res.json();
+        addToast(`GitHub sync finished: Synced ${data.synced} profiles, ${data.failed} failed.`, 'success');
+        fetchGithubProgress();
+        fetchGithubStats();
+        fetchCombinedProgress();
+      } else {
+        addToast('Failed to sync GitHub progress', 'error');
+      }
+    } catch (err) {
+      addToast('Network error syncing GitHub progress', 'error');
+    } finally {
+      setSyncingGithub(false);
+    }
+  };
+
+  const handleCreateGithubTarget = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (submittingTarget) return;
+    setSubmittingTarget(true);
+    try {
+      const res = await fetch(`${API_URL}/api/github/targets`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(assignGithubTargetForm)
+      });
+      if (res.ok) {
+        addToast('GitHub target created successfully', 'success');
+        setShowAssignGithubTargetModal(false);
+        fetchGithubTargets();
+        fetchGithubProgress();
+        fetchGithubStats();
+        fetchCombinedProgress();
+      } else {
+        const data = await res.json();
+        addToast(data.error || 'Failed to create GitHub target', 'error');
+      }
+    } catch (err) {
+      addToast('Network error creating GitHub target', 'error');
+    } finally {
+      setSubmittingTarget(false);
+    }
+  };
+
+  const handleDownloadCombinedExcel = () => {
+    const deptParam = selectedLeetcodeDeptId !== 'ALL' ? `&departmentId=${selectedLeetcodeDeptId}` : '';
+    const yearParam = selectedLeetcodeYear !== 'ALL' ? `&year=${selectedLeetcodeYear}` : '';
+    const classParam = selectedLeetcodeClassId !== 'ALL' ? `&classId=${selectedLeetcodeClassId}` : '';
+    const downloadUrl = `${API_URL}/api/coding/export-excel?date=${leetcodeDate}&view=${leetcodeViewType}${deptParam}${yearParam}${classParam}`;
+    window.open(downloadUrl, '_blank');
+  };
+
+  const handleCreateTarget = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (submittingTarget) return;
+    setSubmittingTarget(true);
+    try {
+      const res = await fetch(`${API_URL}/api/leetcode/targets`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(assignTargetForm)
+      });
+      if (res.ok) {
+        addToast('LeetCode target created successfully', 'success');
+        setShowAssignTargetModal(false);
+        fetchLeetcodeTargets();
+        fetchLeetcodeProgress();
+        fetchLeetcodeStats();
+      } else {
+        const data = await res.json();
+        addToast(data.error || 'Failed to create LeetCode target', 'error');
+      }
+    } catch (err) {
+      addToast('Network error creating LeetCode target', 'error');
+    } finally {
+      setSubmittingTarget(false);
+    }
+  };
+
+  const handleDeleteTarget = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this target?')) return;
+    try {
+      const res = await fetch(`${API_URL}/api/leetcode/targets/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        addToast('LeetCode target deleted successfully', 'success');
+        fetchLeetcodeTargets();
+        fetchLeetcodeProgress();
+        fetchLeetcodeStats();
+      } else {
+        const data = await res.json();
+        addToast(data.error || 'Failed to delete LeetCode target', 'error');
+      }
+    } catch (err) {
+      addToast('Network error deleting LeetCode target', 'error');
+    }
+  };
+
+  const handleSyncProgress = async () => {
+    setSyncingLeetcode(true);
+    try {
+      const res = await fetch(`${API_URL}/api/leetcode/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({})
+      });
+      if (res.ok) {
+        const data = await res.json();
+        addToast(`Sync finished: Synced ${data.synced} profiles, ${data.failed} failed.`, 'success');
+        fetchLeetcodeProgress();
+        fetchLeetcodeStats();
+      } else {
+        addToast('Failed to sync LeetCode progress', 'error');
+      }
+    } catch (err) {
+      addToast('Network error syncing LeetCode progress', 'error');
+    } finally {
+      setSyncingLeetcode(false);
+    }
+  };
+
+  const handleViewStudentHistory = async (student: any) => {
+    setSelectedStudentHistory(student);
+    setShowHistoryModal(true);
+    try {
+      const res = await fetch(`${API_URL}/api/leetcode/progress/student/${student.studentId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStudentHistoryData(data);
+      }
+    } catch (err) {
+      console.error('Error fetching student history details:', err);
+    }
+  };
+
+  const renderDailyChart = () => {
+    const data = studentHistoryData?.daily || [];
+    if (data.length === 0) return <div className="text-center text-xs py-10 text-zinc-400 font-bold">No progress data logged yet</div>;
+    const maxVal = Math.max(...data.map((d: any) => Math.max(d.actual, d.target)), 5);
+    const height = 120;
+    const width = 500;
+    const paddingLeft = 30;
+    const paddingRight = 10;
+    const paddingTop = 10;
+    const paddingBottom = 20;
+    const chartHeight = height - paddingTop - paddingBottom;
+    const chartWidth = width - paddingLeft - paddingRight;
+
+    return (
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-40">
+        <line x1={paddingLeft} y1={paddingTop} x2={width - paddingRight} y2={paddingTop} stroke="#e4e4e7" strokeDasharray="3,3" />
+        <line x1={paddingLeft} y1={paddingTop + chartHeight / 2} x2={width - paddingRight} y2={paddingTop + chartHeight / 2} stroke="#e4e4e7" strokeDasharray="3,3" />
+        <line x1={paddingLeft} y1={height - paddingBottom} x2={width - paddingRight} y2={height - paddingBottom} stroke="#e4e4e7" />
+
+        {data.map((d: any, i: number) => {
+          const x = paddingLeft + (i * (chartWidth / data.length));
+          const barWidth = Math.max(2, (chartWidth / data.length) - 4);
+          const barHeight = (d.actual / maxVal) * chartHeight;
+          const targetY = height - paddingBottom - (d.target / maxVal) * chartHeight;
+
+          return (
+            <g key={i} className="group">
+              <rect
+                x={x}
+                y={height - paddingBottom - barHeight}
+                width={barWidth}
+                height={barHeight}
+                fill="#f97316"
+                rx={1}
+              />
+              {d.target > 0 && (
+                <circle cx={x + barWidth / 2} cy={targetY} r={2} fill="#ef4444" />
+              )}
+              <title>{`Date: ${d.date}\nSolved: ${d.actual}\nTarget: ${d.target}`}</title>
+            </g>
+          );
+        })}
+      </svg>
+    );
+  };
+
+  const renderWeeklyChart = () => {
+    const data = studentHistoryData?.weekly || [];
+    if (data.length === 0) return <div className="text-center text-xs py-10 text-zinc-400 font-bold">No progress data logged yet</div>;
+    const maxVal = Math.max(...data.map((d: any) => Math.max(d.actual, d.target)), 10);
+    const height = 120;
+    const width = 500;
+    const paddingLeft = 30;
+    const paddingRight = 10;
+    const paddingTop = 10;
+    const paddingBottom = 20;
+    const chartHeight = height - paddingTop - paddingBottom;
+    const chartWidth = width - paddingLeft - paddingRight;
+
+    const points = data.map((d: any, i: number) => {
+      const x = paddingLeft + (i * (chartWidth / Math.max(1, data.length - 1)));
+      const y = height - paddingBottom - (d.actual / maxVal) * chartHeight;
+      return `${x},${y}`;
+    }).join(' ');
+
+    const areaPoints = `${paddingLeft},${height - paddingBottom} ${points} ${paddingLeft + chartWidth},${height - paddingBottom}`;
+
+    return (
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-40">
+        <line x1={paddingLeft} y1={paddingTop} x2={width - paddingRight} y2={paddingTop} stroke="#e4e4e7" strokeDasharray="3,3" />
+        <line x1={paddingLeft} y1={height - paddingBottom} x2={width - paddingRight} y2={height - paddingBottom} stroke="#e4e4e7" />
+
+        <polygon points={areaPoints} fill="rgba(99, 102, 241, 0.1)" />
+        <polyline points={points} fill="none" stroke="#6366f1" strokeWidth={2} />
+
+        {data.map((d: any, i: number) => {
+          const x = paddingLeft + (i * (chartWidth / Math.max(1, data.length - 1)));
+          const y = height - paddingBottom - (d.actual / maxVal) * chartHeight;
+          const targetY = height - paddingBottom - (d.target / maxVal) * chartHeight;
+
+          return (
+            <g key={i}>
+              <circle cx={x} cy={y} r={4} fill="#6366f1" />
+              <line x1={x} y1={targetY} x2={x + 10} y2={targetY} stroke="#dc2626" strokeWidth={1} strokeDasharray="2,2" />
+              <text x={x} y={height - 5} textAnchor="middle" className="text-[8px] font-semibold text-zinc-400">{d.week}</text>
+              <title>{`Week: ${d.start} to ${d.end}\nSolved: ${d.actual}\nTarget: ${d.target}`}</title>
+            </g>
+          );
+        })}
+      </svg>
+    );
+  };
+
+  const renderLeetcodeTargetsView = () => {
+    const isStaff = ['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR'].includes(user?.role || '') || (user?.role === 'STUDENT' && (user?.is_coordinator || user?.is_year_coordinator));
+
+    if (!isStaff) {
+      // Student View
+      return (
+        <PageLayout>
+          <div className="mb-6">
+            <h2 className="text-2xl font-black text-zinc-900 tracking-tight flex items-center gap-2">
+              <Code className="text-orange-500" size={26} /> Coding Progress Tracking
+            </h2>
+            <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Your Daily & Weekly LeetCode + GitHub Solved Progress</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            {/* LeetCode Daily Card */}
+            <Card className="flex flex-col justify-between border-l-4 border-l-orange-500 bg-white">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5"><Code size={16} className="text-orange-500" /> LeetCode Daily</span>
+                  {myLeetcodeProgress?.dailyStatus === 'COMPLETED' ? (
+                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">MET</span>
+                  ) : myLeetcodeProgress?.dailyStatus === 'DATA_UNAVAILABLE' ? (
+                    <span className="bg-zinc-100 text-zinc-800 text-[10px] font-bold px-2 py-0.5 rounded-full">NO SYNC</span>
+                  ) : (
+                    <span className="bg-orange-100 text-orange-800 text-[10px] font-bold px-2 py-0.5 rounded-full">PENDING</span>
+                  )}
+                </div>
+                <div className="flex items-baseline gap-2 mb-4">
+                  <span className="text-5xl font-black text-zinc-900">{myLeetcodeProgress?.solvedToday ?? 0}</span>
+                  <span className="text-zinc-400 font-bold">/ {myLeetcodeProgress?.dailyTarget ?? 0} solved today</span>
+                </div>
+              </div>
+              <div>
+                <div className="w-full bg-zinc-100 rounded-full h-2 mb-2">
+                  <div
+                    className="bg-orange-500 h-2 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, myLeetcodeProgress?.completionDailyPct ?? 0)}%` }}
+                  />
+                </div>
+                <span className="text-xs text-zinc-500 font-bold">{myLeetcodeProgress?.completionDailyPct ?? 0}% completed today</span>
+              </div>
+            </Card>
+
+            {/* GitHub Daily Card */}
+            <Card className="flex flex-col justify-between border-l-4 border-l-zinc-900 bg-white">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5"><Github size={16} className="text-zinc-900" /> GitHub Daily</span>
+                  {myGithubProgress?.dailyStatus === 'COMPLETED' ? (
+                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">MET</span>
+                  ) : myGithubProgress?.dailyStatus === 'DATA_UNAVAILABLE' ? (
+                    <span className="bg-zinc-100 text-zinc-800 text-[10px] font-bold px-2 py-0.5 rounded-full">NO SYNC</span>
+                  ) : (
+                    <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full">PENDING</span>
+                  )}
+                </div>
+                <div className="flex items-baseline gap-2 mb-4">
+                  <span className="text-5xl font-black text-zinc-900">{myGithubProgress?.newReposToday ?? 0}</span>
+                  <span className="text-zinc-400 font-bold">/ {myGithubProgress?.dailyTarget ?? 0} repos today</span>
+                </div>
+              </div>
+              <div>
+                <div className="w-full bg-zinc-100 rounded-full h-2 mb-2">
+                  <div
+                    className="bg-zinc-900 h-2 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, myGithubProgress?.completionDailyPct ?? 0)}%` }}
+                  />
+                </div>
+                <span className="text-xs text-zinc-500 font-bold">{myGithubProgress?.completionDailyPct ?? 0}% completed today</span>
+              </div>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card className="bg-white">
+              <h3 className="text-md font-black text-zinc-900 mb-4 flex items-center gap-1.5">
+                <Activity size={18} className="text-orange-500" /> LeetCode Solved History (Last 30 Days)
+              </h3>
+              <div className="h-44 flex items-end justify-center">
+                {myLeetcodeProgress?.studentId ? (
+                  <HistoryChartWrapper studentId={myLeetcodeProgress.studentId} type="daily" token={token} />
+                ) : (
+                  <div className="text-zinc-400 font-bold text-xs py-10">Loading chart...</div>
+                )}
+              </div>
+            </Card>
+
+            <Card className="bg-white">
+              <h3 className="text-md font-black text-zinc-900 mb-4 flex items-center gap-1.5">
+                <Activity size={18} className="text-indigo-500" /> LeetCode Weekly History
+              </h3>
+              <div className="h-44 flex items-end justify-center">
+                {myLeetcodeProgress?.studentId ? (
+                  <HistoryChartWrapper studentId={myLeetcodeProgress.studentId} type="weekly" token={token} />
+                ) : (
+                  <div className="text-zinc-400 font-bold text-xs py-10">Loading chart...</div>
+                )}
+              </div>
+            </Card>
+          </div>
+        </PageLayout>
+      );
+    }
+
+    // Staff View — Separate Dedicated Views for LeetCode Tracker & GitHub Tracker
+    return (
+      <PageLayout>
+        {/* Platform Selection Tabs & Action Buttons */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-200 mb-6 pb-2 md:pb-0">
+          <div className="flex items-center gap-2 overflow-x-auto -mb-px">
+            <button
+              type="button"
+              onClick={() => setCodingPlatformTab('LEETCODE')}
+              className={cn(
+                "flex items-center gap-2 px-5 py-3 border-b-2 font-black text-sm transition-all cursor-pointer",
+                codingPlatformTab === 'LEETCODE' || codingPlatformTab === 'COMBINED'
+                  ? "border-orange-600 text-orange-600 bg-orange-50/50 rounded-t-xl"
+                  : "border-transparent text-zinc-500 hover:text-zinc-900"
+              )}
+            >
+              <Code size={18} className="text-orange-500" />
+              <span>LeetCode Tracker</span>
+              <span className="ml-1 bg-orange-100 text-orange-800 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                {leetcodeProgressList.length} Students
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCodingPlatformTab('GITHUB')}
+              className={cn(
+                "flex items-center gap-2 px-5 py-3 border-b-2 font-black text-sm transition-all cursor-pointer",
+                codingPlatformTab === 'GITHUB'
+                  ? "border-indigo-600 text-indigo-600 bg-indigo-50/50 rounded-t-xl"
+                  : "border-transparent text-zinc-500 hover:text-zinc-900"
+              )}
+            >
+              <Github size={18} className="text-indigo-600" />
+              <span>GitHub Tracker</span>
+              <span className="ml-1 bg-indigo-100 text-indigo-800 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                {githubProgressList.length} Students
+              </span>
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 -mt-1 md:-mt-2 pb-1.5 md:pb-1">
+            {codingPlatformTab === 'LEETCODE' && (
+              <>
+                <Button
+                  onClick={handleSyncProgress}
+                  disabled={syncingLeetcode}
+                  variant="outline"
+                  className="border-zinc-300 hover:bg-zinc-100 text-zinc-700 font-bold px-3 py-1.5 text-xs rounded-xl flex items-center gap-1.5 bg-white cursor-pointer"
+                >
+                  {syncingLeetcode ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                  <span>Sync LeetCode</span>
+                </Button>
+
+                <Button
+                  onClick={() => {
+                    setAssignTargetForm(prev => ({
+                      ...prev,
+                      targetValue: classes[0]?.id || ''
+                    }));
+                    setShowAssignTargetModal(true);
+                  }}
+                  className="bg-orange-600 hover:bg-orange-700 text-white font-bold px-3 py-1.5 text-xs rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <Plus size={14} /> LeetCode Target
+                </Button>
+              </>
+            )}
+
+            {codingPlatformTab === 'GITHUB' && (
+              <>
+                <Button
+                  onClick={handleSyncGithubProgress}
+                  disabled={syncingGithub}
+                  variant="outline"
+                  className="border-zinc-300 hover:bg-zinc-100 text-zinc-700 font-bold px-3 py-1.5 text-xs rounded-xl flex items-center gap-1.5 bg-white cursor-pointer"
+                >
+                  {syncingGithub ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                  <span>Sync GitHub</span>
+                </Button>
+
+                <Button
+                  onClick={() => {
+                    setAssignGithubTargetForm(prev => ({
+                      ...prev,
+                      targetValue: classes[0]?.id || ''
+                    }));
+                    setShowAssignGithubTargetModal(true);
+                  }}
+                  className="bg-zinc-900 hover:bg-zinc-800 text-white font-bold px-3 py-1.5 text-xs rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <Plus size={14} /> GitHub Target
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* ─── LEETCODE TRACKER VIEW ─── */}
+        {(codingPlatformTab === 'LEETCODE' || codingPlatformTab === 'COMBINED') && (
+          <div>
+            {/* LeetCode Stat Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <StatCard title="Total Students" value={leetcodeStats?.totalStudents || leetcodeProgressList.length || 0} color="orange" icon={<Zap />} />
+              <StatCard title="Target Met Today" value={leetcodeStats?.metDaily || 0} color="emerald" icon={<Target />} />
+              <StatCard title="In Progress Today" value={leetcodeStats?.inProgressDaily || 0} color="amber" icon={<Hourglass />} />
+              <StatCard title="Completion Rate" value={`${leetcodeStats?.completionDailyRate || 0}%`} color="indigo" icon={<TrendingUp />} />
+            </div>
+
+            {/* Row 1: Sub-navigation Tabs & View Controls */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+              {/* Sub-tab: Monitor vs Targets */}
+              <div className="flex bg-zinc-100/80 rounded-xl p-1 border border-zinc-200/80 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setLeetcodeActiveTab('MONITOR')}
+                  className={cn(
+                    "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                    leetcodeActiveTab === 'MONITOR' ? "bg-white shadow-xs text-orange-600 font-extrabold" : "text-zinc-500 hover:text-zinc-900"
+                  )}
+                >
+                  Live Progress Monitor
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLeetcodeActiveTab('TARGETS')}
+                  className={cn(
+                    "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                    leetcodeActiveTab === 'TARGETS' ? "bg-white shadow-xs text-orange-600 font-extrabold" : "text-zinc-500 hover:text-zinc-900"
+                  )}
+                >
+                  Target Configurations ({leetcodeTargets.length})
+                </button>
+              </div>
+
+              {/* View type & Date selection */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex bg-zinc-100/80 rounded-xl p-1 border border-zinc-200/80 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => setLeetcodeViewType('DAILY')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                      leetcodeViewType === 'DAILY' ? "bg-white shadow-xs text-zinc-900" : "text-zinc-500 hover:text-zinc-900"
+                    )}
+                  >
+                    Daily View
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLeetcodeViewType('WEEKLY')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                      leetcodeViewType === 'WEEKLY' ? "bg-white shadow-xs text-zinc-900" : "text-zinc-500 hover:text-zinc-900"
+                    )}
+                  >
+                    Weekly View
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1.5 border border-zinc-200/80 rounded-xl px-3 py-1.5 bg-white shadow-2xs">
+                  <Calendar size={14} className="text-zinc-400" />
+                  <input
+                    type="date"
+                    value={leetcodeDate}
+                    onChange={(e) => setLeetcodeDate(e.target.value)}
+                    className="text-xs font-bold text-zinc-700 bg-transparent border-none outline-none p-0 cursor-pointer"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Row 2: Unified Filter & Search Toolbar */}
+            <div className="bg-white p-3 rounded-2xl border border-zinc-200/80 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 mb-6">
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Department Filter */}
+                {isAdmin && (
+                  <div className="flex items-center gap-1.5 border border-zinc-200 rounded-xl px-3 py-1.5 bg-zinc-50/50">
+                    <Building2 size={14} className="text-zinc-400" />
+                    <select
+                      value={selectedLeetcodeDeptId}
+                      onChange={(e) => {
+                        setSelectedLeetcodeDeptId(e.target.value);
+                        setSelectedLeetcodeYear('ALL');
+                        setSelectedLeetcodeClassId('ALL');
+                      }}
+                      className="text-xs font-bold text-zinc-700 bg-transparent border-none outline-none p-0 pr-6 cursor-pointer"
+                    >
+                      <option value="ALL">All Departments</option>
+                      {departments.map(d => (
+                        <option key={d.id} value={d.id.toString()}>{d.name} ({d.code})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Year Filter */}
+                {(isAdmin || isHOD) && (
+                  <div className="flex items-center gap-1.5 border border-zinc-200 rounded-xl px-3 py-1.5 bg-zinc-50/50">
+                    <Filter size={14} className="text-zinc-400" />
+                    <select
+                      value={selectedLeetcodeYear}
+                      onChange={(e) => {
+                        setSelectedLeetcodeYear(e.target.value);
+                        setSelectedLeetcodeClassId('ALL');
+                      }}
+                      className="text-xs font-bold text-zinc-700 bg-transparent border-none outline-none p-0 pr-6 cursor-pointer"
+                    >
+                      <option value="ALL">All Years</option>
+                      <option value="1">1st Year</option>
+                      <option value="2">2nd Year</option>
+                      <option value="3">3rd Year</option>
+                      <option value="4">4th Year</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Section / Class Filter */}
+                {(isAdmin || isHOD || user?.is_year_coordinator) && (
+                  <div className="flex items-center gap-1.5 border border-zinc-200 rounded-xl px-3 py-1.5 bg-zinc-50/50">
+                    <Filter size={14} className="text-zinc-400" />
+                    <select
+                      value={selectedLeetcodeClassId}
+                      onChange={(e) => setSelectedLeetcodeClassId(e.target.value)}
+                      className="text-xs font-bold text-zinc-700 bg-transparent border-none outline-none p-0 pr-6 cursor-pointer"
+                    >
+                      <option value="ALL">All Sections</option>
+                      {classes
+                        .filter(c => {
+                          if (selectedLeetcodeDeptId && selectedLeetcodeDeptId !== 'ALL' && c.department_id?.toString() !== selectedLeetcodeDeptId) return false;
+                          if (selectedLeetcodeYear && selectedLeetcodeYear !== 'ALL' && String(c.year) !== selectedLeetcodeYear) return false;
+                          if (isAdmin) return true;
+                          if (isHOD) return c.department_id?.toString() === user?.department_id?.toString();
+                          if (user?.is_year_coordinator) return c.department_id?.toString() === user?.department_id?.toString() && Number(c.year) === Number(user?.year_scope || user?.year);
+                          if (isAdvisor || (user?.role === 'STUDENT' && user?.is_coordinator)) return String(c.id) === String(user?.class_id);
+                          return c.department_id?.toString() === user?.department_id?.toString();
+                        })
+                        .sort((a, b) => (a.year || 0) - (b.year || 0) || (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }))
+                        .map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Status Filter */}
+                <div className="flex items-center gap-1.5 border border-zinc-200 rounded-xl px-3 py-1.5 bg-zinc-50/50">
+                  <Filter size={14} className="text-zinc-400" />
+                  <select
+                    value={leetcodeStatusFilter}
+                    onChange={(e) => setLeetcodeStatusFilter(e.target.value)}
+                    className="text-xs font-bold text-zinc-700 bg-transparent border-none outline-none p-0 pr-6 cursor-pointer"
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="COMPLETED">Completed</option>
+                    <option value="NOT_COMPLETED">Pending / Incomplete</option>
+                    <option value="DATA_UNAVAILABLE">No Sync Data</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Search Box */}
+              <div className="relative flex-1 md:max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={15} />
+                <input
+                  type="text"
+                  placeholder="Search student or reg no..."
+                  value={leetcodeSearch}
+                  onChange={(e) => setLeetcodeSearch(e.target.value)}
+                  className="w-full pl-9 pr-8 py-1.5 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-800 bg-zinc-50/50 focus:bg-white focus:outline-hidden transition-all"
+                />
+                {leetcodeSearch && (
+                  <button
+                    onClick={() => setLeetcodeSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 p-0.5 rounded-full"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* LeetCode Live Progress Monitor Table */}
+            {leetcodeActiveTab === 'MONITOR' ? (
+              <Card className="p-0 overflow-hidden border border-zinc-200 bg-white shadow-xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[850px] text-left border-collapse">
+                    <thead>
+                      <tr className="bg-zinc-50 border-b border-zinc-200 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                        <th onClick={() => handleSortHeader('registerNumber')} className="px-6 py-4 cursor-pointer select-none">
+                          Register No {leetcodeSortColumn === 'registerNumber' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                        <th onClick={() => handleSortHeader('fullName')} className="px-6 py-4 cursor-pointer select-none">
+                          Student Name {leetcodeSortColumn === 'fullName' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                        <th onClick={() => handleSortHeader('className')} className="px-6 py-4 cursor-pointer select-none">
+                          Section / Class {leetcodeSortColumn === 'className' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                        <th className="px-6 py-4">LeetCode Profile</th>
+                        <th className="px-6 py-4 text-center">Problems Solved / Target</th>
+                        <th onClick={() => handleSortHeader('status')} className="px-6 py-4 text-center cursor-pointer select-none">
+                          Status {leetcodeSortColumn === 'status' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200 text-sm">
+                      {sortedLeetcodeProgressList.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-12 text-center text-zinc-400 font-semibold">
+                            No LeetCode student records match the selected filters.
+                          </td>
+                        </tr>
+                      ) : (
+                        sortedLeetcodeProgressList.map((row) => {
+                          const isDaily = leetcodeViewType === 'DAILY';
+                          const solved = isDaily ? (row.solvedToday ?? 0) : (row.solvedThisWeek ?? 0);
+                          const target = isDaily ? (row.dailyTarget ?? 0) : (row.weeklyTarget ?? 0);
+                          const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
+                          const profileUrl = row.leetcodeUsername
+                            ? (row.leetcodeUsername.startsWith('http') ? row.leetcodeUsername : `https://leetcode.com/u/${row.leetcodeUsername}/`)
+                            : null;
+
+                          return (
+                            <tr key={row.studentId} className="hover:bg-zinc-50 transition-colors">
+                              <td className="px-6 py-4 font-mono text-xs font-bold text-zinc-500">{row.registerNumber}</td>
+                              <td className="px-6 py-4 font-bold text-zinc-900">
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewStudentHistory(row)}
+                                  className="hover:underline hover:text-indigo-600 text-left cursor-pointer"
+                                >
+                                  {row.fullName}
+                                </button>
+                              </td>
+                              <td className="px-6 py-4 font-semibold text-zinc-600">{row.className}</td>
+                              <td className="px-6 py-4">
+                                {profileUrl ? (
+                                  <a
+                                    href={profileUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs font-bold text-orange-600 hover:underline flex items-center gap-1"
+                                  >
+                                    <Code size={13} /> {row.leetcodeUsername || 'LeetCode Profile'} <ExternalLink size={11} />
+                                  </a>
+                                ) : (
+                                  <span className="text-xs text-zinc-400 font-medium">Not Linked</span>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 text-center font-semibold">
+                                <span className="text-zinc-900 font-bold">{solved}</span> / <span className="text-zinc-400">{target}</span>
+                              </td>
+                              <td className="px-6 py-4 text-center">
+                                <span className={cn(
+                                  "inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full",
+                                  status === 'COMPLETED' ? "bg-emerald-100 text-emerald-800" :
+                                    status === 'DATA_UNAVAILABLE' ? "bg-zinc-100 text-zinc-800" :
+                                      status === 'NO_TARGET' ? "bg-zinc-50 text-zinc-400" : "bg-orange-100 text-orange-800"
+                                )}>
+                                  {(status || 'PENDING').replace('_', ' ')}
+                                </span>
+                              </td>
+
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            ) : (
+              /* LeetCode Targets Configuration Table */
+              <Card className="p-0 overflow-hidden border border-zinc-200 bg-white shadow-xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[850px] text-left border-collapse">
+                    <thead>
+                      <tr className="bg-zinc-50 border-b border-zinc-200 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                        <th className="px-6 py-4">Scope</th>
+                        <th className="px-6 py-4">Target Audience / Value</th>
+                        <th className="px-6 py-4 text-center">Daily Target</th>
+                        <th className="px-6 py-4 text-center">Weekly Target</th>
+                        <th className="px-6 py-4">Duration</th>
+                        <th className="px-6 py-4">Created By</th>
+                        <th className="px-6 py-4 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200 text-sm">
+                      {leetcodeTargets.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-12 text-center text-zinc-400 font-semibold">
+                            No active LeetCode target configurations found. Click "LeetCode Target" to add one.
+                          </td>
+                        </tr>
+                      ) : (
+                        leetcodeTargets.map((target) => (
+                          <tr key={target.id} className="hover:bg-zinc-50">
+                            <td className="px-6 py-4 font-bold text-zinc-800">{target.scope_type || 'CLASS'}</td>
+                            <td className="px-6 py-4 font-semibold text-zinc-900">{target.target_value_name || target.class_name || 'All Students'}</td>
+                            <td className="px-6 py-4 text-center font-bold text-orange-600">{target.daily_target} / day</td>
+                            <td className="px-6 py-4 text-center font-bold text-indigo-600">{target.weekly_target} / week</td>
+                            <td className="px-6 py-4 text-xs font-medium text-zinc-500">{target.start_date} to {target.end_date}</td>
+                            <td className="px-6 py-4 text-xs text-zinc-600">{target.creator_name || 'Staff'}</td>
+                            <td className="px-6 py-4 text-right">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteLeetcodeTarget(target.id)}
+                                className="px-2 py-1 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer"
+                              >
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* ─── GITHUB TRACKER VIEW ─── */}
+        {codingPlatformTab === 'GITHUB' && (
+          <div>
+            {/* GitHub Stat Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <StatCard title="Total Students" value={githubStats?.totalStudents || githubProgressList.length || 0} color="purple" icon={<Zap />} />
+              <StatCard title="Target Met Today" value={githubStats?.metDaily || 0} color="emerald" icon={<Target />} />
+              <StatCard title="Active Committers" value={githubStats?.inProgressDaily || 0} color="blue" icon={<Terminal />} />
+              <StatCard title="Completion Rate" value={`${githubStats?.completionDailyRate || 0}%`} color="indigo" icon={<TrendingUp />} />
+            </div>
+
+            {/* Row 1: Sub-navigation Tabs & View Controls */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+              {/* Sub-tab: Monitor vs Targets */}
+              <div className="flex bg-zinc-100/80 rounded-xl p-1 border border-zinc-200/80 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setGithubActiveTab('MONITOR')}
+                  className={cn(
+                    "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                    githubActiveTab === 'MONITOR' ? "bg-white shadow-xs text-indigo-600 font-extrabold" : "text-zinc-500 hover:text-zinc-900"
+                  )}
+                >
+                  Live Progress Monitor
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGithubActiveTab('TARGETS')}
+                  className={cn(
+                    "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                    githubActiveTab === 'TARGETS' ? "bg-white shadow-xs text-indigo-600 font-extrabold" : "text-zinc-500 hover:text-zinc-900"
+                  )}
+                >
+                  Target Configurations ({githubTargets.length})
+                </button>
+              </div>
+
+              {/* View type & Date selection */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex bg-zinc-100/80 rounded-xl p-1 border border-zinc-200/80 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => setLeetcodeViewType('DAILY')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                      leetcodeViewType === 'DAILY' ? "bg-white shadow-xs text-zinc-900" : "text-zinc-500 hover:text-zinc-900"
+                    )}
+                  >
+                    Daily View
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLeetcodeViewType('WEEKLY')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                      leetcodeViewType === 'WEEKLY' ? "bg-white shadow-xs text-zinc-900" : "text-zinc-500 hover:text-zinc-900"
+                    )}
+                  >
+                    Weekly View
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1.5 border border-zinc-200/80 rounded-xl px-3 py-1.5 bg-white shadow-2xs">
+                  <Calendar size={14} className="text-zinc-400" />
+                  <input
+                    type="date"
+                    value={leetcodeDate}
+                    onChange={(e) => setLeetcodeDate(e.target.value)}
+                    className="text-xs font-bold text-zinc-700 bg-transparent border-none outline-none p-0 cursor-pointer"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Row 2: Unified Filter & Search Toolbar */}
+            <div className="bg-white p-3 rounded-2xl border border-zinc-200/80 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 mb-6">
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Department Filter */}
+                {isAdmin && (
+                  <div className="flex items-center gap-1.5 border border-zinc-200 rounded-xl px-3 py-1.5 bg-zinc-50/50">
+                    <Building2 size={14} className="text-zinc-400" />
+                    <select
+                      value={selectedLeetcodeDeptId}
+                      onChange={(e) => {
+                        setSelectedLeetcodeDeptId(e.target.value);
+                        setSelectedLeetcodeYear('ALL');
+                        setSelectedLeetcodeClassId('ALL');
+                      }}
+                      className="text-xs font-bold text-zinc-700 bg-transparent border-none outline-none p-0 pr-6 cursor-pointer"
+                    >
+                      <option value="ALL">All Departments</option>
+                      {departments.map(d => (
+                        <option key={d.id} value={d.id.toString()}>{d.name} ({d.code})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Year Filter */}
+                {(isAdmin || isHOD) && (
+                  <div className="flex items-center gap-1.5 border border-zinc-200 rounded-xl px-3 py-1.5 bg-zinc-50/50">
+                    <Filter size={14} className="text-zinc-400" />
+                    <select
+                      value={selectedLeetcodeYear}
+                      onChange={(e) => {
+                        setSelectedLeetcodeYear(e.target.value);
+                        setSelectedLeetcodeClassId('ALL');
+                      }}
+                      className="text-xs font-bold text-zinc-700 bg-transparent border-none outline-none p-0 pr-6 cursor-pointer"
+                    >
+                      <option value="ALL">All Years</option>
+                      <option value="1">1st Year</option>
+                      <option value="2">2nd Year</option>
+                      <option value="3">3rd Year</option>
+                      <option value="4">4th Year</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Section / Class Filter */}
+                {(isAdmin || isHOD || user?.is_year_coordinator) && (
+                  <div className="flex items-center gap-1.5 border border-zinc-200 rounded-xl px-3 py-1.5 bg-zinc-50/50">
+                    <Filter size={14} className="text-zinc-400" />
+                    <select
+                      value={selectedLeetcodeClassId}
+                      onChange={(e) => setSelectedLeetcodeClassId(e.target.value)}
+                      className="text-xs font-bold text-zinc-700 bg-transparent border-none outline-none p-0 pr-6 cursor-pointer"
+                    >
+                      <option value="ALL">All Sections</option>
+                      {classes
+                        .filter(c => {
+                          if (selectedLeetcodeDeptId && selectedLeetcodeDeptId !== 'ALL' && c.department_id?.toString() !== selectedLeetcodeDeptId) return false;
+                          if (selectedLeetcodeYear && selectedLeetcodeYear !== 'ALL' && String(c.year) !== selectedLeetcodeYear) return false;
+                          if (isAdmin) return true;
+                          if (isHOD) return c.department_id?.toString() === user?.department_id?.toString();
+                          if (user?.is_year_coordinator) return c.department_id?.toString() === user?.department_id?.toString() && Number(c.year) === Number(user?.year_scope || user?.year);
+                          if (isAdvisor || (user?.role === 'STUDENT' && user?.is_coordinator)) return String(c.id) === String(user?.class_id);
+                          return c.department_id?.toString() === user?.department_id?.toString();
+                        })
+                        .sort((a, b) => (a.year || 0) - (b.year || 0) || (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }))
+                        .map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Status Filter */}
+                <div className="flex items-center gap-1.5 border border-zinc-200 rounded-xl px-3 py-1.5 bg-zinc-50/50">
+                  <Filter size={14} className="text-zinc-400" />
+                  <select
+                    value={leetcodeStatusFilter}
+                    onChange={(e) => setLeetcodeStatusFilter(e.target.value)}
+                    className="text-xs font-bold text-zinc-700 bg-transparent border-none outline-none p-0 pr-6 cursor-pointer"
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="COMPLETED">Completed</option>
+                    <option value="NOT_COMPLETED">Pending / Incomplete</option>
+                    <option value="DATA_UNAVAILABLE">No Sync Data</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Search Box */}
+              <div className="relative flex-1 md:max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={15} />
+                <input
+                  type="text"
+                  placeholder="Search student or reg no..."
+                  value={leetcodeSearch}
+                  onChange={(e) => setLeetcodeSearch(e.target.value)}
+                  className="w-full pl-9 pr-8 py-1.5 border border-zinc-200 rounded-xl text-xs font-semibold text-zinc-800 bg-zinc-50/50 focus:bg-white focus:outline-hidden transition-all"
+                />
+                {leetcodeSearch && (
+                  <button
+                    onClick={() => setLeetcodeSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 p-0.5 rounded-full"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* GitHub Live Progress Monitor Table */}
+            {githubActiveTab === 'MONITOR' ? (
+              <Card className="p-0 overflow-hidden border border-zinc-200 bg-white shadow-xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[850px] text-left border-collapse">
+                    <thead>
+                      <tr className="bg-zinc-50 border-b border-zinc-200 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                        <th onClick={() => handleSortHeader('registerNumber')} className="px-6 py-4 cursor-pointer select-none">
+                          Register No {leetcodeSortColumn === 'registerNumber' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                        <th onClick={() => handleSortHeader('fullName')} className="px-6 py-4 cursor-pointer select-none">
+                          Student Name {leetcodeSortColumn === 'fullName' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                        <th onClick={() => handleSortHeader('className')} className="px-6 py-4 cursor-pointer select-none">
+                          Section / Class {leetcodeSortColumn === 'className' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                        <th className="px-6 py-4">GitHub Profile</th>
+                        <th className="px-6 py-4 text-center">Active Repositories / Target</th>
+                        <th onClick={() => handleSortHeader('status')} className="px-6 py-4 text-center cursor-pointer select-none">
+                          Status {leetcodeSortColumn === 'status' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200 text-sm">
+                      {sortedGithubProgressList.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-12 text-center text-zinc-400 font-semibold">
+                            No GitHub student records match the selected filters.
+                          </td>
+                        </tr>
+                      ) : (
+                        sortedGithubProgressList.map((row) => {
+                          const isDaily = leetcodeViewType === 'DAILY';
+                          const solved = isDaily ? (row.dailyRepos ?? row.reposToday ?? 0) : (row.weeklyRepos ?? row.reposThisWeek ?? 0);
+                          const target = isDaily ? (row.dailyTarget ?? 0) : (row.weeklyTarget ?? 0);
+                          const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
+                          const profileUrl = row.githubUsername
+                            ? (row.githubUsername.startsWith('http') ? row.githubUsername : `https://github.com/${row.githubUsername}`)
+                            : null;
+
+                          return (
+                            <tr key={row.studentId} className="hover:bg-zinc-50 transition-colors">
+                              <td className="px-6 py-4 font-mono text-xs font-bold text-zinc-500">{row.registerNumber}</td>
+                              <td className="px-6 py-4 font-bold text-zinc-900">
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewStudentHistory(row)}
+                                  className="hover:underline hover:text-indigo-600 text-left cursor-pointer"
+                                >
+                                  {row.fullName}
+                                </button>
+                              </td>
+                              <td className="px-6 py-4 font-semibold text-zinc-600">{row.className}</td>
+                              <td className="px-6 py-4">
+                                {profileUrl ? (
+                                  <a
+                                    href={profileUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs font-bold text-indigo-600 hover:underline flex items-center gap-1"
+                                  >
+                                    <Github size={13} /> {row.githubUsername || 'GitHub Profile'} <ExternalLink size={11} />
+                                  </a>
+                                ) : (
+                                  <span className="text-xs text-zinc-400 font-medium">Not Linked</span>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 text-center font-semibold">
+                                <span className="text-zinc-900 font-bold">{solved}</span> / <span className="text-zinc-400">{target}</span>
+                              </td>
+                              <td className="px-6 py-4 text-center">
+                                <span className={cn(
+                                  "inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full",
+                                  status === 'COMPLETED' ? "bg-emerald-100 text-emerald-800" :
+                                    status === 'DATA_UNAVAILABLE' ? "bg-zinc-100 text-zinc-800" :
+                                      status === 'NO_TARGET' ? "bg-zinc-50 text-zinc-400" : "bg-blue-100 text-blue-800"
+                                )}>
+                                  {(status || 'PENDING').replace('_', ' ')}
+                                </span>
+                              </td>
+
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            ) : (
+              /* GitHub Targets Configuration Table */
+              <Card className="p-0 overflow-hidden border border-zinc-200 bg-white shadow-xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[850px] text-left border-collapse">
+                    <thead>
+                      <tr className="bg-zinc-50 border-b border-zinc-200 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                        <th className="px-6 py-4">Scope</th>
+                        <th className="px-6 py-4">Target Audience / Value</th>
+                        <th className="px-6 py-4 text-center">Daily Target</th>
+                        <th className="px-6 py-4 text-center">Weekly Target</th>
+                        <th className="px-6 py-4">Duration</th>
+                        <th className="px-6 py-4">Created By</th>
+                        <th className="px-6 py-4 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200 text-sm">
+                      {githubTargets.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-12 text-center text-zinc-400 font-semibold">
+                            No active GitHub target configurations found. Click "GitHub Target" to add one.
+                          </td>
+                        </tr>
+                      ) : (
+                        githubTargets.map((target) => (
+                          <tr key={target.id} className="hover:bg-zinc-50">
+                            <td className="px-6 py-4 font-bold text-zinc-800">{target.scope_type || 'CLASS'}</td>
+                            <td className="px-6 py-4 font-semibold text-zinc-900">{target.target_value_name || target.class_name || 'All Students'}</td>
+                            <td className="px-6 py-4 text-center font-bold text-orange-600">{target.daily_target} / day</td>
+                            <td className="px-6 py-4 text-center font-bold text-indigo-600">{target.weekly_target} / week</td>
+                            <td className="px-6 py-4 text-xs font-medium text-zinc-500">{target.start_date} to {target.end_date}</td>
+                            <td className="px-6 py-4 text-xs text-zinc-600">{target.creator_name || 'Staff'}</td>
+                            <td className="px-6 py-4 text-right">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteGithubTarget(target.id)}
+                                className="px-2 py-1 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer"
+                              >
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+          </div>
+        )}
+      </PageLayout>
+    );
+  };
+
+  const renderAssignTargetModal = () => {
+    if (!showAssignTargetModal) return null;
+    const isYearCoordinator = user?.is_year_coordinator;
+    const isAdvisor = user?.role === 'CLASS_ADVISOR' || (user?.role === 'STUDENT' && user?.is_coordinator);
+
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-[200] animate-fade-in">
+        <Card className="w-full max-w-md bg-white shadow-xl rounded-2xl overflow-hidden p-6 border border-zinc-200">
+          <div className="flex items-center justify-between mb-4 border-b border-zinc-100 pb-3">
+            <h3 className="text-lg font-black text-zinc-900 flex items-center gap-1.5">
+              <Code size={20} className="text-orange-500" /> Assign LeetCode Target
+            </h3>
+            <button
+              onClick={() => setShowAssignTargetModal(false)}
+              className="text-zinc-400 hover:text-zinc-600 font-bold p-1 rounded-lg"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <form onSubmit={handleCreateTarget} className="space-y-4">
+            {/* Target Scope */}
+            <div>
+              <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Target Scope</label>
+              <select
+                value={assignTargetForm.scopeType}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  let defVal = '';
+                  if (val === 'CLASS') defVal = classes[0]?.id || '';
+                  if (val === 'STUDENT') defVal = users.filter(u => u.role === 'STUDENT')[0]?.id || '';
+                  if (val === 'YEAR') defVal = '3';
+                  if (val === 'DEPARTMENT') defVal = departments[0]?.id || '';
+
+                  setAssignTargetForm(prev => ({
+                    ...prev,
+                    scopeType: val,
+                    targetValue: defVal
+                  }));
+                }}
+                className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white cursor-pointer"
+              >
+                {!isYearCoordinator && !isAdvisor && <option value="DEPARTMENT">Department-wide</option>}
+                {!isAdvisor && <option value="YEAR">Batch / Year-wide</option>}
+                <option value="CLASS">Class Section-wide</option>
+                <option value="STUDENT">Individual Student</option>
+              </select>
+            </div>
+
+            {/* Scope Value */}
+            <div>
+              <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Select Option</label>
+              {assignTargetForm.scopeType === 'DEPARTMENT' && (
+                <select
+                  value={assignTargetForm.targetValue}
+                  onChange={(e) => setAssignTargetForm(prev => ({ ...prev, targetValue: e.target.value }))}
+                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white cursor-pointer"
+                >
+                  {departments.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              )}
+
+              {assignTargetForm.scopeType === 'YEAR' && (
+                <select
+                  value={assignTargetForm.targetValue}
+                  onChange={(e) => setAssignTargetForm(prev => ({ ...prev, targetValue: e.target.value }))}
+                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white cursor-pointer"
+                >
+                  <option value="1">1st Year</option>
+                  <option value="2">2nd Year</option>
+                  <option value="3">3rd Year</option>
+                  <option value="4">4th Year</option>
+                </select>
+              )}
+
+              {assignTargetForm.scopeType === 'CLASS' && (
+                <select
+                  value={assignTargetForm.targetValue}
+                  onChange={(e) => setAssignTargetForm(prev => ({ ...prev, targetValue: e.target.value }))}
+                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white cursor-pointer"
+                >
+                  {classes.map(c => (
+                    <option key={c.id} value={c.id}>{c.name} (Year {c.year})</option>
+                  ))}
+                </select>
+              )}
+
+              {assignTargetForm.scopeType === 'STUDENT' && (
+                <select
+                  value={assignTargetForm.targetValue}
+                  onChange={(e) => setAssignTargetForm(prev => ({ ...prev, targetValue: e.target.value }))}
+                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white cursor-pointer"
+                >
+                  {users.filter(u => u.role === 'STUDENT').map(u => (
+                    <option key={u.id} value={u.id}>{u.full_name} ({u.register_number})</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Targets */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Daily Target</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={assignTargetForm.dailyTarget}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const parsed = parseInt(val, 10) || 0;
+                    setAssignTargetForm(prev => ({
+                      ...prev,
+                      dailyTarget: val,
+                      weeklyTarget: String(parsed * 7)
+                    }));
+                  }}
+                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Weekly Target</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={assignTargetForm.weeklyTarget}
+                  onChange={(e) => setAssignTargetForm(prev => ({ ...prev, weeklyTarget: e.target.value }))}
+                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white"
+                />
+              </div>
+            </div>
+
+            {/* Dates */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Start Date</label>
+                <input
+                  type="date"
+                  value={assignTargetForm.startDate}
+                  onChange={(e) => {
+                    const startVal = e.target.value;
+                    const parts = startVal.split('-');
+                    const yr = parseInt(parts[0], 10);
+                    const mo = parseInt(parts[1], 10) - 1;
+                    const dy = parseInt(parts[2], 10);
+
+                    const localDate = new Date(yr, mo, dy);
+                    localDate.setDate(localDate.getDate() + 6);
+
+                    const endVal = localDate.getFullYear() + '-' +
+                      String(localDate.getMonth() + 1).padStart(2, '0') + '-' +
+                      String(localDate.getDate()).padStart(2, '0');
+
+                    setAssignTargetForm(prev => ({
+                      ...prev,
+                      startDate: startVal,
+                      endDate: endVal
+                    }));
+                  }}
+                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white cursor-pointer"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">End Date</label>
+                <input
+                  type="date"
+                  value={assignTargetForm.endDate}
+                  onChange={(e) => setAssignTargetForm(prev => ({ ...prev, endDate: e.target.value }))}
+                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white cursor-pointer"
+                />
+              </div>
+            </div>
+
+            {/* Submit */}
+            <div className="pt-2">
+              <Button type="submit" disabled={submittingTarget} className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-bold p-3 rounded-xl transition-all disabled:opacity-50">
+                {submittingTarget ? 'Creating...' : 'Create Target'}
+              </Button>
+            </div>
+          </form>
+        </Card>
+      </div>
+    );
+  };
+
+  const renderAssignGithubTargetModal = () => {
+    if (!showAssignGithubTargetModal) return null;
+    const isYearCoordinator = user?.is_year_coordinator;
+    const isAdvisor = user?.role === 'CLASS_ADVISOR' || (user?.role === 'STUDENT' && user?.is_coordinator);
+
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-[200] animate-fade-in">
+        <Card className="w-full max-w-md bg-white shadow-xl rounded-2xl overflow-hidden p-6 border border-zinc-200">
+          <div className="flex items-center justify-between mb-4 border-b border-zinc-100 pb-3">
+            <h3 className="text-lg font-black text-zinc-900 flex items-center gap-1.5">
+              <Github size={20} className="text-zinc-900" /> Assign GitHub Target
+            </h3>
+            <button
+              onClick={() => setShowAssignGithubTargetModal(false)}
+              className="text-zinc-400 hover:text-zinc-600 font-bold p-1 rounded-lg"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <form onSubmit={handleCreateGithubTarget} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1">Daily Target (Repos)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={assignGithubTargetForm.dailyTarget}
+                  onChange={(e) => setAssignGithubTargetForm(prev => ({ ...prev, dailyTarget: e.target.value }))}
+                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-bold text-zinc-900 focus:outline-none focus:border-zinc-900 bg-white"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1">Weekly Target (Repos)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={assignGithubTargetForm.weeklyTarget}
+                  onChange={(e) => setAssignGithubTargetForm(prev => ({ ...prev, weeklyTarget: e.target.value }))}
+                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-bold text-zinc-900 focus:outline-none focus:border-zinc-900 bg-white"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1">Start Date</label>
+                <input
+                  type="date"
+                  value={assignGithubTargetForm.startDate}
+                  onChange={(e) => setAssignGithubTargetForm(prev => ({ ...prev, startDate: e.target.value }))}
+                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-bold text-zinc-700 focus:outline-none focus:border-zinc-900 bg-white cursor-pointer"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1">End Date</label>
+                <input
+                  type="date"
+                  value={assignGithubTargetForm.endDate}
+                  onChange={(e) => setAssignGithubTargetForm(prev => ({ ...prev, endDate: e.target.value }))}
+                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-bold text-zinc-700 focus:outline-none focus:border-zinc-900 bg-white cursor-pointer"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1">Target Scope</label>
+              <select
+                value={assignGithubTargetForm.scopeType}
+                onChange={(e) => {
+                  const scope = e.target.value;
+                  let initialVal = '';
+                  if (scope === 'CLASS') initialVal = classes[0]?.id || '';
+                  if (scope === 'YEAR') initialVal = '1';
+                  if (scope === 'DEPARTMENT') initialVal = departments[0]?.id || user?.department_id || '';
+                  if (scope === 'STUDENT') initialVal = users.find(u => u.role === 'STUDENT')?.id || '';
+                  setAssignGithubTargetForm(prev => ({ ...prev, scopeType: scope, targetValue: initialVal }));
+                }}
+                className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white cursor-pointer"
+              >
+                {!isYearCoordinator && !isAdvisor && <option value="DEPARTMENT">Entire Department</option>}
+                {!isAdvisor && <option value="YEAR">Specific Academic Year</option>}
+                <option value="CLASS">Specific Section / Class</option>
+                <option value="STUDENT">Individual Student</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1">Select Value</label>
+              {assignGithubTargetForm.scopeType === 'DEPARTMENT' && (
+                <select
+                  value={assignGithubTargetForm.targetValue}
+                  onChange={(e) => setAssignGithubTargetForm(prev => ({ ...prev, targetValue: e.target.value }))}
+                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white cursor-pointer"
+                >
+                  {departments.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              )}
+
+              {assignGithubTargetForm.scopeType === 'YEAR' && (
+                <select
+                  value={assignGithubTargetForm.targetValue}
+                  onChange={(e) => setAssignGithubTargetForm(prev => ({ ...prev, targetValue: e.target.value }))}
+                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white cursor-pointer"
+                >
+                  <option value="1">1st Year</option>
+                  <option value="2">2nd Year</option>
+                  <option value="3">3rd Year</option>
+                  <option value="4">4th Year</option>
+                </select>
+              )}
+
+              {assignGithubTargetForm.scopeType === 'CLASS' && (
+                <select
+                  value={assignGithubTargetForm.targetValue}
+                  onChange={(e) => setAssignGithubTargetForm(prev => ({ ...prev, targetValue: e.target.value }))}
+                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white cursor-pointer"
+                >
+                  {classes.map(c => (
+                    <option key={c.id} value={c.id}>{c.name} (Year {c.year})</option>
+                  ))}
+                </select>
+              )}
+
+              {assignGithubTargetForm.scopeType === 'STUDENT' && (
+                <select
+                  value={assignGithubTargetForm.targetValue}
+                  onChange={(e) => setAssignGithubTargetForm(prev => ({ ...prev, targetValue: e.target.value }))}
+                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white cursor-pointer"
+                >
+                  {users.filter(u => u.role === 'STUDENT').map(u => (
+                    <option key={u.id} value={u.id}>{u.full_name} ({u.register_number})</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAssignGithubTargetModal(false)}
+                className="border-zinc-200 text-zinc-600 font-bold px-4 rounded-xl text-xs bg-white"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={submittingTarget}
+                className="bg-zinc-900 text-white font-bold px-4 rounded-xl text-xs hover:bg-zinc-800"
+              >
+                {submittingTarget ? 'Creating...' : 'Create Target'}
+              </Button>
+            </div>
+          </form>
+        </Card>
+      </div>
+    );
+  };
+
+  const renderHistoryDetailsModal = () => {
+    return null;
+  };
+
   const renderSidebarContent = () => (
     <div className="flex flex-col h-full bg-white">
       <div className="p-4 border-b border-zinc-100 flex items-center justify-between shrink-0 h-20">
@@ -5476,7 +7478,7 @@ export default function App() {
             {isAdmin ? 'SUPREME' : isHOD ? 'HOD PORTAL' : user?.is_year_coordinator ? 'YEAR COORD' : isAdvisor ? 'ADVISOR' : isCoordinator ? 'COORDINATOR' : 'STUDENT'}
           </span>
         </div>
-        <button 
+        <button
           onClick={() => setIsMobileSidebarOpen(false)}
           className="p-1 text-zinc-400 hover:text-zinc-900 md:hidden rounded-lg hover:bg-zinc-100"
         >
@@ -5485,119 +7487,126 @@ export default function App() {
       </div>
 
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
-          <>
-            <SidebarItem
-              icon={<LayoutDashboard size={20} />}
-              label="Dashboard"
-              active={view === 'dashboard'}
-              onClick={() => { setView('dashboard'); setIsMobileSidebarOpen(false); }}
-            />
+        <>
+          <SidebarItem
+            icon={<LayoutDashboard size={20} />}
+            label="Dashboard"
+            active={view === 'dashboard'}
+            onClick={() => { setView('dashboard'); setIsMobileSidebarOpen(false); }}
+          />
 
-            {isAdmin && (
-              <>
-                <SidebarItem
-                  icon={<Building2 size={20} />}
-                  label="Departments"
-                  active={view === 'departments'}
-                  onClick={() => { setView('departments'); setIsMobileSidebarOpen(false); }}
-                />
-                <SidebarItem
-                  icon={<Users size={20} />}
-                  label="HOD Accounts"
-                  active={view === 'users'}
-                  onClick={() => { setView('users'); setIsMobileSidebarOpen(false); }}
-                />
-              </>
-            )}
+          <SidebarItem
+            icon={<ClipboardList size={20} />}
+            label="Tasks"
+            active={view === 'tasks'}
+            onClick={() => { setView('tasks'); setIsMobileSidebarOpen(false); }}
+          />
 
-            {isHOD && (
-              <>
-                <SidebarItem
-                  icon={<Building2 size={20} />}
-                  label="Classes"
-                  active={view === 'classes'}
-                  onClick={() => { setView('classes'); setIsMobileSidebarOpen(false); }}
-                />
-                <SidebarItem
-                  icon={<Users size={20} />}
-                  label="Users"
-                  active={view === 'users'}
-                  onClick={() => { setView('users'); setIsMobileSidebarOpen(false); }}
-                />
-              </>
-            )}
+          <SidebarItem
+            icon={<Code size={20} />}
+            label="Coding Progress"
+            active={view === 'leetcode-targets' || view === 'coding-progress'}
+            onClick={() => { setView('leetcode-targets'); setIsMobileSidebarOpen(false); }}
+          />
 
-            {isAdvisor && (
-              <>
-                <SidebarItem
-                  icon={<Building2 size={20} />}
-                  label="My Class"
-                  active={view === 'my-class'}
-                  onClick={() => { setView('my-class'); setIsMobileSidebarOpen(false); }}
-                />
-                <SidebarItem
-                  icon={<Users size={20} />}
-                  label="Students"
-                  active={view === 'users'}
-                  onClick={() => { setView('users'); setIsMobileSidebarOpen(false); }}
-                />
-              </>
-            )}
+          <SidebarItem
+            icon={<Megaphone size={20} />}
+            label="Notice Board"
+            active={view === 'notice-board'}
+            onClick={() => { setView('notice-board'); fetchNotices(); setIsMobileSidebarOpen(false); }}
+          />
 
-            <SidebarItem
-              icon={<ClipboardList size={20} />}
-              label="Tasks"
-              active={view === 'tasks'}
-              onClick={() => { setView('tasks'); setIsMobileSidebarOpen(false); }}
-            />
-
-            {(isAdvisor || isHOD || isAdmin || isCoordinator) && (
+          {isAdmin && (
+            <>
               <SidebarItem
-                icon={<ShieldCheck size={20} />}
-                label="Verifications"
-                active={view === 'verifications'}
-                onClick={() => { setView('verifications'); setIsMobileSidebarOpen(false); }}
+                icon={<Building2 size={20} />}
+                label="Departments"
+                active={view === 'departments'}
+                onClick={() => { setView('departments'); setIsMobileSidebarOpen(false); }}
               />
-            )}
+              <SidebarItem
+                icon={<Users size={20} />}
+                label="HOD Accounts"
+                active={view === 'users'}
+                onClick={() => { setView('users'); setIsMobileSidebarOpen(false); }}
+              />
+            </>
+          )}
 
-            {isStudent && (
-              <>
-                <SidebarItem
-                  icon={<CheckCircle2 size={20} />}
-                  label="My Submissions"
-                  active={view === 'submissions'}
-                  onClick={() => { setView('submissions'); setIsMobileSidebarOpen(false); }}
-                />
-                <SidebarItem
-                  icon={<User size={20} />}
-                  label="Profile"
-                  active={view === 'profile'}
-                  onClick={() => { setView('profile'); setIsMobileSidebarOpen(false); }}
-                />
-              </>
-            )}
+          {isHOD && (
+            <>
+              <SidebarItem
+                icon={<Building2 size={20} />}
+                label="Classes"
+                active={view === 'classes'}
+                onClick={() => { setView('classes'); setIsMobileSidebarOpen(false); }}
+              />
+              <SidebarItem
+                icon={<Users size={20} />}
+                label="Users"
+                active={view === 'users'}
+                onClick={() => { setView('users'); setIsMobileSidebarOpen(false); }}
+              />
+            </>
+          )}
 
+          {isAdvisor && (
+            <>
+              <SidebarItem
+                icon={<Building2 size={20} />}
+                label="My Class"
+                active={view === 'my-class'}
+                onClick={() => { setView('my-class'); setIsMobileSidebarOpen(false); }}
+              />
+              <SidebarItem
+                icon={<Users size={20} />}
+                label="Students"
+                active={view === 'users'}
+                onClick={() => { setView('users'); setIsMobileSidebarOpen(false); }}
+              />
+            </>
+          )}
+
+          {(isAdvisor || isHOD || isAdmin || isCoordinator) && (
             <SidebarItem
-              icon={<Megaphone size={20} />}
-              label="Notice Board"
-              active={view === 'notice-board'}
-              onClick={() => { setView('notice-board'); fetchNotices(); setIsMobileSidebarOpen(false); }}
+              icon={<ShieldCheck size={20} />}
+              label="Verifications"
+              active={view === 'verifications'}
+              onClick={() => { setView('verifications'); setIsMobileSidebarOpen(false); }}
             />
+          )}
 
-            <SidebarItem
-              icon={<MessageSquare size={20} />}
-              label="Feedback"
-              active={view === 'feedback'}
-              onClick={() => { setView('feedback'); fetchFeedbacks(); setIsMobileSidebarOpen(false); }}
-            />
+          {isStudent && (
+            <>
+              <SidebarItem
+                icon={<CheckCircle2 size={20} />}
+                label="My Submissions"
+                active={view === 'submissions'}
+                onClick={() => { setView('submissions'); setIsMobileSidebarOpen(false); }}
+              />
+              <SidebarItem
+                icon={<User size={20} />}
+                label="Profile"
+                active={view === 'profile'}
+                onClick={() => { setView('profile'); setIsMobileSidebarOpen(false); }}
+              />
+            </>
+          )}
 
-        <SidebarItem
-          icon={<Settings size={20} />}
-          label="Settings"
-          active={view === 'settings'}
-          onClick={() => { setView('settings'); setIsMobileSidebarOpen(false); }}
-        />
-          </>
+          <SidebarItem
+            icon={<MessageSquare size={20} />}
+            label="Feedback"
+            active={view === 'feedback'}
+            onClick={() => { setView('feedback'); fetchFeedbacks(); setIsMobileSidebarOpen(false); }}
+          />
+
+          <SidebarItem
+            icon={<Settings size={20} />}
+            label="Settings"
+            active={view === 'settings'}
+            onClick={() => { setView('settings'); setIsMobileSidebarOpen(false); }}
+          />
+        </>
       </nav>
 
       <div className="p-4 border-t border-zinc-100 shrink-0 bg-white">
@@ -5625,6 +7634,8 @@ export default function App() {
     <FooterContext.Provider value={setShowFooterModal}>
       <div className="h-screen bg-[#F5F5F4] flex overflow-hidden">
         <ToastContainer toasts={toasts} removeToast={removeToast} />
+        {renderAssignTargetModal()}
+        {renderHistoryDetailsModal()}
         {/* Rejection Modal */}
         <AnimatePresence>
           {showRejectionModal && (
@@ -5897,20 +7908,36 @@ export default function App() {
         <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
           <header className="h-20 bg-white border-b border-zinc-200 px-4 md:px-8 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-4 min-w-0">
-              <button 
+              <button
                 onClick={() => setIsMobileSidebarOpen(true)}
                 className="p-2 -ml-2 text-zinc-500 hover:text-zinc-900 md:hidden rounded-lg hover:bg-zinc-50"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
               </button>
               <div className="min-w-0">
-                <h2 className="text-xl font-bold text-zinc-900 tracking-tight capitalize truncate">{view === 'departments' ? 'Departments' : view === 'my-class' ? 'My Class' : view}</h2>
+                <h2 className="text-xl font-bold text-zinc-900 tracking-tight truncate">
+                  {(() => {
+                    if (view === 'leetcode-targets' || view === 'coding-progress') {
+                      if (codingPlatformTab === 'LEETCODE') return 'LeetCode';
+                      if (codingPlatformTab === 'GITHUB') return 'GitHub';
+                      return 'Combined Coding Progress';
+                    }
+                    if (view === 'departments') return 'Departments';
+                    if (view === 'my-class') return 'My Class';
+                    if (view === 'notice-board') return 'Notice Board';
+                    if (view === 'analyzer') return 'Student Progress Analyzer';
+                    if (view === 'verification') return 'Task Verification';
+                    if (view === 'users') return 'User Management';
+                    if (view === 'tasks') return 'Tasks';
+                    return view.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                  })()}
+                </h2>
                 <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider truncate">Academic Management System</p>
               </div>
             </div>
             <div className="flex items-center gap-4 shrink-0">
               {(isAdmin || isHOD || isAdvisor || isCoordinator || user?.is_year_coordinator) && (
-                <Button variant="success" className="flex items-center gap-2" onClick={() => setShowExportModal(true)}>
+                <Button variant="success" className="flex items-center gap-2" onClick={() => (view === 'leetcode-targets' || view === 'coding-progress') ? handleDownloadCombinedExcel() : setShowExportModal(true)}>
                   <FileDown size={18} /> {isAdmin || isHOD ? 'Export Custom Report' : 'Export Class Report'}
                 </Button>
               )}
@@ -5932,7 +7959,7 @@ export default function App() {
                       <p className="text-xs text-zinc-400 text-center py-4">No notifications yet</p>
                     ) : (
                       notifications.map(n => {
-                        const matchingInv = myInvitations.find(inv => 
+                        const matchingInv = myInvitations.find(inv =>
                           n.message.includes(inv.team_name) || n.message.includes(inv.task_title)
                         ) || myInvitations[0];
                         const isTeamInv = n.type === 'TEAM_INVITATION' || n.message.toLowerCase().includes('invited');
@@ -5971,3951 +7998,4100 @@ export default function App() {
 
           <div className="flex-1 min-h-0 bg-[#F5F5F4] relative">
             <AnimatePresence mode="wait">
-            {view === 'dashboard' && (
-              <motion.div
-                key="dashboard"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="w-full h-full flex flex-col min-h-0"
-              >
-                <PageLayout>
-                  {isAdmin ? (
-                    <UnifiedAnalyzer role="SUPREME_ADMIN" title="Global System Analyzer" />
-                  ) : isHOD ? (
-                    <div className="flex flex-col gap-10">
-                      {/* Premium Header Stats */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                        <StatCard title="Active Classes" value={hodStats?.total_classes || 0} icon={<Building2 />} color="blue" />
-                        <StatCard title="Class Advisors" value={hodStats?.total_advisors || 0} icon={<UserCheck />} color="emerald" />
-                        <StatCard title="Total Enrollment" value={hodStats?.total_students || 0} icon={<GraduationCap />} color="indigo" />
-                        <StatCard title="Not Interested / Opted Out" value={hodStats?.not_participating_submissions ?? submissions.filter(s => s.status === 'NOT_PARTICIPATING').length} icon={<AlertTriangle />} color="bg-orange-500" />
-                        <StatCard title="Tasks Under Oversight" value={hodStats?.taskStats?.length || 0} icon={<ClipboardList />} color="orange" />
+              {view === 'dashboard' && (
+                <motion.div
+                  key="dashboard"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="w-full h-full flex flex-col min-h-0"
+                >
+                  <PageLayout>
+                    {isAdmin ? (
+                      <UnifiedAnalyzer role="SUPREME_ADMIN" title="Global System Analyzer" />
+                    ) : isHOD ? (
+                      <div className="flex flex-col gap-10">
+                        {/* Premium Header Stats */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                          <StatCard title="Active Classes" value={hodStats?.total_classes || 0} icon={<Building2 />} color="blue" />
+                          <StatCard title="Class Advisors" value={hodStats?.total_advisors || 0} icon={<UserCheck />} color="emerald" />
+                          <StatCard title="Total Enrollment" value={hodStats?.total_students || 0} icon={<GraduationCap />} color="indigo" />
+                          <StatCard title="Not Interested / Opted Out" value={hodStats?.not_participating_submissions ?? submissions.filter(s => s.status === 'NOT_PARTICIPATING').length} icon={<AlertTriangle />} color="bg-orange-500" />
+                          <StatCard title="Tasks Under Oversight" value={hodStats?.taskStats?.length || 0} icon={<ClipboardList />} color="orange" />
+                        </div>
+
+                        {/* Full Width Class Analyzer */}
+                        <div className="w-full">
+                          <UnifiedAnalyzer role="HOD" title="Class Analyzer" />
+                        </div>
                       </div>
-
-                    {/* Full Width Class Analyzer */}
-                    <div className="w-full">
-                      <UnifiedAnalyzer role="HOD" title="Class Analyzer" />
-                    </div>
-                  </div>
-                ) : user?.is_year_coordinator ? (
-                  <div className="flex flex-col gap-10">
-                    {/* Coordinator Header Stats */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <StatCard title={`Oversight for Year ${user.year_scope}`} value={yearStats?.total_classes || 0} icon={<Building2 />} color="blue" />
-                      <StatCard title="Total Students in Year" value={yearStats?.total_students || 0} icon={<Users />} color="indigo" />
-                      <StatCard title="Active Year-wide Tasks" value={yearStats?.taskStats?.length || 0} icon={<ClipboardList />} color="orange" />
-                    </div>
-
-                    <UnifiedAnalyzer role="YEAR_COORDINATOR" title={`Year ${user.year_scope} Oversight Analyzer`} />
-
-                    {/* Secondary Class View if Advisor */}
-                    {isAdvisor && (
-                      <div className="mt-10 pt-10 border-t border-zinc-200">
-                        <div className="flex items-center gap-4 mb-8">
-                          <div className="w-1 h-8 bg-zinc-300 rounded-full" />
-                          <h3 className="text-xl font-bold text-zinc-600">My Class Dashboard</h3>
-                        </div>
+                    ) : user?.is_year_coordinator ? (
+                      <div className="flex flex-col gap-10">
+                        {/* Coordinator Header Stats */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                          <StatCard title="Class Students" value={coordinatorStats?.total_students || 0} icon={<Users />} color="bg-blue-500" />
-                          <StatCard title="Submitted" value={coordinatorStats?.pending_reviews || 0} icon={<Clock />} color="bg-orange-500" />
-                          <StatCard title="Verified" value={coordinatorStats?.verified_submissions || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
+                          <StatCard title={`Oversight for Year ${user.year_scope}`} value={yearStats?.total_classes || 0} icon={<Building2 />} color="blue" />
+                          <StatCard title="Total Students in Year" value={yearStats?.total_students || 0} icon={<Users />} color="indigo" />
+                          <StatCard title="Active Year-wide Tasks" value={yearStats?.taskStats?.length || 0} icon={<ClipboardList />} color="orange" />
                         </div>
-                        <div className="mt-8">
+
+                        <UnifiedAnalyzer role="YEAR_COORDINATOR" title={`Year ${user.year_scope} Oversight Analyzer`} />
+
+                        {/* Secondary Class View if Advisor */}
+                        {isAdvisor && (
+                          <div className="mt-10 pt-10 border-t border-zinc-200">
+                            <div className="flex items-center gap-4 mb-8">
+                              <div className="w-1 h-8 bg-zinc-300 rounded-full" />
+                              <h3 className="text-xl font-bold text-zinc-600">My Class Dashboard</h3>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                              <StatCard title="Class Students" value={coordinatorStats?.total_students || 0} icon={<Users />} color="bg-blue-500" />
+                              <StatCard title="Submitted" value={coordinatorStats?.pending_reviews || 0} icon={<Clock />} color="bg-orange-500" />
+                              <StatCard title="Verified" value={coordinatorStats?.verified_submissions || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
+                            </div>
+                            <div className="mt-8">
+                              <UnifiedAnalyzer role="CLASS_ADVISOR" title="Class Performance Analyzer" />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : isAdvisor ? (() => {
+                      const activeClassId = user?.class_id || myClass?.id;
+                      const myClassStudentsCount = users.filter(u => u.role === 'STUDENT' && (activeClassId ? String(u.class_id) === String(activeClassId) : true)).length;
+                      const totalClassStudents = myClassStudentsCount || advisorStats?.total_students || 0;
+                      const respondedCount = new Set(submissions.filter(s => {
+                        const std = users.find(u => u.id === s.user_id);
+                        const cid = s.class_id || std?.class_id;
+                        return activeClassId ? String(cid) === String(activeClassId) : true;
+                      }).map(s => s.user_id)).size;
+                      const pendingCount = new Set(submissions.filter(s => {
+                        const std = users.find(u => u.id === s.user_id);
+                        const cid = s.class_id || std?.class_id;
+                        return s.status === 'SUBMITTED' && (activeClassId ? String(cid) === String(activeClassId) : true);
+                      }).map(s => s.user_id)).size || advisorStats?.submitted_tasks_count || 0;
+                      const verifiedCount = new Set(submissions.filter(s => {
+                        const std = users.find(u => u.id === s.user_id);
+                        const cid = s.class_id || std?.class_id;
+                        return s.status === 'VERIFIED' && (activeClassId ? String(cid) === String(activeClassId) : true);
+                      }).map(s => s.user_id)).size || advisorStats?.verified_tasks_count || 0;
+
+                      return (
+                        <div className="flex flex-col gap-10">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <StatCard title="Class Students" value={totalClassStudents} icon={<Users />} color="bg-blue-500" />
+                            <StatCard title="Responded Students" value={respondedCount} icon={<CheckCircle2 />} color="bg-indigo-500" />
+                            <StatCard title="Pending Verification" value={pendingCount} icon={<Clock />} color="bg-orange-500" />
+                            <StatCard title="Verified Students" value={verifiedCount} icon={<CheckCircle2 />} color="bg-emerald-500" />
+                          </div>
                           <UnifiedAnalyzer role="CLASS_ADVISOR" title="Class Performance Analyzer" />
                         </div>
-                      </div>
-                    )}
-                  </div>
-                ) : isAdvisor ? (() => {
-                  const activeClassId = user?.class_id || myClass?.id;
-                  const myClassStudentsCount = users.filter(u => u.role === 'STUDENT' && (activeClassId ? String(u.class_id) === String(activeClassId) : true)).length;
-                  const totalClassStudents = myClassStudentsCount || advisorStats?.total_students || 0;
-                  const respondedCount = new Set(submissions.filter(s => {
-                    const std = users.find(u => u.id === s.user_id);
-                    const cid = s.class_id || std?.class_id;
-                    return activeClassId ? String(cid) === String(activeClassId) : true;
-                  }).map(s => s.user_id)).size;
-                  const pendingCount = new Set(submissions.filter(s => {
-                    const std = users.find(u => u.id === s.user_id);
-                    const cid = s.class_id || std?.class_id;
-                    return s.status === 'SUBMITTED' && (activeClassId ? String(cid) === String(activeClassId) : true);
-                  }).map(s => s.user_id)).size || advisorStats?.submitted_tasks_count || 0;
-                  const verifiedCount = new Set(submissions.filter(s => {
-                    const std = users.find(u => u.id === s.user_id);
-                    const cid = s.class_id || std?.class_id;
-                    return s.status === 'VERIFIED' && (activeClassId ? String(cid) === String(activeClassId) : true);
-                  }).map(s => s.user_id)).size || advisorStats?.verified_tasks_count || 0;
+                      );
+                    })() : (
+                      <div className="flex flex-col gap-8">
+                        {isCoordinator ? (() => {
+                          const activeClassId = user?.class_id || myClass?.id;
+                          const myClassStudentsCount = users.filter(u => u.role === 'STUDENT' && (activeClassId ? String(u.class_id) === String(activeClassId) : true)).length;
+                          const totalClassStudents = myClassStudentsCount || coordinatorStats?.class_student_count || coordinatorStats?.total_students || 0;
+                          const respondedCount = new Set(submissions.filter(s => {
+                            const std = users.find(u => u.id === s.user_id);
+                            const cid = s.class_id || std?.class_id;
+                            return activeClassId ? String(cid) === String(activeClassId) : true;
+                          }).map(s => s.user_id)).size;
+                          const pendingCount = new Set(submissions.filter(s => {
+                            const std = users.find(u => u.id === s.user_id);
+                            const cid = s.class_id || std?.class_id;
+                            return s.status === 'SUBMITTED' && (activeClassId ? String(cid) === String(activeClassId) : true);
+                          }).map(s => s.user_id)).size || coordinatorStats?.pending_reviews || 0;
+                          const verifiedCount = new Set(submissions.filter(s => {
+                            const std = users.find(u => u.id === s.user_id);
+                            const cid = s.class_id || std?.class_id;
+                            return s.status === 'VERIFIED' && (activeClassId ? String(cid) === String(activeClassId) : true);
+                          }).map(s => s.user_id)).size || coordinatorStats?.verified_submissions || 0;
 
-                  return (
-                    <div className="flex flex-col gap-10">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                        <StatCard title="Class Students" value={totalClassStudents} icon={<Users />} color="bg-blue-500" />
-                        <StatCard title="Responded Students" value={respondedCount} icon={<CheckCircle2 />} color="bg-indigo-500" />
-                        <StatCard title="Pending Verification" value={pendingCount} icon={<Clock />} color="bg-orange-500" />
-                        <StatCard title="Verified Students" value={verifiedCount} icon={<CheckCircle2 />} color="bg-emerald-500" />
-                      </div>
-                      <UnifiedAnalyzer role="CLASS_ADVISOR" title="Class Performance Analyzer" />
-                    </div>
-                  );
-                })() : (
-                    <div className="flex flex-col gap-8">
-                      {isCoordinator ? (() => {
-                        const activeClassId = user?.class_id || myClass?.id;
-                        const myClassStudentsCount = users.filter(u => u.role === 'STUDENT' && (activeClassId ? String(u.class_id) === String(activeClassId) : true)).length;
-                        const totalClassStudents = myClassStudentsCount || coordinatorStats?.class_student_count || coordinatorStats?.total_students || 0;
-                        const respondedCount = new Set(submissions.filter(s => {
-                          const std = users.find(u => u.id === s.user_id);
-                          const cid = s.class_id || std?.class_id;
-                          return activeClassId ? String(cid) === String(activeClassId) : true;
-                        }).map(s => s.user_id)).size;
-                        const pendingCount = new Set(submissions.filter(s => {
-                          const std = users.find(u => u.id === s.user_id);
-                          const cid = s.class_id || std?.class_id;
-                          return s.status === 'SUBMITTED' && (activeClassId ? String(cid) === String(activeClassId) : true);
-                        }).map(s => s.user_id)).size || coordinatorStats?.pending_reviews || 0;
-                        const verifiedCount = new Set(submissions.filter(s => {
-                          const std = users.find(u => u.id === s.user_id);
-                          const cid = s.class_id || std?.class_id;
-                          return s.status === 'VERIFIED' && (activeClassId ? String(cid) === String(activeClassId) : true);
-                        }).map(s => s.user_id)).size || coordinatorStats?.verified_submissions || 0;
+                          return (
+                            <>
+                              <div>
+                                <div className="flex items-center gap-3 mb-4">
+                                  <div className="w-1.5 h-6 bg-zinc-900 rounded-full" />
+                                  <h3 className="text-xl font-bold text-zinc-900 tracking-tight">My Class Summary</h3>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                                  <StatCard title="Class Students" value={totalClassStudents} icon={<Users />} color="bg-blue-500" />
+                                  <StatCard title="Responded Students" value={respondedCount} icon={<CheckCircle2 />} color="bg-indigo-500" />
+                                  <StatCard title="Pending Verification" value={pendingCount} icon={<Clock />} color="bg-orange-500" />
+                                  <StatCard title="Verified Students" value={verifiedCount} icon={<CheckCircle2 />} color="bg-emerald-500" />
+                                </div>
+                              </div>
 
-                        return (
-                          <>
-                            <div>
-                              <div className="flex items-center gap-3 mb-4">
-                                <div className="w-1.5 h-6 bg-zinc-900 rounded-full" />
-                                <h3 className="text-xl font-bold text-zinc-900 tracking-tight">My Class Summary</h3>
+                              <div
+                                className="bg-zinc-900 rounded-3xl p-8 text-white flex flex-col md:flex-row items-center justify-between gap-6 cursor-pointer hover:bg-black transition-all group shadow-md"
+                                onClick={() => setView('verifications')}
+                              >
+                                <div className="flex items-center gap-6 text-center md:text-left">
+                                  <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                                    <ShieldCheck size={32} className="text-white" />
+                                  </div>
+                                  <div>
+                                    <h3 className="text-2xl font-bold">Coordinator Workspace</h3>
+                                    <p className="text-zinc-400">Manage and verify peer submissions for your class.</p>
+                                  </div>
+                                </div>
+                                <div className="flex flex-col items-center md:items-end">
+                                  <span className="text-4xl font-black">{submissions.filter(s => {
+                                    const std = users.find(u => u.id === s.user_id);
+                                    const cid = s.class_id || std?.class_id;
+                                    return s.status === 'SUBMITTED' && cid && String(cid) === String(user?.class_id);
+                                  }).length}</span>
+                                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Pending Tasks</span>
+                                </div>
                               </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                                <StatCard title="Class Students" value={totalClassStudents} icon={<Users />} color="bg-blue-500" />
-                                <StatCard title="Responded Students" value={respondedCount} icon={<CheckCircle2 />} color="bg-indigo-500" />
-                                <StatCard title="Pending Verification" value={pendingCount} icon={<Clock />} color="bg-orange-500" />
-                                <StatCard title="Verified Students" value={verifiedCount} icon={<CheckCircle2 />} color="bg-emerald-500" />
-                              </div>
+
+                              <UnifiedAnalyzer role="COORDINATOR" title="Class Achievement Analyzer" />
+                            </>
+                          );
+                        })() : (
+                          <div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                              <StatCard title="Total Assigned Tasks" value={studentStats?.total_tasks || 0} icon={<ClipboardList />} color="bg-blue-500" />
+                              <StatCard title="Submitted" value={studentStats?.submitted_tasks || 0} icon={<Clock />} color="bg-orange-500" />
+                              <StatCard title="Verified" value={studentStats?.verified_tasks || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
                             </div>
 
-                            <div
-                              className="bg-zinc-900 rounded-3xl p-8 text-white flex flex-col md:flex-row items-center justify-between gap-6 cursor-pointer hover:bg-black transition-all group shadow-md"
-                              onClick={() => setView('verifications')}
-                            >
-                              <div className="flex items-center gap-6 text-center md:text-left">
-                                <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                                  <ShieldCheck size={32} className="text-white" />
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                              <Card className="border border-zinc-200 flex flex-col justify-between bg-white">
+                                <div>
+                                  <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-sm font-black text-zinc-950 flex items-center gap-1.5 uppercase tracking-wider">
+                                      <Code size={16} className="text-orange-500" /> LeetCode Daily Target
+                                    </h3>
+                                    {myLeetcodeProgress?.dailyStatus === 'COMPLETED' ? (
+                                      <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">MET</span>
+                                    ) : (
+                                      <span className="bg-orange-100 text-orange-800 text-[10px] font-bold px-2 py-0.5 rounded-full">PENDING</span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-baseline gap-2 mb-4">
+                                    <span className="text-4xl font-black text-zinc-900">{myLeetcodeProgress?.solvedToday ?? 0}</span>
+                                    <span className="text-xs font-bold text-zinc-400">/ {myLeetcodeProgress?.dailyTarget ?? 0} solved today</span>
+                                  </div>
                                 </div>
                                 <div>
-                                  <h3 className="text-2xl font-bold">Coordinator Workspace</h3>
-                                  <p className="text-zinc-400">Manage and verify peer submissions for your class.</p>
-                                </div>
-                              </div>
-                              <div className="flex flex-col items-center md:items-end">
-                                <span className="text-4xl font-black">{submissions.filter(s => {
-                                  const std = users.find(u => u.id === s.user_id);
-                                  const cid = s.class_id || std?.class_id;
-                                  return s.status === 'SUBMITTED' && cid && String(cid) === String(user?.class_id);
-                                }).length}</span>
-                                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Pending Tasks</span>
-                              </div>
-                            </div>
-
-                            <UnifiedAnalyzer role="COORDINATOR" title="Class Achievement Analyzer" />
-                          </>
-                        );
-                      })() : (
-                        <div>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <StatCard title="Total Assigned Tasks" value={studentStats?.total_tasks || 0} icon={<ClipboardList />} color="bg-blue-500" />
-                            <StatCard title="Submitted" value={studentStats?.submitted_tasks || 0} icon={<Clock />} color="bg-orange-500" />
-                            <StatCard title="Verified" value={studentStats?.verified_tasks || 0} icon={<CheckCircle2 />} color="bg-emerald-500" />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                )}
-
-                {/* Removed redundant HOD Stats section */}
-
-                <ContentCard>
-                  <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
-                  <div className="space-y-4">
-                    {tasks.slice(0, 5).map(task => (
-                      <div key={task.id} className="flex items-center justify-between p-4 bg-zinc-50 rounded-xl">
-                        <div>
-                          <p className="font-medium text-zinc-900">{task.title}</p>
-                          <p className="text-xs text-zinc-500">
-                            {Array.isArray(task.class_ids) && task.class_ids.length > 0
-                              ? task.class_ids.map(id => classes.find(c => c.id.toString() === id.toString())?.name || id).join(', ')
-                              : (task.department_name || 'Global Task')
-                            } • {new Date(task.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                        {getStudentTaskStatusBadge(task, user, submissions)}
-                      </div>
-                    ))}
-                  </div>
-                </ContentCard>
-                </PageLayout>
-              </motion.div>
-            )}
-
-            {view === 'departments' && isAdmin && (
-              <motion.div
-                key="departments"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="w-full h-full flex flex-col min-h-0"
-              >
-                <PageLayout>
-                  <ContentCard>
-                    <h3 className="text-lg font-semibold mb-4">Create New Department</h3>
-                    <form onSubmit={createDepartment} className="flex gap-4">
-                      <Input
-                        placeholder="e.g. Computer Science & Engineering"
-                        value={newDept}
-                        onChange={e => setNewDept(e.target.value)}
-                        required
-                      />
-                      <Button className="whitespace-nowrap flex items-center gap-2">
-                        <Plus size={18} /> Create Department
-                      </Button>
-                    </form>
-                  </ContentCard>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {departments.map(dept => (
-                      <Card key={dept.id} className="flex items-center justify-between group">
-                        <div>
-                          <p className="font-bold text-zinc-900">{dept.name}</p>
-                          <p className="text-xs text-zinc-500">ID: {dept.id}</p>
-                        </div>
-                        <button
-                          onClick={() => {
-                            if (confirm('Delete department?')) {
-                              fetch(`${API_URL}/api/departments/${dept.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).then(() => fetchInitialData());
-                            }
-                          }}
-                          className="p-2 text-zinc-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </Card>
-                    ))}
-                  </div>
-                </PageLayout>
-              </motion.div>
-            )}
-
-            {view === 'classes' && isHOD && (
-              <motion.div
-                key="classes"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="w-full h-full flex flex-col min-h-0"
-              >
-                <PageLayout>
-
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {classes.slice().sort((a, b) => (a.year || 0) - (b.year || 0) || (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' })).map(c => (
-                      <Card key={c.id} className="relative overflow-hidden group border-zinc-200 hover:border-blue-500 transition-colors">
-                        <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/5 -mr-4 -mt-4 rounded-full" />
-                        <div className="flex flex-col h-full">
-                          <div className="flex items-start justify-between mb-4">
-                            <div className="p-2.5 bg-blue-100 text-blue-600 rounded-xl">
-                              <Building2 size={20} />
-                            </div>
-                            <button
-                              onClick={() => {
-                                if (confirm('Are you sure? This will delete all students and tasks associated with this class.')) {
-                                  fetch(`${API_URL}/api/classes/${c.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).then(() => fetchInitialData());
-                                }
-                              }}
-                              className="p-2 text-zinc-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          </div>
-                          <h4 className="font-black text-lg text-zinc-900 mb-1">{c.name}</h4>
-                          <div className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-tight">
-                            <span>Year {c.year}</span>
-                            <span className="w-1 h-1 bg-zinc-300 rounded-full" />
-                            <span>{c.batch}</span>
-                          </div>
-                          <div className="mt-auto pt-6 flex items-center justify-between text-xs font-bold text-zinc-400 uppercase tracking-widest">
-                            <span>Class ID: {c.id}</span>
-                            <span className="px-2 py-0.5 bg-zinc-100 rounded text-zinc-500">Class Pool</span>
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                </PageLayout>
-              </motion.div>
-            )}
-
-            {view === 'my-class' && isAdvisor && (
-              <motion.div
-                key="my-class"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="w-full h-full flex flex-col min-h-0"
-              >
-                <PageLayout>
-                  <ContentCard>
-                    <h3 className="text-lg font-semibold mb-4">Class Details</h3>
-                    <form onSubmit={createClass} className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-zinc-500 uppercase">Class Name</label>
-                          <Input
-                            value={newClass.name !== undefined && newClass.name !== '' ? newClass.name : (myClass?.name || '')}
-                            onChange={e => setNewClass(prev => ({ ...prev, name: e.target.value }))}
-                            required
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-zinc-500 uppercase">Year</label>
-                          <Input
-                            type="number"
-                            value={newClass.year !== undefined && newClass.year !== '' ? newClass.year : (myClass?.year || '')}
-                            onChange={e => setNewClass(prev => ({ ...prev, year: e.target.value }))}
-                            required
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-zinc-500 uppercase">Batch</label>
-                          <Input
-                            value={newClass.batch !== undefined && newClass.batch !== '' ? newClass.batch : (myClass?.batch || '')}
-                            onChange={e => setNewClass(prev => ({ ...prev, batch: e.target.value }))}
-                            required
-                          />
-                        </div>
-                      </div>
-                      <Button className="flex items-center gap-2">
-                        <Plus size={18} /> Update Class Info
-                      </Button>
-                    </form>
-                  </ContentCard>
-
-                  {myClass && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <StatCard title="Class Name" value={myClass.name as any} icon={<Building2 />} color="bg-blue-500" />
-                      <StatCard title="Year" value={myClass.year as any} icon={<ClipboardList />} color="bg-emerald-500" />
-                      <StatCard title="Batch" value={myClass.batch as any} icon={<Users />} color="bg-purple-500" />
-                    </div>
-                  )}
-                </PageLayout>
-              </motion.div>
-            )}
-
-            {view === 'users' && (
-              <motion.div
-                key="users"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="w-full h-full flex flex-col min-h-0"
-              >
-                <PageLayout>
-                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
-                    <h3 className="text-xl font-bold text-zinc-900">
-                      {isAdmin ? 'All Users' : isHOD ? 'Class Advisors & Students' : 'Students'}
-                    </h3>
-                    {/* SA Filters */}
-                    {isAdmin && (
-                      <div className="flex flex-wrap gap-3 w-full md:w-auto">
-                        <select
-                          className="px-3 py-2 rounded-xl border border-zinc-200 bg-white text-sm font-semibold text-zinc-700 focus:outline-none focus:ring-2 focus:ring-black/10"
-                          value={userRoleFilter}
-                          onChange={e => { setUserRoleFilter(e.target.value); setUserPage(1); }}
-                        >
-                          <option value="">All Roles</option>
-                          <option value="HOD">HOD</option>
-                          <option value="CLASS_ADVISOR">Class Advisor</option>
-                          <option value="STUDENT">Student</option>
-                        </select>
-                        <select
-                          className="px-3 py-2 rounded-xl border border-zinc-200 bg-white text-sm font-semibold text-zinc-700 focus:outline-none focus:ring-2 focus:ring-black/10"
-                          value={userDeptFilter}
-                          onChange={e => { setUserDeptFilter(e.target.value); setUserPage(1); }}
-                        >
-                          <option value="">All Departments</option>
-                          {departments.map(d => (
-                            <option key={d.id} value={d.id}>{d.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                    {isHOD && (
-                      <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
-                        <div className="bg-zinc-100 p-1 rounded-xl flex">
-                          {['ALL', 'CLASS_ADVISOR', 'STUDENT'].map(filter => (
-                            <button
-                              key={filter}
-                              onClick={() => setStudentFilter(filter as any)}
-                              className={cn(
-                                "px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex-1",
-                                studentFilter === filter ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
-                              )}
-                            >
-                              {filter === 'CLASS_ADVISOR' ? 'Advisors' : filter === 'STUDENT' ? 'Students' : 'All'}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {isAdvisor && (
-                      <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
-                        <div className="bg-zinc-100 p-1 rounded-xl flex">
-                          {['ALL', 'COORDINATORS'].map(filter => (
-                            <button
-                              key={filter}
-                              onClick={() => setStudentFilter(filter as any)}
-                              className={cn(
-                                "px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex-1",
-                                studentFilter === filter ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
-                              )}
-                            >
-                              {filter.charAt(0) + filter.slice(1).toLowerCase()}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mb-6 flex flex-col md:flex-row gap-4">
-                    <div className="relative flex-1">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-                      <Input
-                        placeholder={`Search ${isAdmin ? 'HODs' : isHOD ? 'Advisors or Students' : 'Students'} by name or registration number...`}
-                        className="pl-10 h-11"
-                        value={searchTerm}
-                        onChange={e => { setSearchTerm(e.target.value); setUserPage(1); }}
-                      />
-                    </div>
-
-                    {/* HOD / Admin Year & Section Filters */}
-                    {(isHOD || isAdmin) && (
-                      <div className="flex flex-wrap items-center gap-3">
-                        <select
-                          className="h-11 px-3 rounded-lg border border-zinc-200 bg-white text-sm font-semibold text-zinc-700 focus:outline-none focus:ring-2 focus:ring-black/5"
-                          value={userYearFilter}
-                          onChange={e => {
-                            setUserYearFilter(e.target.value);
-                            setUserClassFilter('');
-                            setUserPage(1);
-                          }}
-                        >
-                          <option value="">All Years</option>
-                          {Array.from(new Set(classes.map(c => c.year).filter(Boolean))).sort().map(yr => (
-                            <option key={yr} value={String(yr)}>Year {yr}</option>
-                          ))}
-                        </select>
-
-                        <select
-                          className="h-11 px-3 rounded-lg border border-zinc-200 bg-white text-sm font-semibold text-zinc-700 focus:outline-none focus:ring-2 focus:ring-black/5"
-                          value={userClassFilter}
-                          onChange={e => {
-                            setUserClassFilter(e.target.value);
-                            setUserPage(1);
-                          }}
-                        >
-                          <option value="">All Classes / Sections</option>
-                          {classes
-                            .filter(c => !userYearFilter || String(c.year) === userYearFilter)
-                            .sort((a, b) => (a.year || 0) - (b.year || 0) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
-                            .map(c => (
-                              <option key={c.id} value={c.id.toString()}>{c.name}</option>
-                            ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-
-
-
-                  <Table className="min-w-[700px] md:min-w-0">
-                    <THead>
-                      <TR>
-                        <TH>Name</TH>
-                        <TH>{isAdvisor ? 'Register No' : 'Username'}</TH>
-                        {isAdvisor && <TH>Email</TH>}
-                        {!isAdvisor && <TH>{isAdmin ? 'Department' : 'Class'}</TH>}
-                        <TH className="text-right">Actions</TH>
-                      </TR>
-                    </THead>
-                    <TBody>
-                      {(() => {
-                        const filtered = users
-                          .filter(u => {
-                            if (isAdmin) {
-                              if (userRoleFilter && u.role !== userRoleFilter) return false;
-                              if (userDeptFilter && u.department_id?.toString() !== userDeptFilter.toString()) return false;
-                              return u.role !== 'SUPREME_ADMIN'; // Don't show SA itself
-                            }
-                            if (isAdvisor) {
-                              if (studentFilter === 'COORDINATORS') return u.is_coordinator;
-                            } else if (isHOD) {
-                              if (studentFilter === 'CLASS_ADVISOR') return u.role === 'CLASS_ADVISOR';
-                              if (studentFilter === 'STUDENT') return u.role === 'STUDENT';
-                            }
-                            return true;
-                          })
-                          .filter(u => {
-                            if (!isAdmin && !isHOD && !user?.is_year_coordinator) {
-                              const userClassId = (user?.class_id || myClass?.id)?.toString();
-                              if (userClassId && u.class_id?.toString() !== userClassId) return false;
-                            }
-                            if (userYearFilter) {
-                              const cls = classes.find(c => c.id?.toString() === u.class_id?.toString());
-                              const yr = cls?.year || (u as any).class_year;
-                              if (String(yr) !== userYearFilter) return false;
-                            }
-                            if (userClassFilter) {
-                              if (u.class_id?.toString() !== userClassFilter) return false;
-                            }
-                            return true;
-                          })
-                          .filter(u => {
-                            if (!searchTerm) return true;
-                            const query = searchTerm.toLowerCase();
-                            return u.full_name?.toLowerCase().includes(query) || (u.register_number || u.username).toLowerCase().includes(query) || u.department_name?.toLowerCase().includes(query);
-                          });
-
-                        const totalPages = Math.ceil(filtered.length / itemsPerPage);
-                        const sortedFiltered = [...filtered].sort((a, b) => {
-                          if (a.role === 'CLASS_ADVISOR' && b.role === 'CLASS_ADVISOR') {
-                            const cA = classes.find(c => c.id?.toString() === a.class_id?.toString());
-                            const cB = classes.find(c => c.id?.toString() === b.class_id?.toString());
-                            const yrA = cA?.year || (a as any).class_year || 0;
-                            const yrB = cB?.year || (b as any).class_year || 0;
-                            if (yrA !== yrB) return yrA - yrB;
-                            const nameA = cA?.name || a.class_name || a.full_name || '';
-                            const nameB = cB?.name || b.class_name || b.full_name || '';
-                            return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
-                          }
-                          if (a.role === 'STUDENT' && b.role === 'STUDENT') {
-                            if (a.register_number && b.register_number) {
-                              return a.register_number.localeCompare(b.register_number, undefined, { numeric: true });
-                            }
-                          }
-                          return (a.full_name || '').localeCompare(b.full_name || '', undefined, { numeric: true, sensitivity: 'base' });
-                        });
-                        const paginated = sortedFiltered.slice((userPage - 1) * itemsPerPage, userPage * itemsPerPage);
-
-                        return (
-                          <>
-                            {paginated.map(u => (
-                              <TR key={u.id}>
-                                <TD className="font-medium text-zinc-900 break-words">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    {u.full_name}
-                                    {u.is_year_coordinator && (
-                                      <Badge variant="primary" className="bg-indigo-600 text-white border-none shadow-sm px-3 py-1 rounded-full">
-                                        <CalendarRange size={12} />
-                                        Year {u.year_scope} Overall Coord
-                                      </Badge>
-                                    )}
-                                    {!!u.is_coordinator && (
-                                      <Badge variant="warning">Class Coord</Badge>
-                                    )}
-                                    {isAdmin && (
-                                      <Badge variant={
-                                        u.role === 'HOD' ? 'info' :
-                                        u.role === 'CLASS_ADVISOR' ? 'primary' : 'neutral'
-                                      }>
-                                        {u.role === 'CLASS_ADVISOR' ? 'Advisor' : u.role}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </TD>
-                                <TD className="text-zinc-500 break-all">{u.register_number || u.username}</TD>
-                                {isAdvisor && <TD className="text-zinc-500">{u.email}</TD>}
-                                {!isAdvisor && (
-                                  <TD>
-                                    <span className="px-2 py-1 bg-zinc-100 rounded text-xs text-zinc-600">
-                                      {isAdmin ? (u.department_name || '—') : u.class_name}
-                                    </span>
-                                  </TD>
-                                )}
-                                <TD className="text-right">
-                                  <div className="flex justify-end gap-2">
-                                     {u.role === 'STUDENT' && (
-                                       <Button
-                                         variant="ghost"
-                                         className="p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50"
-                                         onClick={() => {
-                                           const activeClassId = (user?.class_id || myClass?.id)?.toString();
-                                           const isMyClassStudent = activeClassId && u.class_id?.toString() === activeClassId;
-                                           if (isAdmin || isHOD || isMyClassStudent || user?.is_year_coordinator) {
-                                             setViewingStudentProfileId(u.id);
-                                           } else {
-                                             addToast('Class Advisors can only view profiles of students in their assigned class', 'error');
-                                           }
-                                         }}
-                                         title="View Full Student Profile"
-                                       >
-                                         <User size={18} />
-                                       </Button>
-                                     )}
-                                    {(isAdvisor || isHOD || isAdmin) && u.role === 'STUDENT' && (
-                                      <Button
-                                        variant="ghost"
-                                        className={cn("p-2", u.is_coordinator ? "text-amber-600" : "text-zinc-400")}
-                                        onClick={() => toggleCoordinator(u.id, u.is_coordinator || false)}
-                                        title={u.is_coordinator ? "Remove Coordinator" : "Make Coordinator"}
-                                      >
-                                        <ShieldCheck size={18} />
-                                      </Button>
-                                    )}
-                                    {isHOD && u.role === 'CLASS_ADVISOR' && (
-                                      <Button
-                                        variant="ghost"
-                                        className={cn("p-2", u.is_year_coordinator ? "text-indigo-600" : "text-zinc-400")}
-                                        onClick={() => toggleYearCoordinator(u.id, u.is_year_coordinator || false, u.year_scope)}
-                                        title={u.is_year_coordinator ? "Remove Year Coordinator" : "Assign Year Coordinator"}
-                                      >
-                                        <CalendarRange size={18} />
-                                      </Button>
-                                    )}
-                                    <Button
-                                      variant="ghost"
-                                      className="p-2 text-zinc-400 hover:text-blue-600"
-                                      onClick={() => resetPassword(u.id)}
-                                      title="Reset Password"
-                                    >
-                                      <ShieldCheck size={18} className="text-blue-500" />
-                                    </Button>
-                                    <button
-                                      onClick={async () => {
-                                        const roleLabel = u.role === 'CLASS_ADVISOR' ? 'Advisor' : u.role === 'HOD' ? 'HOD' : 'User';
-                                        if (confirm(`Delete ${roleLabel} ${u.full_name}? This cannot be undone.`)) {
-                                          const res = await fetch(`${API_URL}/api/users/${u.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-                                          if (res.ok) {
-                                            fetchInitialData();
-                                            addToast(`${roleLabel} deleted successfully.`, 'success');
-                                          } else {
-                                            const data = await res.json();
-                                            addToast(data.error || 'Failed to delete user', 'error');
-                                          }
-                                        }
-                                      }}
-                                      className="p-2 transition-colors text-zinc-400 hover:text-red-500"
-                                    >
-                                      <Trash2 size={18} />
-                                    </button>
-                                  </div>
-                                </TD>
-                              </TR>
-                            ))}
-                            {filtered.length > itemsPerPage && (
-                              <TR>
-                                <TD colSpan={6} className="bg-zinc-50/30">
-                                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-1">
-                                    <p className="text-xs font-medium text-zinc-500 whitespace-nowrap">
-                                      Showing {(userPage - 1) * itemsPerPage + 1} to {Math.min(userPage * itemsPerPage, filtered.length)} of {filtered.length} entries
-                                    </p>
-                                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                                      <Button
-                                        variant="secondary"
-                                        className="px-3 py-1 h-8 text-xs font-semibold"
-                                        disabled={userPage === 1}
-                                        onClick={() => setUserPage(prev => prev - 1)}
-                                      >
-                                        Previous
-                                      </Button>
-                                      <div className="flex items-center gap-1">
-                                        {getPaginationRange(userPage, totalPages).map((p, idx) => typeof p === 'number' ? (
-                                          <button
-                                            key={idx}
-                                            onClick={() => setUserPage(p)}
-                                            className={cn(
-                                              "w-8 h-8 rounded-lg text-xs font-bold transition-all",
-                                              userPage === p ? "bg-black text-white shadow-sm" : "text-zinc-600 hover:bg-zinc-100"
-                                            )}
-                                          >
-                                            {p}
-                                          </button>
-                                        ) : (
-                                          <span key={idx} className="w-5 text-center text-xs text-zinc-400 font-bold">...</span>
-                                        ))}
-                                      </div>
-                                      <Button
-                                        variant="secondary"
-                                        className="px-3 py-1 h-8 text-xs font-semibold"
-                                        disabled={userPage === totalPages}
-                                        onClick={() => setUserPage(prev => prev + 1)}
-                                      >
-                                        Next
-                                      </Button>
-                                    </div>
-                                  </div>
-                                </TD>
-                              </TR>
-                            )}
-                            {filtered.length === 0 && (
-                              <TR>
-                                <TD colSpan={6} className="text-center text-zinc-500 text-sm py-12">
-                                  No matching records found.
-                                </TD>
-                              </TR>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </TBody>
-                  </Table>
-                </PageLayout>
-              </motion.div>
-            )}
-
-            {view === 'tasks' && (
-              <motion.div
-                key="tasks"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="w-full h-full flex flex-col min-h-0"
-              >
-                <PageLayout>
-                  {isStudent && myInvitations.length > 0 && (
-                    <div className="space-y-4 mb-8">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-                          <h3 className="text-sm font-extrabold uppercase tracking-wider text-indigo-950 flex items-center gap-2">
-                            <Users size={18} className="text-indigo-600" />
-                            Pending Team Formation Invitation{myInvitations.length > 1 ? 's' : ''} ({myInvitations.length})
-                          </h3>
-                        </div>
-                      </div>
-                      {myInvitations.map(inv => (
-                        <div 
-                          key={inv.id} 
-                          className="p-5 bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 text-white rounded-2xl shadow-xl border border-indigo-700/50 flex flex-col md:flex-row md:items-center justify-between gap-5 transition-all hover:shadow-2xl"
-                        >
-                          <div className="flex items-start gap-4">
-                            <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/20 shadow-inner">
-                              <Users size={24} className="text-indigo-200" />
-                            </div>
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full">
-                                  Team Invitation
-                                </span>
-                                {inv.task_category && (
-                                  <span className="bg-purple-500/30 text-purple-200 border border-purple-400/30 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                                    {inv.task_category}
-                                  </span>
-                                )}
-                              </div>
-                              <h4 className="text-base font-extrabold text-white leading-snug">
-                                You are invited to join team <span className="text-amber-300 underline font-black">"{inv.team_name}"</span>
-                              </h4>
-                              <p className="text-xs text-indigo-200 font-medium flex items-center gap-1.5 flex-wrap">
-                                <span>Invited by: <strong className="text-white">{inv.inviter_name || 'Classmate'}</strong></span>
-                                <span>•</span>
-                                <span>Task: <strong className="text-indigo-100">{inv.task_title}</strong></span>
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-indigo-700/50">
-                            <Button
-                              type="button"
-                              onClick={() => handleRespondInvitation(inv.id, 'ACCEPT')}
-                              className="bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs px-5 py-2.5 rounded-xl border-none shadow-lg hover:shadow-emerald-500/25 transition-all flex items-center gap-2 cursor-pointer"
-                            >
-                              <CheckCircle2 size={16} /> Accept Invitation
-                            </Button>
-                            <Button
-                              type="button"
-                              onClick={() => handleRespondInvitation(inv.id, 'DECLINE')}
-                              className="bg-white/10 hover:bg-white/20 text-indigo-100 hover:text-white font-bold text-xs px-4 py-2.5 rounded-xl border border-white/20 backdrop-blur-sm transition-all cursor-pointer"
-                            >
-                              Decline
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {(isAdmin || isHOD || isAdvisor || isCoordinator) && (
-                    <ContentCard className={cn(
-                      user?.is_year_coordinator ? "border-indigo-100 bg-indigo-50/10" : ""
-                    )}>
-                    <h3 className={cn(
-                      "text-xl font-bold mb-6 flex items-center gap-3",
-                      user?.is_year_coordinator ? "text-indigo-900" : "text-zinc-900"
-                    )}>
-                      <div className={cn(
-                        "w-10 h-10 rounded-lg flex items-center justify-center shrink-0",
-                        user?.is_year_coordinator ? "bg-indigo-600 text-white" : "bg-black text-white"
-                      )}>
-                        <Plus size={20} />
-                      </div>
-                      {user?.is_year_coordinator ? `Post Year ${user.year_scope} Task` : 'Post New Task'}
-                    </h3>
-                    <form onSubmit={handleTaskPreview} className="space-y-4 w-full">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full min-w-0">
-                        <div className="min-w-0">
-                          <Input
-                            placeholder="Task Title"
-                            value={newTask.title}
-                            onChange={e => setNewTask(prev => ({ ...prev, title: e.target.value }))}
-                            required
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <CategoryDropdown
-                            value={newTask.category}
-                            onChange={val => setNewTask(prev => ({ ...prev, category: val }))}
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <Input
-                            placeholder="Apply Link (Optional)"
-                            value={newTask.external_link}
-                            onChange={e => setNewTask(prev => ({ ...prev, external_link: e.target.value }))}
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex flex-col gap-1.5">
-                            <div className="relative flex items-center">
-                              <input
-                                type="datetime-local"
-                                value={newTask.deadline}
-                                onChange={e => setNewTask(prev => ({ ...prev, deadline: e.target.value }))}
-                                required
-                                title="Select Deadline Date and Time"
-                                min={(() => { const d = new Date(); const pad = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; })()}
-                                className="w-full h-11 px-4 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black transition-all text-sm bg-white text-zinc-800 cursor-pointer [color-scheme:light]"
-                              />
-                            </div>
-                            {/* Quick shortcut pills & selected formatted preview */}
-                            <div className="flex flex-wrap gap-1 items-center">
-                              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mr-0.5">Quick:</span>
-                              {[
-                                { label: '+1 Day', ms: 24 * 60 * 60 * 1000 },
-                                { label: '+3 Days', ms: 3 * 24 * 60 * 60 * 1000 },
-                                { label: '+7 Days', ms: 7 * 24 * 60 * 60 * 1000 },
-                                { label: '+30 Days', ms: 30 * 24 * 60 * 60 * 1000 },
-                              ].map(({ label, ms }) => {
-                                const d = new Date(Date.now() + ms);
-                                const pad = (n: number) => String(n).padStart(2, '0');
-                                const iso = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-                                return (
-                                  <button
-                                    key={label}
-                                    type="button"
-                                    onClick={() => setNewTask(prev => ({ ...prev, deadline: iso }))}
-                                    className="px-2 py-0.5 text-[11px] font-medium rounded-md border border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100 hover:border-zinc-300 transition-all"
-                                  >
-                                    {label}
-                                  </button>
-                                );
-                              })}
-                              {newTask.deadline && (
-                                <button
-                                  type="button"
-                                  onClick={() => setNewTask(prev => ({ ...prev, deadline: '' }))}
-                                  className="px-2 py-0.5 text-[11px] font-medium rounded-md border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-all ml-auto"
-                                >
-                                  Clear
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="min-w-0">
-                          <Input
-                            placeholder="Screenshot Instruction (e.g. Upload registration page)"
-                            value={newTask.screenshot_instruction}
-                            onChange={e => setNewTask(prev => ({ ...prev, screenshot_instruction: e.target.value }))}
-                            required
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <Input
-                            placeholder="Custom Verification Field Label (e.g. Team ID)"
-                            value={newTask.custom_field_label}
-                            onChange={e => setNewTask(prev => ({ ...prev, custom_field_label: e.target.value }))}
-                            required
-                          />
-                        </div>
-
-                        {/* Task Submission Type Selector */}
-                        <div className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-4 md:col-span-2 space-y-3">
-                          <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest block">
-                            Task Submission Type
-                          </label>
-                          <div className="flex items-center gap-6">
-                            <label className="flex items-center gap-2 cursor-pointer font-semibold text-sm text-zinc-800">
-                              <input
-                                type="radio"
-                                name="submission_type"
-                                value="INDIVIDUAL"
-                                checked={newTask.submission_type === 'INDIVIDUAL'}
-                                onChange={() => setNewTask(prev => ({ ...prev, submission_type: 'INDIVIDUAL' }))}
-                                className="w-4 h-4 text-black border-zinc-300 focus:ring-black"
-                              />
-                              <span>Individual Task</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer font-semibold text-sm text-zinc-800">
-                              <input
-                                type="radio"
-                                name="submission_type"
-                                value="TEAM"
-                                checked={newTask.submission_type === 'TEAM'}
-                                onChange={() => setNewTask(prev => ({ ...prev, submission_type: 'TEAM' }))}
-                                className="w-4 h-4 text-indigo-600 border-zinc-300 focus:ring-indigo-500"
-                              />
-                              <span className="flex items-center gap-1.5 font-bold text-indigo-600">
-                                <Users size={16} /> Team Task
-                              </span>
-                            </label>
-                          </div>
-
-                          {newTask.submission_type === 'TEAM' && (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-zinc-200">
-                              <div>
-                                <label className="text-xs font-bold text-zinc-600 mb-1 block">
-                                  Minimum Team Size
-                                </label>
-                                <Input
-                                  type="number"
-                                  min={2}
-                                  max={10}
-                                  value={newTask.min_team_size}
-                                  onChange={e => setNewTask(prev => ({ ...prev, min_team_size: parseInt(e.target.value, 10) || 2 }))}
-                                />
-                              </div>
-                              <div>
-                                <label className="text-xs font-bold text-zinc-600 mb-1 block">
-                                  Maximum Team Size
-                                </label>
-                                <Input
-                                  type="number"
-                                  min={2}
-                                  max={20}
-                                  value={newTask.max_team_size}
-                                  onChange={e => setNewTask(prev => ({ ...prev, max_team_size: parseInt(e.target.value, 10) || 5 }))}
-                                />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {isAdmin && (
-                          <div className="min-w-0">
-                            <Select
-                              value={newTask.department_id || ''}
-                              onChange={e => setNewTask(prev => ({ ...prev, department_id: e.target.value, class_ids: [] }))}
-                            >
-                              <option value="">Global Task (Visible to All)</option>
-                              {[...departments].sort((a, b) => a.name.localeCompare(b.name)).map(d => (
-                                <option key={d.id} value={d.id}>{d.name}</option>
-                              ))}
-                            </Select>
-                          </div>
-                        )}
-
-                        {user?.is_year_coordinator && (
-                          <div className="w-full p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
-                            <p className="text-sm font-bold text-indigo-700 mb-1 flex items-center gap-2">
-                              <CalendarRange size={16} /> Year {user.year_scope} Coordinator Scope
-                            </p>
-                            <p className="text-xs text-indigo-600 font-medium">
-                              This task will be automatically assigned to all classes in Year {user.year_scope}.
-                            </p>
-                          </div>
-                        )}
-
-                        {(isAdmin || isHOD || user?.is_year_coordinator) && (
-                          <div className="w-full bg-white border border-zinc-200 rounded-lg p-3 md:col-span-2 min-w-0">
-                            <div className="flex items-center justify-between mb-3">
-                              <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest block">
-                                {isAdmin ? 'Select Specific Classes (Optional)' :
-                                  user?.is_year_coordinator ? `Classes in Year ${user.year_scope}` :
-                                    'Assign to Classes'}
-                              </label>
-                              {(() => {
-                                const availClasses = classes.filter(c => {
-                                  if (isAdmin) return !newTask.department_id || c.department_id?.toString() === newTask.department_id?.toString();
-                                  if (user?.is_year_coordinator) return c.year === user.year_scope && c.department_id?.toString() === user.department_id?.toString();
-                                  return c.department_id?.toString() === user?.department_id?.toString();
-                                });
-                                const allSelected = availClasses.length > 0 && availClasses.every(c => (newTask.class_ids || []).map(String).includes(String(c.id)));
-                                return (
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (allSelected) {
-                                          setNewTask(prev => ({ ...prev, class_ids: [] }));
-                                        } else {
-                                          setNewTask(prev => ({ ...prev, class_ids: availClasses.map(c => c.id) }));
-                                        }
-                                      }}
-                                      className="text-[11px] font-bold text-blue-600 hover:text-blue-800 transition-colors"
-                                    >
-                                      {allSelected ? 'Deselect All' : `Select All (${availClasses.length})`}
-                                    </button>
-                                  </div>
-                                );
-                              })()}
-                            </div>
-
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                              {[...classes]
-                                .filter(c => {
-                                  if (isAdmin) return !newTask.department_id || c.department_id?.toString() === newTask.department_id?.toString();
-                                  if (user?.is_year_coordinator) return c.year === user.year_scope && c.department_id?.toString() === user.department_id?.toString();
-                                  return c.department_id?.toString() === user?.department_id?.toString();
-                                })
-                                .sort((a, b) => (a.year || 0) - (b.year || 0) || (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }))
-                                .map(c => (
-                                  <label key={c.id} className="flex items-center gap-2 p-2 hover:bg-zinc-50 rounded-md cursor-pointer transition-colors border border-transparent hover:border-zinc-200">
-                                    <input
-                                      type="checkbox"
-                                      className="w-4 h-4 rounded border-zinc-300 text-black focus:ring-black/20 font-medium text-xs"
-                                      checked={(newTask.class_ids || []).map(String).includes(String(c.id))}
-                                      onChange={(e) => {
-                                        if (e.target.checked) {
-                                          setNewTask(prev => ({ ...prev, class_ids: [...(prev.class_ids || []), c.id] }));
-                                        } else {
-                                          setNewTask(prev => ({ ...prev, class_ids: (prev.class_ids || []).filter(id => String(id) !== String(c.id)) }));
-                                        }
-                                      }}
+                                  <div className="w-full bg-zinc-100 rounded-full h-1.5 mb-2">
+                                    <div
+                                      className="bg-orange-500 h-1.5 rounded-full transition-all duration-500"
+                                      style={{ width: `${Math.min(100, myLeetcodeProgress?.completionDailyPct ?? 0)}%` }}
                                     />
-                                    <span className="text-sm font-medium text-zinc-700">{c.name}</span>
-                                  </label>
-                                ))}
-                            </div>
-                            <p className="text-xs text-zinc-500 mt-3 bg-zinc-50 p-2 rounded min-h-[2.5rem] flex items-center font-medium">
-                              {(newTask.class_ids || []).length === 0 ? (
-                                <>
-                                  <Info size={14} className="inline mr-1 text-zinc-400 shrink-0" /> {user?.is_year_coordinator ? `No specific classes selected. This task will be automatically assigned to ALL Year ${user.year_scope} classes.` :
-                                    `No specific classes selected. This task will act as a ${newTask.department_id ? 'Class-Wide' : 'Global'} broadcast to everyone applicable.`}
-                                </>
-                              ) : (
-                                <>
-                                  Assigned to: {(newTask.class_ids || []).map(id => classes.find(c => String(c.id) === String(id))?.name || id).join(', ')}
-                                </>
-                              )}
-                            </p>
-                          </div>
-                        )}
-
-                        <div className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-4 md:col-span-2 min-w-0">
-                          <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest block mb-2 flex items-center gap-1.5">
-                            <ImageIcon size={14} /> Hackathon / Event Poster (Image or PDF) (Optional)
-                          </label>
-                          {posterPreview ? (
-                            <div className="relative rounded-lg overflow-hidden border border-zinc-200 bg-white p-3 flex items-center justify-between group">
-                              {posterPreview === 'PDF_DOCUMENT' ? (
-                                <div className="flex items-center gap-3">
-                                  <div className="p-3 bg-red-100 text-red-600 rounded-xl">
-                                    <FileText size={24} />
                                   </div>
-                                  <div>
-                                    <p className="text-sm font-bold text-zinc-900">{posterFile?.name || 'Event_Poster.pdf'}</p>
-                                    <p className="text-xs text-zinc-500 font-medium">PDF Document Poster Attached</p>
+                                  <div className="flex items-center justify-between text-[10px] font-bold text-zinc-500">
+                                    <span>{myLeetcodeProgress?.completionDailyPct ?? 0}% Done</span>
+                                    <button onClick={() => setView('leetcode-targets')} className="text-indigo-600 hover:text-indigo-700 flex items-center gap-0.5 font-bold">
+                                      View Details <ChevronRight size={10} />
+                                    </button>
                                   </div>
                                 </div>
-                              ) : (
-                                <img src={posterPreview} alt="Poster preview" className="max-h-48 rounded object-contain" />
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => handlePosterSelect(null)}
-                                className="p-1.5 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors shadow"
-                                title="Remove poster"
-                              >
-                                <X size={16} />
-                              </button>
-                            </div>
-                          ) : (
-                            <label className="border-2 border-dashed border-zinc-200 hover:border-black rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-all bg-white hover:bg-zinc-50">
-                              <Upload size={24} className="text-zinc-400 mb-1" />
-                              <span className="text-xs font-bold text-zinc-700">Click or Drag & Drop poster (Image or PDF) here</span>
-                              <span className="text-[10px] text-zinc-400 font-medium">Upload poster banner or PDF flyer (e.g. Hackathon, Workshop, Event Poster)</span>
-                              <input
-                                type="file"
-                                accept="image/*,.pdf,application/pdf"
-                                className="hidden"
-                                onChange={e => handlePosterSelect(e.target.files?.[0] || null)}
-                              />
-                            </label>
-                          )}
-                        </div>
-                      </div>
-                      <Textarea
-                        placeholder="Task Description..."
-                        value={newTask.description}
-                        onChange={e => setNewTask(prev => ({ ...prev, description: e.target.value }))}
-                        required
-                      />
-                      <div className="flex gap-4">
-                        <Button type="submit" variant="secondary" className="flex-1">
-                          <ImageIcon size={18} /> Live Preview
-                        </Button>
-                        <Button type="button" onClick={createTask} disabled={isUploadingPoster} className="flex-1">
-                          {isUploadingPoster ? <Loader2 size={18} className="animate-spin" /> : <ClipboardList size={18} />} Post Task
-                        </Button>
-                      </div>
-                    </form>
-                  </ContentCard>
-                  )}
-
-                <div className="space-y-4 pb-12">
-                  {isStudent && myInvitations.length > 0 && (
-                    <div className="space-y-3 mb-6">
-                      {myInvitations.map(inv => (
-                        <div key={inv.id} className="p-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 text-white rounded-2xl shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                              <Users size={20} className="text-white" />
-                            </div>
-                            <div>
-                              <p className="font-bold text-sm">Team Invitation Received!</p>
-                              <p className="text-xs text-indigo-100 font-medium">
-                                {inv.inviter_name || 'Classmate'} invited you to join team <span className="font-bold text-white">"{inv.team_name}"</span> for task <span className="font-bold text-white">"{inv.task_title}"</span>
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <Button
-                              onClick={() => handleRespondInvitation(inv.id, 'ACCEPT')}
-                              className="bg-white text-indigo-700 hover:bg-indigo-50 font-bold text-xs px-4 py-2 rounded-xl border-none shadow-sm"
-                            >
-                              Accept Invitation
-                            </Button>
-                            <Button
-                              onClick={() => handleRespondInvitation(inv.id, 'DECLINE')}
-                              className="bg-white/20 hover:bg-white/30 text-white font-semibold text-xs px-4 py-2 rounded-xl border border-white/30"
-                            >
-                              Decline
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {isStudent && (
-                    <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar mb-4">
-                      <button
-                        type="button"
-                        onClick={() => setStudentTaskFilter('ALL')}
-                        className={cn(
-                          "px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border cursor-pointer",
-                          studentTaskFilter === 'ALL' ? "bg-black text-white border-black shadow-sm" : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
-                        )}
-                      >
-                        All Tasks ({tasks.length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setStudentTaskFilter('PENDING_ACTION')}
-                        className={cn(
-                          "px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border cursor-pointer flex items-center gap-1.5",
-                          studentTaskFilter === 'PENDING_ACTION' ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
-                        )}
-                      >
-                        <Clock size={14} /> Pending Action
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setStudentTaskFilter('UNDER_REVIEW')}
-                        className={cn(
-                          "px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border cursor-pointer flex items-center gap-1.5",
-                          studentTaskFilter === 'UNDER_REVIEW' ? "bg-amber-600 text-white border-amber-600 shadow-sm" : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
-                        )}
-                      >
-                        <Clock size={14} /> Under Review
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setStudentTaskFilter('VERIFIED')}
-                        className={cn(
-                          "px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border cursor-pointer flex items-center gap-1.5",
-                          studentTaskFilter === 'VERIFIED' ? "bg-emerald-600 text-white border-emerald-600 shadow-sm" : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
-                        )}
-                      >
-                        <CheckCircle2 size={14} /> Verified
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setStudentTaskFilter('OVERDUE')}
-                        className={cn(
-                          "px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border cursor-pointer flex items-center gap-1.5",
-                          studentTaskFilter === 'OVERDUE' ? "bg-rose-600 text-white border-rose-600 shadow-sm" : "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
-                        )}
-                      >
-                        <AlertTriangle size={14} /> Overdue / Closed
-                      </button>
-                    </div>
-                  )}
-
-                  {tasks.filter(task => {
-                    if (!isStudent || studentTaskFilter === 'ALL') return true;
-                    const sub = submissions.find(s => String(s.task_id) === String(task.id) && String(s.user_id) === String(user?.id));
-                    const isDeadlinePassed = task.deadline && new Date(task.deadline) < new Date();
-                    const isClosed = task.status === 'CLOSED' || isDeadlinePassed;
-
-                    if (studentTaskFilter === 'PENDING_ACTION') return !sub && !isClosed;
-                    if (studentTaskFilter === 'UNDER_REVIEW') return sub?.status === 'SUBMITTED';
-                    if (studentTaskFilter === 'VERIFIED') return sub?.status === 'VERIFIED';
-                    if (studentTaskFilter === 'OVERDUE') return (!sub && isClosed) || sub?.status === 'REJECTED';
-                    return true;
-                  }).map(task => {
-                    const submission = submissions.find(s => s.task_id === task.id && s.user_id?.toString() === user?.id?.toString());
-                    const isDeadlinePassed = task.deadline && new Date(task.deadline) < new Date();
-                    const isWithin24h = task.deadline && !isDeadlinePassed && (new Date(task.deadline).getTime() - new Date().getTime()) < 24 * 60 * 60 * 1000;
-
-                    const categoryColors: Record<string, string> = {
-                      'Competition': 'bg-rose-50 text-rose-600 border-rose-100',
-                      'Course': 'bg-indigo-50 text-indigo-600 border-indigo-100',
-                      'Workshop': 'bg-amber-50 text-amber-600 border-amber-100',
-                      'College Work': 'bg-emerald-50 text-emerald-600 border-emerald-100'
-                    };
-                    const categoryIcons: Record<string, string> = {
-                      'Competition': '',
-                      'Course': '',
-                      'Workshop': '',
-                      'College Work': ''
-                    };
-
-                    const catStyle = categoryColors[task.category || ''] || 'bg-zinc-50 text-zinc-600 border-zinc-200';
-                    const catIcon = categoryIcons[task.category || ''] || '';
-                    const isHighlighted = String(highlightedTaskId) === String(task.id);
-
-                    return (
-                      <Card
-                        key={task.id}
-                        id={`task-${task.id}`}
-                        className={cn(
-                          "group hover:shadow-md transition-all duration-300",
-                          isHighlighted ? "ring-2 ring-indigo-500 bg-indigo-50/15 shadow-xl" : ""
-                        )}
-                      >
-                        {task.poster_url && (
-                          <div className="relative mb-5 rounded-xl overflow-hidden bg-zinc-950 border border-zinc-200 group/poster max-h-80 flex items-center justify-center">
-                            {task.poster_url.toLowerCase().includes('.pdf') ? (
-                              <div
-                                onClick={() => setSelectedPosterModal(task.poster_url || null)}
-                                className="w-full p-6 bg-gradient-to-r from-red-900/80 via-zinc-900 to-zinc-950 text-white flex items-center justify-between cursor-pointer group-hover/poster:opacity-90 transition-opacity"
-                              >
-                                <div className="flex items-center gap-3">
-                                  <div className="p-3 bg-red-600 text-white rounded-xl shadow-lg">
-                                    <FileText size={28} />
-                                  </div>
-                                  <div>
-                                    <p className="text-sm font-bold text-white">Event / Hackathon Poster (PDF)</p>
-                                    <p className="text-xs text-zinc-400 font-medium">Click to View or Download PDF Flyer</p>
-                                  </div>
-                                </div>
-                                <span className="text-xs font-bold flex items-center gap-1.5 bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20">
-                                  <Maximize2 size={14} /> Open PDF
-                                </span>
-                              </div>
-                            ) : (
-                              <>
-                                <img
-                                  src={task.poster_url}
-                                  alt={`${task.title} Poster`}
-                                  className="w-full h-full max-h-80 object-cover object-center group-hover/poster:scale-105 transition-transform duration-500 cursor-pointer"
-                                  onClick={() => setSelectedPosterModal(task.poster_url || null)}
-                                />
-                                <div
-                                  className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover/poster:opacity-100 transition-opacity flex items-end justify-between p-4 cursor-pointer"
-                                  onClick={() => setSelectedPosterModal(task.poster_url || null)}
-                                >
-                                  <span className="text-white text-xs font-bold flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20">
-                                    <Maximize2 size={14} /> Click to View Full Poster
-                                  </span>
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        )}
-
-                        <div className="flex flex-col md:flex-row justify-between items-start mb-4 gap-4">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1.5", catStyle)}>
-                                {renderCategoryIcon(task.category || '', 12)}
-                                <span>{task.category || 'General'}</span>
-                              </span>
-                              {task.submission_type === 'TEAM' && (
-                                <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
-                                  <Users size={12} /> Team (Min {task.min_team_size || 2} - Max {task.max_team_size || 5})
-                                </span>
-                              )}
-                              <h4 className="font-bold text-zinc-900 text-lg md:text-xl break-words">{task.title}</h4>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-                              <span className="font-medium text-zinc-700">{task.creator_name}</span>
-                              <span className="hidden md:inline">•</span>
-                              <span>{new Date(task.created_at).toLocaleDateString()}</span>
-                              <span className="hidden md:inline">•</span>
-                              {Array.isArray(task.class_ids) && task.class_ids.length > 0 ? (
-                                (() => {
-                                  const names = task.class_ids
-                                    .map(id => classes.find(c => String(c.id) === String(id))?.name)
-                                    .filter((name): name is string => Boolean(name));
-                                  const displayText = names.length > 0 ? names.join(', ') : 'Assigned Section';
-                                  return (
-                                    <span
-                                      className="bg-purple-50 text-purple-600 border border-purple-100 px-2.5 py-0.5 rounded-full text-xs font-semibold max-w-[240px] md:max-w-md truncate inline-block align-middle"
-                                      title={displayText}
-                                    >
-                                      {displayText}
-                                    </span>
-                                  );
-                                })()
-                              ) : (
-                                <span className={cn(
-                                  "px-2 py-0.5 rounded-full border border-transparent whitespace-nowrap",
-                                  task.department_name ? "bg-blue-50 text-blue-600 border-blue-100" : "bg-orange-50 text-orange-600 border-orange-100"
-                                )}>
-                                  {task.department_name ? 'Class Task' : 'Global Task'}
-                                </span>
-                              )}
-                              {(!isStudent || isCoordinator) && (
-                                <>
-                                  <span className="hidden md:inline">•</span>
-                                  <span className="bg-zinc-100 text-zinc-700 px-2.5 py-0.5 rounded-full flex items-center gap-1.5 whitespace-nowrap border border-zinc-200 font-semibold text-xs">
-                                    <Users size={12} className="text-zinc-500" /> {task.submission_count || 0} {isHOD || isAdmin ? 'submitted (All Sections)' : 'submitted (Class)'}
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                          <div className="text-left md:text-right shrink-0 flex flex-col items-start md:items-end gap-2">
-                            <div>
-                              <p className="text-[10px] text-zinc-400 uppercase font-bold flex items-center gap-1 md:justify-end">
-                                <Clock size={12} /> Deadline
-                              </p>
-                              <p className={cn(
-                                "text-sm font-bold flex flex-col md:items-end",
-                                isDeadlinePassed ? "text-red-500" : (isWithin24h ? "text-orange-500" : "text-zinc-600")
-                              )}>
-                                {task.deadline ? new Date(task.deadline).toLocaleString() : "No deadline"}
-                                {isDeadlinePassed ? (
-                                  <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-extrabold mt-1 uppercase">Deadline Passed</span>
-                                ) : isWithin24h ? (
-                                  <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-extrabold mt-1 uppercase">Due within 24h</span>
-                                ) : task.deadline ? (
-                                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold mt-1">
-                                    {(() => {
-                                      const diffMs = new Date(task.deadline).getTime() - Date.now();
-                                      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-                                      const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                                      return `${diffDays}d ${diffHours}h remaining`;
-                                    })()}
-                                  </span>
-                                ) : null}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-
-                        <p className="text-zinc-600 text-sm mb-6 whitespace-pre-wrap break-words">{task.description}</p>
-
-                        <div className="flex flex-wrap items-center gap-3 mb-6">
-                          <button
-                            type="button"
-                            onClick={() => copyTaskShareLink(task.id)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-colors"
-                            title="Share Task Link"
-                          >
-                            <Share2 size={14} /> Share Task Link
-                          </button>
-
-                          {task.external_link && (
-                            <a
-                              href={task.external_link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 text-blue-600 hover:underline text-xs font-semibold bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100"
-                            >
-                              <ExternalLink size={14} /> Apply Link
-                            </a>
-                          )}
-                        </div>
-
-                        {isStudent && task.status === 'OPEN' && (
-                          <div className="bg-zinc-50 p-5 rounded-xl border border-zinc-200 mt-6 shadow-sm space-y-4">
-                            {task.submission_type === 'TEAM' ? (
-                              <div className="space-y-3">
-                                {(() => {
-                                  const pendingInvForTask = myInvitations.find(inv => String(inv.task_id) === String(task.id));
-                                  if (pendingInvForTask) {
-                                    return (
-                                      <div className="p-4 bg-gradient-to-r from-amber-500 via-indigo-600 to-purple-700 text-white rounded-xl shadow-md flex flex-wrap items-center justify-between gap-4">
-                                        <div className="space-y-0.5">
-                                          <div className="flex items-center gap-2">
-                                            <Badge variant="primary" className="bg-white text-indigo-900 font-extrabold border-none">
-                                              PENDING INVITATION
-                                            </Badge>
-                                          </div>
-                                          <p className="text-sm font-black">
-                                            {pendingInvForTask.inviter_name || 'A classmate'} invited you to join team <span className="underline">"{pendingInvForTask.team_name}"</span>!
-                                          </p>
-                                        </div>
-                                        <div className="flex items-center gap-2 shrink-0">
-                                          <Button
-                                            type="button"
-                                            onClick={() => handleRespondInvitation(pendingInvForTask.id, 'ACCEPT')}
-                                            className="bg-white text-indigo-700 hover:bg-indigo-50 font-black text-xs px-4 py-2 rounded-xl shadow-sm border-none"
-                                          >
-                                            Accept Invitation
-                                          </Button>
-                                          <Button
-                                            type="button"
-                                            onClick={() => handleRespondInvitation(pendingInvForTask.id, 'DECLINE')}
-                                            className="bg-black/30 hover:bg-black/50 text-white font-bold text-xs px-4 py-2 rounded-xl border border-white/30"
-                                          >
-                                            Decline
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    );
-                                  }
-                                  return null;
-                                })()}
-                                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-indigo-50/90 border border-indigo-200 rounded-xl shadow-xs">
-                                  <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                      <Badge variant="primary" className="bg-indigo-600 text-white border-none">
-                                        <Users size={12} /> Team Task
-                                      </Badge>
-                                      <span className="text-xs font-bold text-indigo-950">
-                                        Requires Team of {task.min_team_size || 2} - {task.max_team_size || 5} Members
-                                      </span>
-                                    </div>
-                                    <p className="text-xs text-indigo-700 font-medium">
-                                      Form a team with your classmates, accept pending invitations, or manage your current team and proof submission.
-                                    </p>
-                                  </div>
-                                  <Button
-                                    type="button"
-                                    onClick={() => openTeamModal(task)}
-                                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-sm shrink-0 flex items-center gap-2"
-                                  >
-                                    <Users size={16} /> Manage / View Team
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : isDeadlinePassed ? (
-                              <div className="text-center py-6">
-                                <div className="w-12 h-12 bg-zinc-100 text-zinc-400 rounded-full flex items-center justify-center mx-auto mb-3">
-                                  <Clock size={24} />
-                                </div>
-                                <h5 className="font-bold text-zinc-500 mb-1">Uploads Closed</h5>
-                                <p className="text-sm text-zinc-400 max-w-sm mx-auto">
-                                  The deadline for this task has passed. Submissions are no longer accepted.
-                                </p>
-                              </div>
-                            ) : (
-                              (() => {
-                                const isLocked = submission?.status === 'REJECTED' && (submission.resubmission_count || 0) >= 2;
-
-                                // Already opted out (show reason banner with option to edit)
-                                if (submission?.status === 'NOT_PARTICIPATING' && !isEditingOptOut[task.id]) {
-                                  return (
-                                    <div className="p-4 bg-orange-50/90 border border-orange-200 rounded-xl space-y-3 shadow-sm">
-                                      <div className="flex flex-wrap items-center justify-between gap-3">
-                                        <div className="flex items-center gap-2 text-orange-800 font-bold text-sm">
-                                          <AlertTriangle size={18} className="text-orange-500 shrink-0" />
-                                          <span>Status: Skip / Not Interested</span>
-                                        </div>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setNotParticipating(prev => ({ ...prev, [task.id]: true }));
-                                            setNotParticipatingReason(prev => ({ ...prev, [task.id]: submission.not_participating_reason || '' }));
-                                            setIsEditingOptOut(prev => ({ ...prev, [task.id]: true }));
-                                          }}
-                                          className="text-xs font-bold text-orange-700 hover:text-orange-950 bg-orange-100 hover:bg-orange-200 px-3 py-1.5 rounded-lg border border-orange-300 transition-colors"
-                                        >
-                                          Edit Reason / Change Option
-                                        </button>
-                                      </div>
-                                      <div className="pl-4 border-l-3 border-orange-400 bg-white/70 p-3 rounded-r-lg border border-zinc-200/60">
-                                        <p className="text-[11px] font-bold text-orange-600 uppercase tracking-wider mb-0.5">Submitted Reason:</p>
-                                        <p className="text-sm text-zinc-900 font-semibold break-words leading-relaxed">
-                                          "{submission.not_participating_reason || 'No specific reason provided'}"
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                }
-
-                                if (isLocked) {
-                                  return (
-                                    <div className="text-center py-6">
-                                      <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                                        <XCircle size={24} />
-                                      </div>
-                                      <h5 className="font-bold text-red-600 mb-1">Submission Locked</h5>
-                                      <p className="text-sm text-red-500 max-w-sm mx-auto">
-                                        You have exceeded the maximum number of resubmissions (2) for this task. It cannot be submitted again.
-                                      </p>
-                                    </div>
-                                  );
-                                }
-
-                                if (!submission || submission.status === 'REJECTED') {
-                                  const isOptingOut = notParticipating[task.id] || false;
-                                  return (
-                                    <div className="space-y-4">
-                                      {submission?.status === 'REJECTED' && (
-                                        <div className="p-4 bg-red-50 border-2 border-red-200 rounded-xl text-xs text-red-700 shadow-sm space-y-2">
-                                          <p className="font-extrabold text-sm mb-1 flex items-center gap-1.5 text-red-800">
-                                            <XCircle size={16} className="text-red-500" /> Submission Rejected by Advisor / HOD
-                                          </p>
-                                          <p className="font-medium bg-white/80 p-2.5 rounded-lg border border-red-200 text-zinc-900">
-                                            <strong>Note / Reason:</strong> "{submission.rejection_reason || submission.verification_note || 'No specific note provided'}"
-                                          </p>
-                                          <p className="font-bold text-red-700">Please review the reason above, update your proof, and resubmit below.</p>
-                                        </div>
-                                      )}
-
-                                      {/* ── Intent Selector (works for any task type) ── */}
-                                      <div>
-                                        <p className="text-xs font-semibold text-zinc-500 mb-2 uppercase tracking-wide">Will you be submitting this task?</p>
-                                        <div className="grid grid-cols-2 gap-3">
-                                          {/* Yes, submit */}
-                                          <button
-                                            type="button"
-                                            onClick={() => setNotParticipating(prev => ({ ...prev, [task.id]: false }))}
-                                            className={cn(
-                                              'flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all font-semibold text-sm',
-                                              !isOptingOut
-                                                ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm'
-                                                : 'border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300'
-                                            )}
-                                          >
-                                            <CheckCircle2 size={22} className={!isOptingOut ? 'text-emerald-500' : 'text-zinc-300'} />
-                                            <span>Yes, I'll Submit</span>
-                                          </button>
-
-                                          {/* Skip / Not Interested */}
-                                          <button
-                                            type="button"
-                                            onClick={() => setNotParticipating(prev => ({ ...prev, [task.id]: true }))}
-                                            className={cn(
-                                              'flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all font-semibold text-sm',
-                                              isOptingOut
-                                                ? 'border-orange-400 bg-orange-50 text-orange-700 shadow-sm'
-                                                : 'border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300'
-                                            )}
-                                          >
-                                            <AlertTriangle size={22} className={isOptingOut ? 'text-orange-500' : 'text-zinc-300'} />
-                                            <span>Skip / Not Interested</span>
-                                          </button>
-                                        </div>
-                                      </div>
-
-                                      {/* ── If NOT participating: just reason ── */}
-                                      {isOptingOut ? (
-                                        <div className="space-y-3 pt-1">
-                                          <label className="text-sm font-bold text-zinc-700 flex items-center gap-1.5">
-                                            <AlertTriangle size={14} className="text-orange-500" />
-                                            Reason for Not Participating <span className="text-red-500">*</span>
-                                          </label>
-                                          <Textarea
-                                            placeholder="e.g. Already participated in a similar event / Not relevant to my current semester..."
-                                            value={notParticipatingReason[task.id] || ''}
-                                            onChange={e => setNotParticipatingReason(prev => ({ ...prev, [task.id]: e.target.value }))}
-                                            className="min-h-[90px]"
-                                          />
-                                          <Button
-                                            onClick={() => submitNotParticipating(task.id)}
-                                            disabled={uploading === task.id || !(notParticipatingReason[task.id] || '').trim()}
-                                            className={cn(
-                                              'w-full font-bold bg-orange-500 hover:bg-orange-600 text-white',
-                                              (uploading === task.id || !(notParticipatingReason[task.id] || '').trim()) && 'opacity-50 cursor-not-allowed'
-                                            )}
-                                          >
-                                            {uploading === task.id
-                                              ? <Loader2 size={18} className="animate-spin" />
-                                              : <><AlertTriangle size={16} /> Confirm: Not Participating</>}
-                                          </Button>
-                                        </div>
-                                      ) : (
-                                        /* ── If PARTICIPATING: custom field + screenshot both mandatory ── */
-                                        <div className="space-y-4 pt-1">
-                                          <div>
-                                            <label className="text-sm font-bold text-zinc-700 mb-1.5 flex items-center gap-1">
-                                              {task.custom_field_label || 'Custom Field'}
-                                              <span className="text-red-500 ml-0.5">*</span>
-                                              <span className="text-[10px] font-medium text-zinc-400 ml-1">(Required)</span>
-                                            </label>
-                                            <Input
-                                              placeholder={`Enter ${task.custom_field_label || 'value'}...`}
-                                              value={customFieldValue}
-                                              onChange={e => setCustomFieldValue(e.target.value)}
-                                              className={cn(!customFieldValue.trim() && 'border-red-200 focus:border-red-400')}
-                                            />
-                                          </div>
-                                          <div>
-                                            <label className="text-sm font-bold text-zinc-700 mb-1.5 flex items-center gap-1">
-                                              {task.screenshot_instruction || 'Upload Screenshot'}
-                                              <span className="text-red-500 ml-0.5">*</span>
-                                              <span className="text-[10px] font-medium text-zinc-400 ml-1">(Required)</span>
-                                            </label>
-                                            <div className="flex flex-col gap-3">
-                                              <input
-                                                type="file"
-                                                accept="image/*"
-                                                id={`file-${task.id}`}
-                                                className="hidden"
-                                                onChange={e => handleFileUpload(task.id, e.target.files?.[0] || null)}
-                                              />
-                                              <div className="flex items-center gap-3">
-                                                <div className="flex-1 w-full">
-                                                  {selectedFiles[task.id] ? (
-                                                    <div className="relative w-full border-2 border-emerald-400 bg-emerald-50/80 rounded-xl p-3 md:p-4 flex flex-col md:flex-row items-center justify-between gap-3 shadow-xs">
-                                                      <div className="flex items-center gap-3 min-w-0 flex-1 w-full">
-                                                        <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-emerald-300 bg-white shrink-0 shadow-sm flex items-center justify-center">
-                                                          <img
-                                                            src={URL.createObjectURL(selectedFiles[task.id])}
-                                                            alt="Screenshot preview"
-                                                            className="w-full h-full object-cover"
-                                                          />
-                                                        </div>
-                                                        <div className="min-w-0 flex-1">
-                                                          <div className="flex items-center gap-1 text-emerald-700 font-bold text-xs md:text-sm">
-                                                            <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
-                                                            <span>Screenshot Loaded</span>
-                                                          </div>
-                                                          <p className="text-xs text-zinc-700 font-semibold truncate mt-0.5" title={selectedFiles[task.id].name}>
-                                                            {selectedFiles[task.id].name}
-                                                          </p>
-                                                          <p className="text-[10px] text-emerald-700/70 font-medium">
-                                                            {(selectedFiles[task.id].size / (1024 * 1024)).toFixed(2)} MB
-                                                          </p>
-                                                        </div>
-                                                      </div>
-                                                      <div className="flex items-center gap-2 shrink-0 w-full md:w-auto justify-end">
-                                                        <button
-                                                          type="button"
-                                                          onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            document.getElementById(`file-${task.id}`)?.click();
-                                                          }}
-                                                          className="text-xs font-semibold text-zinc-700 hover:text-zinc-900 bg-white hover:bg-zinc-100 px-2.5 py-1.5 rounded-lg border border-zinc-200 transition-colors flex items-center gap-1 shadow-xs"
-                                                          title="Change screenshot"
-                                                        >
-                                                          <Upload size={13} /> Change
-                                                        </button>
-                                                        <button
-                                                          type="button"
-                                                          onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleDeleteScreenshot(task.id);
-                                                          }}
-                                                          className="text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg border border-red-200 transition-colors flex items-center gap-1.5 shadow-xs"
-                                                          title="Delete screenshot if wrongly uploaded before submission"
-                                                        >
-                                                          <Trash2 size={14} /> Delete
-                                                        </button>
-                                                      </div>
-                                                    </div>
-                                                  ) : (
-                                                    <div
-                                                      className={cn(
-                                                        'relative w-full border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center transition-all cursor-pointer group',
-                                                        isDraggingScreenshot === task.id ? 'border-blue-500 bg-blue-50 scale-105' : 'border-red-200 bg-white text-zinc-400 hover:border-black hover:text-black'
-                                                      )}
-                                                      onDragOver={e => { e.preventDefault(); setIsDraggingScreenshot(task.id); }}
-                                                      onDragLeave={() => setIsDraggingScreenshot(null)}
-                                                      onDrop={e => { e.preventDefault(); setIsDraggingScreenshot(null); handleFileUpload(task.id, e.dataTransfer.files[0]); }}
-                                                      onClick={() => document.getElementById(`file-${task.id}`)?.click()}
-                                                    >
-                                                      <Upload size={24} className="mb-2 group-hover:-translate-y-1 transition-transform" />
-                                                      <p className="font-bold text-center text-[10px] md:text-sm uppercase tracking-wide">Upload Screenshot</p>
-                                                      <p className="text-[10px] opacity-60 text-center">Drag or Click to upload (Max 5MB)</p>
-                                                    </div>
-                                                  )}
-                                                </div>
-                                                <Button
-                                                  onClick={() => submitTask(task.id)}
-                                                  disabled={uploading === task.id || !selectedFiles[task.id] || !customFieldValue.trim()}
-                                                  variant={selectedFiles[task.id] && customFieldValue.trim() ? 'primary' : 'secondary'}
-                                                  className={cn(
-                                                    'h-auto px-6 py-4 shrink-0 font-black uppercase tracking-wider text-sm',
-                                                    (uploading === task.id || !selectedFiles[task.id] || !customFieldValue.trim()) && 'opacity-50 cursor-not-allowed'
-                                                  )}
-                                                >
-                                                  {uploading === task.id ? <Loader2 size={20} className="animate-spin" /> : 'Submit'}
-                                                </Button>
-                                              </div>
-                                              <div className="flex items-start gap-2 text-zinc-400">
-                                                <span className="text-xs shrink-0 mt-0.5">*</span>
-                                                <p className="text-xs italic leading-tight">{task.screenshot_instruction || 'Ensure your screenshot clearly shows completion or registration details before submitting.'}</p>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                }
-                                return (
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                      <div className={cn(
-                                        "w-10 h-10 rounded-full flex items-center justify-center",
-                                        submission.status === 'VERIFIED' ? "bg-emerald-100 text-emerald-600" : "bg-orange-100 text-orange-600"
-                                      )}>
-                                        {submission.status === 'VERIFIED' ? <CheckCircle2 size={20} /> : <Clock size={20} />}
-                                      </div>
-                                      <div>
-                                        <p className="text-sm font-bold text-zinc-900">
-                                          {submission.status === 'VERIFIED' ? 'Completed' : 'Under Review'}
-                                        </p>
-                                        <p className="text-xs text-zinc-500">
-                                          {submission.status === 'VERIFIED' ? `Verified on ${new Date(submission.verified_at!).toLocaleDateString()}` : 'Waiting for verification review'}
-                                        </p>
-                                      </div>
-                                    </div>
-                                    <a
-                                      href={submission.screenshot_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-xs font-medium text-blue-600 hover:underline flex items-center gap-1"
-                                    >
-                                      <ImageIcon size={14} /> View Screenshot
-                                    </a>
-                                  </div>
-                                );
-                              })()
-                            )}
-                          </div>
-                        )}
-                        {((isHOD && (String(task.department_id) === String(user?.department_id) || (Array.isArray(task.class_ids) && task.class_ids.some(cid => classes.find(c => String(c.id) === String(cid))?.department_id?.toString() === user?.department_id?.toString()))))) && (
-                          <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-zinc-100 pt-4">
-                            <Button
-                              variant="secondary"
-                              className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 text-xs font-bold flex items-center gap-1.5"
-                              onClick={() => {
-                                setExtendingTask(task);
-                                const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
-                                const pad = (n: number) => String(n).padStart(2, '0');
-                                setExtendedDeadline(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
-                              }}
-                            >
-                              <Clock size={14} /> Extend Deadline & Reopen
-                            </Button>
-
-                            <Button
-                              variant="ghost"
-                              className="text-zinc-500 hover:text-zinc-900 text-xs font-semibold"
-                              onClick={() => toggleTaskStatus(task.id, task.status)}
-                            >
-                              {task.status === 'OPEN' ? 'Close Task' : 'Open Task'}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              className="text-zinc-400 hover:text-red-500 text-xs font-semibold"
-                              onClick={() => deleteTask(task.id)}
-                            >
-                              <Trash2 size={16} /> Delete
-                            </Button>
-                          </div>
-                        )}
-                      </Card>
-                    );
-                  })}
-                </div>
-                </PageLayout>
-              </motion.div>
-            )}
-
-            {view === 'verifications' && (
-              <motion.div
-                key="verifications"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="w-full h-full flex flex-col min-h-0"
-              >
-                <PageLayout>
-                  <div className="flex justify-between items-center">
-                    <div className="flex gap-2 flex-wrap">
-                      {['PENDING', 'VERIFIED', 'REJECTED', 'NOT INTERESTED', 'ALL'].map(f => (
-                        <button
-                          key={f}
-                          onClick={() => setVerificationFilter(f as any)}
-                          className={cn(
-                            "px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap",
-                            verificationFilter === f ? "bg-black text-white" : "bg-white text-zinc-400 border border-zinc-200 hover:border-zinc-300"
-                          )}
-                        >
-                          {f}
-                        </button>
-                      ))}
-                    </div>
-                    {selectedSubmissions.length > 0 && (
-                      <Button
-                        variant="success"
-                        onClick={() => {
-                          if (confirm(`Verify ${selectedSubmissions.length} submissions?`)) {
-                            Promise.all(selectedSubmissions.map(id =>
-                              fetch(`${API_URL}/api/submissions/${id}/verify`, {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                                body: JSON.stringify({ status: 'VERIFIED' })
-                              })
-                            )).then(() => {
-                              setSelectedSubmissions([]);
-                              fetchInitialData();
-                            });
-                          }
-                        }}
-                      >
-                        Bulk Verify ({selectedSubmissions.length})
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                    <div className={cn((isHOD || isAdmin || user?.is_year_coordinator) ? "md:col-span-2" : "md:col-span-3", "relative")}>
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-                      <Input
-                        placeholder="Search submissions by student name or register number..."
-                        className="pl-10 h-10 text-sm"
-                        value={submissionSearchTerm}
-                        onChange={e => { setSubmissionSearchTerm(e.target.value); setSubmissionPage(1); }}
-                      />
-                    </div>
-
-                    {(isHOD || isAdmin || user?.is_year_coordinator) && (
-                      <div>
-                        <Select
-                          value={verificationClassFilter}
-                          onChange={e => { setVerificationClassFilter(e.target.value); setSubmissionPage(1); }}
-                        >
-                          <option value="">All Classes</option>
-                          {classes.filter(c => {
-                            if (isAdmin) return true;
-                            if (isHOD) return c.department_id?.toString() === user?.department_id?.toString();
-                            if (user?.is_year_coordinator) return c.department_id?.toString() === user?.department_id?.toString() && c.year === user?.year_scope;
-                            return false;
-                          }).sort((a, b) => (a.year || 0) - (b.year || 0) || (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' })).map(c => (
-                            <option key={c.id} value={c.id.toString()}>{c.name}</option>
-                          ))}
-                        </Select>
-                      </div>
-                    )}
-
-                    <div>
-                      <Select
-                        value={verificationTaskFilter}
-                        onChange={e => { setVerificationTaskFilter(e.target.value); setSubmissionPage(1); }}
-                      >
-                        <option value="">All Tasks</option>
-                        {tasks.map(t => (
-                          <option key={t.id} value={t.id.toString()}>{t.title}</option>
-                        ))}
-                      </Select>
-                    </div>
-                  </div>
-
-                  {/* Faculty & Coordinator Team Submissions Review Section */}
-                  {(!verificationTaskFilter || tasks.find(t => t.id.toString() === verificationTaskFilter)?.submission_type === 'TEAM') && (() => {
-                    const filteredTeamSubs = teamSubmissions.filter(sub => {
-                      // 0. Filter by Task Dropdown
-                      if (verificationTaskFilter && sub.task_id?.toString() !== verificationTaskFilter) {
-                        return false;
-                      }
-
-                      // 1. Filter by Status Tab
-                      if (verificationFilter === 'PENDING') {
-                        if (sub.status !== 'PENDING') return false;
-                      } else if (verificationFilter === 'VERIFIED') {
-                        if (sub.status !== 'APPROVED' && sub.status !== 'VERIFIED') return false;
-                      } else if (verificationFilter === 'REJECTED') {
-                        if (sub.status !== 'REJECTED') return false;
-                      } else if (verificationFilter === 'NOT INTERESTED') {
-                        return false;
-                      }
-                      // 'ALL' tab includes all team submissions
-
-                      // 2. Filter by Search Query
-                      if (submissionSearchTerm) {
-                        const q = submissionSearchTerm.toLowerCase();
-                        const matchesTeamName = sub.team_name?.toLowerCase().includes(q);
-                        const matchesLeader = sub.leader_name?.toLowerCase().includes(q) || sub.leader_regno?.toLowerCase().includes(q);
-                        const matchesMember = sub.members?.some(m => (m.full_name || m.username)?.toLowerCase().includes(q) || m.register_number?.toLowerCase().includes(q));
-                        const matchesTaskTitle = sub.task_title?.toLowerCase().includes(q);
-                        if (!matchesTeamName && !matchesLeader && !matchesMember && !matchesTaskTitle) return false;
-                      }
-
-                      // 3. Filter by Class
-                      if (!isAdmin && !isHOD && !user?.is_year_coordinator) {
-                        const userClassId = user?.class_id?.toString();
-                        const matchesTeamClass = sub.class_id?.toString() === userClassId;
-                        const leaderUser = users.find(u => u.id === sub.leader_id || u.register_number === sub.leader_regno);
-                        const matchesClass = matchesTeamClass || leaderUser?.class_id?.toString() === userClassId ||
-                          sub.members?.some(m => users.find(u => u.id === m.id || u.register_number === m.register_number)?.class_id?.toString() === userClassId);
-                        if (!matchesClass) return false;
-                      } else if (verificationClassFilter) {
-                        const matchesTeamClass = sub.class_id?.toString() === verificationClassFilter;
-                        const leaderUser = users.find(u => u.id === sub.leader_id || u.register_number === sub.leader_regno);
-                        const matchesClass = matchesTeamClass || leaderUser?.class_id?.toString() === verificationClassFilter ||
-                          sub.members?.some(m => users.find(u => u.id === m.id || u.register_number === m.register_number)?.class_id?.toString() === verificationClassFilter);
-                        if (!matchesClass) return false;
-                      } else if (user?.is_year_coordinator) {
-                        const leaderUser = users.find(u => u.id === sub.leader_id || u.register_number === sub.leader_regno);
-                        const subClassId = sub.class_id?.toString() || leaderUser?.class_id?.toString();
-                        const subClass = classes.find(c => c.id.toString() === subClassId);
-                        if (subClass && Number(subClass.year) !== Number(user?.year_scope)) return false;
-                      }
-
-                      return true;
-                    });
-
-                    if (filteredTeamSubs.length === 0 && teamSubmissions.length === 0) return null;
-
-                    return (
-                      <div className="mb-8 space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="primary" className="bg-indigo-600 text-white border-none">
-                              <Users size={12} /> Team Task Submissions
-                            </Badge>
-                            <span className="text-xs text-zinc-500 font-bold">
-                              {filteredTeamSubs.length} Team{filteredTeamSubs.length !== 1 ? 's' : ''} {verificationFilter === 'ALL' ? 'Submitted' : verificationFilter}
-                            </span>
-                          </div>
-                        </div>
-
-                        {filteredTeamSubs.length === 0 ? (
-                          <div className="p-8 bg-zinc-50 border border-zinc-200 rounded-2xl text-center text-xs text-zinc-500">
-                            No {verificationFilter.toLowerCase()} team submissions found.
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {filteredTeamSubs.map(sub => (
-                              <Card key={sub.id} className="p-5 space-y-4 border border-zinc-200 hover:border-indigo-300 transition-colors">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md">
-                                        {sub.task_title || tasks.find(t => String(t.id) === String(sub.task_id))?.title || 'Team Task'}
-                                      </span>
-                                    </div>
-                                    <h4 className="font-extrabold text-zinc-900 text-base flex items-center gap-2">
-                                      {sub.team_name}
-                                    </h4>
-                                    <p className="text-xs text-zinc-500 font-medium">
-                                      Leader: <span className="font-bold text-zinc-800">{sub.leader_name}</span> ({sub.leader_regno})
-                                    </p>
-                                  </div>
-                                  <Badge variant={
-                                    sub.status === 'APPROVED' || sub.status === 'VERIFIED' ? 'success' :
-                                    sub.status === 'REJECTED' ? 'danger' : 'warning'
-                                  }>
-                                    {sub.status}
-                                  </Badge>
-                                </div>
-
-                                {/* Members list */}
-                                {sub.members && sub.members.length > 0 && (
-                                  <div className="bg-zinc-50 p-3 rounded-xl space-y-1 border border-zinc-100">
-                                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Accepted Members ({sub.members.length})</p>
-                                    <div className="flex flex-wrap gap-1.5 pt-1">
-                                      {sub.members.map(m => {
-                                        const isLeader = String(m.student_id) === String(sub.leader_id) || m.register_number === sub.leader_regno;
-                                        return (
-                                          <span key={m.id} className={cn(
-                                            "border px-2 py-0.5 rounded-lg text-xs font-semibold flex items-center gap-1.5",
-                                            isLeader ? "bg-indigo-50 border-indigo-200 text-indigo-900" : "bg-white border-zinc-200 text-zinc-700"
-                                          )}>
-                                            {m.full_name || m.username} ({m.register_number})
-                                            {isLeader ? (
-                                              <span className="bg-indigo-600 text-white text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase">Leader</span>
-                                            ) : (
-                                              <span className="bg-zinc-100 text-zinc-600 text-[9px] px-1.5 py-0.2 rounded font-bold uppercase">Member</span>
-                                            )}
-                                          </span>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Proof Image */}
-                                {sub.proof_url && (
-                                  <div className="rounded-xl overflow-hidden bg-zinc-900 border border-zinc-200 max-h-48 flex items-center justify-center cursor-pointer" onClick={() => window.open(sub.proof_url, '_blank')}>
-                                    <img src={sub.proof_url} alt="Team Proof" className="max-h-48 object-contain" />
-                                  </div>
-                                )}
-
-                                {sub.remarks && (
-                                  <p className="text-xs text-zinc-600 italic bg-zinc-50 p-2.5 rounded-lg border border-zinc-100">
-                                    "{sub.remarks}"
-                                  </p>
-                                )}
-
-                                {sub.status === 'PENDING' && (
-                                  <div className="flex gap-2 pt-2 border-t border-zinc-100">
-                                    <Button
-                                      variant="success"
-                                      className="flex-1 text-xs py-2 font-bold"
-                                      onClick={() => handleReviewTeamSubmission(sub.id, 'APPROVED')}
-                                    >
-                                      <CheckCircle2 size={16} /> Approve Team
-                                    </Button>
-                                    <Button
-                                      variant="danger"
-                                      className="flex-1 text-xs py-2 font-bold"
-                                      onClick={() => handleReviewTeamSubmission(sub.id, 'REJECTED')}
-                                    >
-                                      <XCircle size={16} /> Reject Team
-                                    </Button>
-                                  </div>
-                                )}
                               </Card>
-                            ))}
+
+                              <Card className="border border-zinc-200 flex flex-col justify-between bg-white">
+                                <div>
+                                  <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-sm font-black text-zinc-950 flex items-center gap-1.5 uppercase tracking-wider">
+                                      <Code size={16} className="text-indigo-500" /> LeetCode Weekly Target
+                                    </h3>
+                                    {myLeetcodeProgress?.weeklyStatus === 'COMPLETED' ? (
+                                      <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">MET</span>
+                                    ) : (
+                                      <span className="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded-full">PENDING</span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-baseline gap-2 mb-4">
+                                    <span className="text-4xl font-black text-zinc-900">{myLeetcodeProgress?.solvedThisWeek ?? 0}</span>
+                                    <span className="text-xs font-bold text-zinc-400">/ {myLeetcodeProgress?.weeklyTarget ?? 0} solved this week</span>
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="w-full bg-zinc-100 rounded-full h-1.5 mb-2">
+                                    <div
+                                      className="bg-indigo-500 h-1.5 rounded-full transition-all duration-500"
+                                      style={{ width: `${Math.min(100, myLeetcodeProgress?.completionWeeklyPct ?? 0)}%` }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between text-[10px] font-bold text-zinc-500">
+                                    <span>{myLeetcodeProgress?.completionWeeklyPct ?? 0}% Done</span>
+                                    <button onClick={() => setView('leetcode-targets')} className="text-indigo-600 hover:text-indigo-700 flex items-center gap-0.5 font-bold">
+                                      View Details <ChevronRight size={10} />
+                                    </button>
+                                  </div>
+                                </div>
+                              </Card>
+                            </div>
                           </div>
                         )}
                       </div>
-                    );
-                  })()}
+                    )}
 
-                  <Table className="min-w-[800px] md:min-w-0">
-                    <THead>
-                      <TR>
-                        <TH className="w-12">
-                          <input
-                            type="checkbox"
-                            className="w-4 h-4 rounded border-zinc-300"
-                            onChange={e => {
-                              if (e.target.checked) {
-                                setSelectedSubmissions(submissions.filter(s => s.status === 'SUBMITTED').map(s => s.id));
-                              } else {
-                                setSelectedSubmissions([]);
-                              }
-                            }}
-                          />
-                        </TH>
-                        <TH>Student</TH>
-                        <TH>Task</TH>
-                        {verificationFilter === 'NOT INTERESTED' ? (
-                          <TH colSpan={2}>Reason for Not Interested</TH>
-                        ) : (
-                          <>
-                            <TH>Custom Field</TH>
-                            <TH>Screenshot</TH>
-                          </>
-                        )}
-                        <TH className="text-center">Status</TH>
-                        <TH className="text-right">Actions</TH>
-                      </TR>
-                    </THead>
-                    <TBody>
-                      {(() => {
-                        const filtered = submissions
-                          .filter(s => {
-                            if (verificationFilter === 'ALL') return true;
-                            if (verificationFilter === 'PENDING') return s.status === 'SUBMITTED';
-                            if (verificationFilter === 'NOT INTERESTED') return s.status === 'NOT_PARTICIPATING';
-                            return s.status === verificationFilter;
-                          })
-                          .filter(s => {
-                            const std = users.find(u => u.id === s.user_id);
-                            const subClassId = s.class_id?.toString() || std?.class_id?.toString();
+                    {/* Removed redundant HOD Stats section */}
 
-                            if (!isAdmin && !isHOD && !user?.is_year_coordinator) {
-                              const userClassId = user?.class_id?.toString();
-                              return userClassId ? subClassId === userClassId : true;
-                            }
-                            if (verificationClassFilter) {
-                              return subClassId === verificationClassFilter;
-                            }
-                            if (user?.is_year_coordinator) {
-                              const subClass = classes.find(c => c.id.toString() === subClassId);
-                              return subClass ? Number(subClass.year) === Number(user?.year_scope) : true;
-                            }
-                            return true;
-                          })
-                          .filter(s => verificationTaskFilter ? s.task_id?.toString() === verificationTaskFilter : true)
-                          .filter(s => {
-                            if (!submissionSearchTerm) return true;
-                            const query = submissionSearchTerm.toLowerCase();
-                            return s.student_name?.toLowerCase().includes(query) || s.register_number?.toLowerCase().includes(query) || s.task_title?.toLowerCase().includes(query) || s.not_participating_reason?.toLowerCase().includes(query);
-                          });
+                    <ContentCard>
+                      <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
+                      <div className="space-y-4">
+                        {tasks.slice(0, 5).map(task => (
+                          <div key={task.id} className="flex items-center justify-between p-4 bg-zinc-50 rounded-xl">
+                            <div>
+                              <p className="font-medium text-zinc-900">{task.title}</p>
+                              <p className="text-xs text-zinc-500">
+                                {Array.isArray(task.class_ids) && task.class_ids.length > 0
+                                  ? task.class_ids.map(id => classes.find(c => c.id.toString() === id.toString())?.name || id).join(', ')
+                                  : (task.department_name || 'Global Task')
+                                } • {new Date(task.created_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                            {getStudentTaskStatusBadge(task, user, submissions)}
+                          </div>
+                        ))}
+                      </div>
+                    </ContentCard>
+                  </PageLayout>
+                </motion.div>
+              )}
 
-                        if (filtered.length === 0) {
-                          return (
-                            <TR>
-                              <TD colSpan={7} className="text-center py-12">
-                                <div className="max-w-md mx-auto">
-                                  <Users size={48} className="mx-auto text-zinc-300 mb-4" />
-                                  <p className="font-bold text-base text-zinc-900">No submissions found</p>
-                                  <p className="text-sm text-zinc-400">There are no task submissions matching the filters.</p>
-                                </div>
-                              </TD>
-                            </TR>
-                          );
-                        }
-
-                        const totalPages = Math.ceil(filtered.length / itemsPerPage);
-                        const paginated = filtered.slice((submissionPage - 1) * itemsPerPage, submissionPage * itemsPerPage);
-
-                        return (
-                          <>
-                            {paginated.map(s => (
-                              <TR key={s.id} className={cn("border-l-4", s.status === 'VERIFIED' ? "border-emerald-500" : s.status === 'REJECTED' ? "border-red-500" : s.status === 'NOT_PARTICIPATING' ? "border-orange-400" : "border-amber-500")}>
-                                <TD>
-                                  {s.status === 'SUBMITTED' && (
-                                    <input
-                                      type="checkbox"
-                                      className="w-4 h-4 rounded border-zinc-300"
-                                      checked={selectedSubmissions.includes(s.id)}
-                                      onChange={e => {
-                                        if (e.target.checked) setSelectedSubmissions(prev => [...prev, s.id]);
-                                        else setSelectedSubmissions(prev => prev.filter(id => id !== s.id));
-                                      }}
-                                    />
-                                  )}
-                                </TD>
-                                <TD>
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center shrink-0">
-                                      <Users size={16} className="text-zinc-500" />
-                                    </div>
-                                    <div className="break-words min-w-0">
-                                      <p className="text-sm font-bold text-zinc-900 leading-tight break-words">{s.student_name}</p>
-                                      <div className="flex items-center gap-2">
-                                        <p className="text-xs text-zinc-500 font-mono italic break-all">{s.register_number}</p>
-                                        <span className="px-1.5 py-0.5 bg-zinc-100 text-zinc-500 text-xs font-bold rounded uppercase border border-zinc-200">
-                                          {s.class_name || 'N/A'}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </TD>
-                                <TD>
-                                  <p className="text-sm font-medium text-zinc-900 break-words">{s.task_title}</p>
-                                  <p className="text-xs text-zinc-400 capitalize">{new Date(s.submitted_at).toLocaleDateString()}</p>
-                                </TD>
-                                {s.status === 'NOT_PARTICIPATING' ? (
-                                  <TD colSpan={2}>
-                                    <div className="p-3 bg-orange-50/90 border border-orange-200 rounded-xl max-w-md shadow-xs">
-                                      <p className="text-[10px] font-bold text-orange-600 uppercase tracking-wider mb-0.5 flex items-center gap-1">
-                                        <AlertTriangle size={12} className="text-orange-500 shrink-0" />
-                                        <span>Reason for Not Interested</span>
-                                      </p>
-                                      <p className="text-xs text-orange-950 font-semibold break-words leading-relaxed">
-                                        "{s.not_participating_reason || 'No specific reason provided'}"
-                                      </p>
-                                    </div>
-                                  </TD>
-                                ) : (
-                                  <>
-                                    <TD>
-                                      <p className="text-xs text-zinc-400 uppercase font-bold mb-1 tracking-widest">Field Data</p>
-                                      <p className="text-sm font-mono text-zinc-900 bg-zinc-100 px-2 py-1 rounded inline-block break-all">
-                                        {s.custom_field_value || '—'}
-                                      </p>
-                                    </TD>
-                                    <TD>
-                                      {s.screenshot_url ? (
-                                        <div className="relative group/img">
-                                          <img
-                                            src={getCloudinaryThumbnail(s.screenshot_url, 150)}
-                                            className="w-12 h-12 object-cover rounded-lg border-2 border-zinc-200 hover:border-black transition-all cursor-zoom-in"
-                                            onClick={() => window.open(s.screenshot_url, '_blank')}
-                                            alt="Thumbnail"
-                                          />
-                                          <div className="absolute top-0 left-0 w-full h-full bg-black/5 rounded-lg pointer-events-none group-hover/img:bg-transparent transition-colors" />
-                                        </div>
-                                      ) : (
-                                        <span className="text-xs text-zinc-400 font-mono italic">No File</span>
-                                      )}
-                                    </TD>
-                                  </>
-                                )}
-                                <TD className="text-center">
-                                  <Badge variant={
-                                    s.status === 'VERIFIED' ? 'success' :
-                                    s.status === 'REJECTED' ? 'danger' : 'warning'
-                                  } className={s.status === 'NOT_PARTICIPATING' ? 'bg-orange-100 text-orange-700 border-orange-200' : ''}>
-                                    {s.status === 'SUBMITTED' ? 'PENDING' : s.status === 'NOT_PARTICIPATING' ? 'NOT INTERESTED' : s.status}
-                                  </Badge>
-                                </TD>
-                                <TD className="text-right">
-                                  {s.status === 'SUBMITTED' && (
-                                    <div className="flex justify-end gap-2">
-                                      <Button
-                                        variant="success"
-                                        className="px-3 py-1.5 flex items-center gap-2 text-xs"
-                                        onClick={() => verifySubmission(s.id, 'VERIFIED')}
-                                      >
-                                        <CheckCircle2 size={14} /> Verify
-                                      </Button>
-                                      <Button
-                                        variant="danger"
-                                        className="px-3 py-1.5 flex items-center gap-2 text-xs"
-                                        onClick={() => setShowRejectionModal(s.id)}
-                                      >
-                                        <XCircle size={14} /> Reject
-                                      </Button>
-                                    </div>
-                                  )}
-                                  {s.status === 'REJECTED' && (
-                                    <p className="text-xs text-red-500 font-medium">Wait for Resubmission</p>
-                                  )}
-                                  {s.status === 'VERIFIED' && (
-                                    <p className="text-xs text-emerald-500 font-medium flex items-center gap-1 justify-end">
-                                      <CheckCircle2 size={14} /> Verified
-                                    </p>
-                                  )}
-                                  <Button
-                                    variant="ghost"
-                                    className="p-1.5 ml-1 text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-colors rounded-lg"
-                                    onClick={async () => {
-                                      if (confirm('Are you sure you want to delete this submission? This action cannot be undone.')) {
-                                        const res = await fetch(`${API_URL}/api/submissions/${s.id}`, {
-                                          method: 'DELETE',
-                                          headers: { Authorization: `Bearer ${token}` }
-                                        });
-                                        if (res.ok) {
-                                          fetchInitialData();
-                                        } else {
-                                          const data = await res.json();
-                                          alert(data.error || 'Failed to delete submission');
-                                        }
-                                      }
-                                    }}
-                                    title="Delete Submission"
-                                  >
-                                    <Trash2 size={16} />
-                                  </Button>
-                                </TD>
-                              </TR>
-                            ))}
-                            {filtered.length > itemsPerPage && (
-                              <TR>
-                                <TD colSpan={7} className="bg-zinc-50/30">
-                                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-1">
-                                    <p className="text-xs font-medium text-zinc-500 whitespace-nowrap">
-                                      Showing {(submissionPage - 1) * itemsPerPage + 1} to {Math.min(submissionPage * itemsPerPage, filtered.length)} of {filtered.length} entries
-                                    </p>
-                                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                                      <Button
-                                        variant="secondary"
-                                        className="px-3 py-1 h-8 text-xs font-semibold"
-                                        disabled={submissionPage === 1}
-                                        onClick={() => setSubmissionPage(prev => prev - 1)}
-                                      >
-                                        Previous
-                                      </Button>
-                                      <div className="flex items-center gap-1">
-                                        {getPaginationRange(submissionPage, totalPages).map((p, idx) => typeof p === 'number' ? (
-                                          <button
-                                            key={idx}
-                                            onClick={() => setSubmissionPage(p)}
-                                            className={cn(
-                                              "w-8 h-8 rounded-lg text-xs font-bold transition-all",
-                                              submissionPage === p ? "bg-black text-white shadow-sm" : "text-zinc-600 hover:bg-zinc-100"
-                                            )}
-                                          >
-                                            {p}
-                                          </button>
-                                        ) : (
-                                          <span key={idx} className="w-5 text-center text-xs text-zinc-400 font-bold">...</span>
-                                        ))}
-                                      </div>
-                                      <Button
-                                        variant="secondary"
-                                        className="px-3 py-1 h-8 text-xs font-semibold"
-                                        disabled={submissionPage === totalPages}
-                                        onClick={() => setSubmissionPage(prev => prev + 1)}
-                                      >
-                                        Next
-                                      </Button>
-                                    </div>
-                                  </div>
-                                </TD>
-                              </TR>
-                            )}
-                            {filtered.length === 0 && (
-                              <TR>
-                                <TD colSpan={7} className="text-center text-zinc-500 text-sm py-12">
-                                  No submissions found matching your filters.
-                                </TD>
-                              </TR>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </TBody>
-                  </Table>
-                </PageLayout>
-              </motion.div>
-            )}
-
-            {
-              view === 'submissions' && (
+              {view === 'departments' && isAdmin && (
                 <motion.div
-                  key="submissions"
+                  key="departments"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="w-full h-full flex flex-col min-h-0"
                 >
                   <PageLayout>
-                    <div className="grid grid-cols-1 gap-4">
-                      {submissions.filter(s => s.user_id?.toString() === user?.id?.toString()).length === 0 ? (
-                        <Card className="flex flex-col items-center justify-center py-12 text-zinc-500">
-                          <ImageIcon size={48} className="mb-4 opacity-20" />
-                          <p>No submissions found</p>
+                    <ContentCard>
+                      <h3 className="text-lg font-semibold mb-4">Create New Department</h3>
+                      <form onSubmit={createDepartment} className="flex gap-4">
+                        <Input
+                          placeholder="e.g. Computer Science & Engineering"
+                          value={newDept}
+                          onChange={e => setNewDept(e.target.value)}
+                          required
+                        />
+                        <Button className="whitespace-nowrap flex items-center gap-2">
+                          <Plus size={18} /> Create Department
+                        </Button>
+                      </form>
+                    </ContentCard>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {departments.map(dept => (
+                        <Card key={dept.id} className="flex items-center justify-between group">
+                          <div>
+                            <p className="font-bold text-zinc-900">{dept.name}</p>
+                            <p className="text-xs text-zinc-500">ID: {dept.id}</p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              if (confirm('Delete department?')) {
+                                fetch(`${API_URL}/api/departments/${dept.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).then(() => fetchInitialData());
+                              }
+                            }}
+                            className="p-2 text-zinc-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                          >
+                            <Trash2 size={18} />
+                          </button>
                         </Card>
-                      ) : (
-                        submissions
-                          .filter(s => s.user_id?.toString() === user?.id?.toString())
-                          .map(sub => (
-                            <Card key={sub.id} className="flex flex-col md:flex-row gap-6">
-                              {sub.status === 'NOT_PARTICIPATING' ? (
-                                <div className="w-full md:w-48 h-48 bg-orange-50 rounded-xl border border-orange-200 p-4 flex flex-col items-center justify-center text-center shrink-0">
-                                  <AlertTriangle size={32} className="text-orange-500 mb-2" />
-                                  <p className="text-xs font-bold text-orange-700 uppercase">Not Participating</p>
-                                  <p className="text-xs text-orange-800 mt-1 line-clamp-4 font-medium">"{sub.not_participating_reason || 'No reason provided'}"</p>
-                                </div>
-                              ) : (
-                                <div className="w-full md:w-48 h-48 bg-zinc-100 rounded-xl overflow-hidden border border-zinc-200 shrink-0">
-                                  {sub.screenshot_url ? (
-                                    <img
-                                      src={getCloudinaryThumbnail(sub.screenshot_url, 400)}
-                                      alt="Submission"
-                                      className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
-                                      onClick={() => window.open(sub.screenshot_url, '_blank')}
-                                      referrerPolicy="no-referrer"
-                                    />
-                                  ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-zinc-400 text-xs">No image uploaded</div>
-                                  )}
-                                </div>
-                              )}
-                              <div className="flex-1 flex flex-col justify-between">
-                                <div>
-                                  <div className="flex justify-between items-start">
-                                    <div>
-                                      <h4 className="font-bold text-zinc-900 text-lg">{sub.task_title}</h4>
-                                      <p className="text-sm text-zinc-500">
-                                        {isAdvisor ? `Student: ${sub.student_name}` : `Submitted on ${new Date(sub.submitted_at).toLocaleString()}`}
-                                      </p>
-                                    </div>
-                                    <Badge variant={
-                                      sub.status === 'VERIFIED' ? 'success' :
-                                      sub.status === 'REJECTED' ? 'danger' : 'warning'
-                                    } className={sub.status === 'NOT_PARTICIPATING' ? 'bg-orange-100 text-orange-700 border-orange-200' : ''}>
-                                      {sub.status === 'NOT_PARTICIPATING' ? 'NOT INTERESTED' : sub.status}
-                                    </Badge>
-                                  </div>
-                                  {sub.verified_at && (
-                                    <p className="text-xs text-zinc-400 mt-2 uppercase font-bold">
-                                      Verified on {new Date(sub.verified_at).toLocaleString()}
-                                    </p>
-                                  )}
-                                </div>
-
-                                {(isHOD || isAdmin || isAdvisor || isCoordinator) && sub.status === 'SUBMITTED' && (
-                                  <div className="flex gap-2 mt-4">
-                                    <Button
-                                      variant="success"
-                                      className="flex-1 flex items-center justify-center gap-2"
-                                      onClick={() => verifySubmission(sub.id, 'VERIFIED')}
-                                    >
-                                      <CheckCircle2 size={18} /> Verify
-                                    </Button>
-                                    <Button
-                                      variant="danger"
-                                      className="flex-1 flex items-center justify-center gap-2"
-                                      onClick={() => verifySubmission(sub.id, 'REJECTED')}
-                                    >
-                                      <XCircle size={18} /> Reject
-                                    </Button>
-                                  </div>
-                                )}
-
-                                {sub.screenshot_url && (
-                                  <Button
-                                    variant="ghost"
-                                    className="mt-4 text-xs flex items-center gap-2 w-fit"
-                                    onClick={() => window.open(sub.screenshot_url, '_blank')}
-                                  >
-                                    <ExternalLink size={14} /> View Full Screenshot
-                                  </Button>
-                                )}
-                              </div>
-                            </Card>
-                          ))
-                      )}
+                      ))}
                     </div>
                   </PageLayout>
                 </motion.div>
-              )
-            }
+              )}
 
-            {
-              view === 'profile' && (
+              {view === 'classes' && isHOD && (
                 <motion.div
-                  key="profile"
+                  key="classes"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="w-full h-full flex flex-col min-h-0 overflow-y-auto"
+                  className="w-full h-full flex flex-col min-h-0"
                 >
-                  {isStudent ? (
-                    <StudentProfileView
+                  <PageLayout>
+
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {classes.slice().sort((a, b) => (a.year || 0) - (b.year || 0) || (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' })).map(c => (
+                        <Card key={c.id} className="relative overflow-hidden group border-zinc-200 hover:border-blue-500 transition-colors">
+                          <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/5 -mr-4 -mt-4 rounded-full" />
+                          <div className="flex flex-col h-full">
+                            <div className="flex items-start justify-between mb-4">
+                              <div className="p-2.5 bg-blue-100 text-blue-600 rounded-xl">
+                                <Building2 size={20} />
+                              </div>
+                              <button
+                                onClick={() => {
+                                  if (confirm('Are you sure? This will delete all students and tasks associated with this class.')) {
+                                    fetch(`${API_URL}/api/classes/${c.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).then(() => fetchInitialData());
+                                  }
+                                }}
+                                className="p-2 text-zinc-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
+                            <h4 className="font-black text-lg text-zinc-900 mb-1">{c.name}</h4>
+                            <div className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-tight">
+                              <span>Year {c.year}</span>
+                              <span className="w-1 h-1 bg-zinc-300 rounded-full" />
+                              <span>{c.batch}</span>
+                            </div>
+                            <div className="mt-auto pt-6 flex items-center justify-between text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                              <span>Class ID: {c.id}</span>
+                              <span className="px-2 py-0.5 bg-zinc-100 rounded text-zinc-500">Class Pool</span>
+                            </div>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  </PageLayout>
+                </motion.div>
+              )}
+
+              {view === 'my-class' && isAdvisor && (
+                <motion.div
+                  key="my-class"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="w-full h-full flex flex-col min-h-0"
+                >
+                  <PageLayout>
+                    <ContentCard>
+                      <h3 className="text-lg font-semibold mb-4">Class Details</h3>
+                      <form onSubmit={createClass} className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-zinc-500 uppercase">Class Name</label>
+                            <Input
+                              value={newClass.name !== undefined && newClass.name !== '' ? newClass.name : (myClass?.name || '')}
+                              onChange={e => setNewClass(prev => ({ ...prev, name: e.target.value }))}
+                              required
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-zinc-500 uppercase">Year</label>
+                            <Input
+                              type="number"
+                              value={newClass.year !== undefined && newClass.year !== '' ? newClass.year : (myClass?.year || '')}
+                              onChange={e => setNewClass(prev => ({ ...prev, year: e.target.value }))}
+                              required
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-zinc-500 uppercase">Batch</label>
+                            <Input
+                              value={newClass.batch !== undefined && newClass.batch !== '' ? newClass.batch : (myClass?.batch || '')}
+                              onChange={e => setNewClass(prev => ({ ...prev, batch: e.target.value }))}
+                              required
+                            />
+                          </div>
+                        </div>
+                        <Button className="flex items-center gap-2">
+                          <Plus size={18} /> Update Class Info
+                        </Button>
+                      </form>
+                    </ContentCard>
+
+                    {myClass && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <StatCard title="Class Name" value={myClass.name as any} icon={<Building2 />} color="bg-blue-500" />
+                        <StatCard title="Year" value={myClass.year as any} icon={<ClipboardList />} color="bg-emerald-500" />
+                        <StatCard title="Batch" value={myClass.batch as any} icon={<Users />} color="bg-purple-500" />
+                      </div>
+                    )}
+                  </PageLayout>
+                </motion.div>
+              )}
+
+              {view === 'users' && (
+                <motion.div
+                  key="users"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="w-full h-full flex flex-col min-h-0"
+                >
+                  <PageLayout>
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
+                      <h3 className="text-xl font-bold text-zinc-900">
+                        {isAdmin ? 'All Users' : isHOD ? 'Class Advisors & Students' : 'Students'}
+                      </h3>
+                      {/* SA Filters */}
+                      {isAdmin && (
+                        <div className="flex flex-wrap gap-3 w-full md:w-auto">
+                          <select
+                            className="px-3 py-2 rounded-xl border border-zinc-200 bg-white text-sm font-semibold text-zinc-700 focus:outline-none focus:ring-2 focus:ring-black/10"
+                            value={userRoleFilter}
+                            onChange={e => { setUserRoleFilter(e.target.value); setUserPage(1); }}
+                          >
+                            <option value="">All Roles</option>
+                            <option value="HOD">HOD</option>
+                            <option value="CLASS_ADVISOR">Class Advisor</option>
+                            <option value="STUDENT">Student</option>
+                          </select>
+                          <select
+                            className="px-3 py-2 rounded-xl border border-zinc-200 bg-white text-sm font-semibold text-zinc-700 focus:outline-none focus:ring-2 focus:ring-black/10"
+                            value={userDeptFilter}
+                            onChange={e => {
+                              setUserDeptFilter(e.target.value);
+                              setUserYearFilter('');
+                              setUserClassFilter('');
+                              setUserPage(1);
+                            }}
+                          >
+                            <option value="">All Departments</option>
+                            {departments.map(d => (
+                              <option key={d.id} value={d.id}>{d.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      {isHOD && (
+                        <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+                          <div className="bg-zinc-100 p-1 rounded-xl flex">
+                            {['ALL', 'CLASS_ADVISOR', 'STUDENT'].map(filter => (
+                              <button
+                                key={filter}
+                                onClick={() => setStudentFilter(filter as any)}
+                                className={cn(
+                                  "px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex-1",
+                                  studentFilter === filter ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                                )}
+                              >
+                                {filter === 'CLASS_ADVISOR' ? 'Advisors' : filter === 'STUDENT' ? 'Students' : 'All'}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {isAdvisor && (
+                        <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+                          <div className="bg-zinc-100 p-1 rounded-xl flex">
+                            {['ALL', 'COORDINATORS'].map(filter => (
+                              <button
+                                key={filter}
+                                onClick={() => setStudentFilter(filter as any)}
+                                className={cn(
+                                  "px-4 py-1.5 rounded-lg text-sm font-bold transition-all flex-1",
+                                  studentFilter === filter ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                                )}
+                              >
+                                {filter.charAt(0) + filter.slice(1).toLowerCase()}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mb-6 flex flex-col md:flex-row gap-4">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+                        <Input
+                          placeholder={`Search ${isAdmin ? 'HODs' : isHOD ? 'Advisors or Students' : 'Students'} by name or registration number...`}
+                          className="pl-10 h-11"
+                          value={searchTerm}
+                          onChange={e => { setSearchTerm(e.target.value); setUserPage(1); }}
+                        />
+                      </div>
+
+                      {/* HOD / Admin Year & Section Filters */}
+                      {(isHOD || isAdmin) && (
+                        <div className="flex flex-wrap items-center gap-3">
+                          <select
+                            className="h-11 px-3 rounded-lg border border-zinc-200 bg-white text-sm font-semibold text-zinc-700 focus:outline-none focus:ring-2 focus:ring-black/5"
+                            value={userYearFilter}
+                            onChange={e => {
+                              setUserYearFilter(e.target.value);
+                              setUserClassFilter('');
+                              setUserPage(1);
+                            }}
+                          >
+                            <option value="">All Years</option>
+                            <option value="1">1st Year</option>
+                            <option value="2">2nd Year</option>
+                            <option value="3">3rd Year</option>
+                            <option value="4">4th Year</option>
+                          </select>
+
+                          <select
+                            className="h-11 px-3 rounded-lg border border-zinc-200 bg-white text-sm font-semibold text-zinc-700 focus:outline-none focus:ring-2 focus:ring-black/5"
+                            value={userClassFilter}
+                            onChange={e => {
+                              setUserClassFilter(e.target.value);
+                              setUserPage(1);
+                            }}
+                          >
+                            <option value="">All Classes / Sections</option>
+                            {classes
+                              .filter(c => (!userDeptFilter || String(c.department_id) === String(userDeptFilter)) && (!userYearFilter || String(c.year) === userYearFilter))
+                              .sort((a, b) => (a.year || 0) - (b.year || 0) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
+                              .map(c => (
+                                <option key={c.id} value={c.id.toString()}>{c.name}</option>
+                              ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+
+
+
+                    <Table className="min-w-[700px] md:min-w-0">
+                      <THead>
+                        <TR>
+                          <TH>Name</TH>
+                          <TH>{isAdvisor ? 'Register No' : 'Username'}</TH>
+                          {isAdvisor && <TH>Email</TH>}
+                          {!isAdvisor && <TH>{isAdmin ? 'Department' : 'Section / Class'}</TH>}
+                          <TH className="text-right">Actions</TH>
+                        </TR>
+                      </THead>
+                      <TBody>
+                        {(() => {
+                          const filtered = users
+                            .filter(u => {
+                              if (isAdmin) {
+                                if (userRoleFilter && u.role !== userRoleFilter) return false;
+                                if (userDeptFilter && u.department_id?.toString() !== userDeptFilter.toString()) return false;
+                                return u.role !== 'SUPREME_ADMIN'; // Don't show SA itself
+                              }
+                              if (isAdvisor) {
+                                if (studentFilter === 'COORDINATORS') return u.is_coordinator;
+                              } else if (isHOD) {
+                                if (studentFilter === 'CLASS_ADVISOR') return u.role === 'CLASS_ADVISOR';
+                                if (studentFilter === 'STUDENT') return u.role === 'STUDENT';
+                              }
+                              return true;
+                            })
+                            .filter(u => {
+                              if (!isAdmin && !isHOD && !user?.is_year_coordinator) {
+                                const userClassId = (user?.class_id || myClass?.id)?.toString();
+                                if (userClassId && u.class_id?.toString() !== userClassId) return false;
+                              }
+                              if (userYearFilter) {
+                                const cls = classes.find(c => c.id?.toString() === u.class_id?.toString());
+                                const yr = cls?.year || (u as any).class_year;
+                                if (String(yr) !== userYearFilter) return false;
+                              }
+                              if (userClassFilter) {
+                                if (u.class_id?.toString() !== userClassFilter) return false;
+                              }
+                              return true;
+                            })
+                            .filter(u => {
+                              if (!searchTerm) return true;
+                              const query = searchTerm.toLowerCase();
+                              return u.full_name?.toLowerCase().includes(query) || (u.register_number || u.username).toLowerCase().includes(query) || u.department_name?.toLowerCase().includes(query);
+                            });
+
+                          const totalPages = Math.ceil(filtered.length / itemsPerPage);
+                          const sortedFiltered = [...filtered].sort((a, b) => {
+                            if (a.role === 'CLASS_ADVISOR' && b.role === 'CLASS_ADVISOR') {
+                              const cA = classes.find(c => c.id?.toString() === a.class_id?.toString());
+                              const cB = classes.find(c => c.id?.toString() === b.class_id?.toString());
+                              const yrA = cA?.year || (a as any).class_year || 0;
+                              const yrB = cB?.year || (b as any).class_year || 0;
+                              if (yrA !== yrB) return yrA - yrB;
+                              const nameA = cA?.name || a.class_name || a.full_name || '';
+                              const nameB = cB?.name || b.class_name || b.full_name || '';
+                              return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+                            }
+                            if (a.role === 'STUDENT' && b.role === 'STUDENT') {
+                              if (a.register_number && b.register_number) {
+                                return a.register_number.localeCompare(b.register_number, undefined, { numeric: true });
+                              }
+                            }
+                            return (a.full_name || '').localeCompare(b.full_name || '', undefined, { numeric: true, sensitivity: 'base' });
+                          });
+                          const paginated = sortedFiltered.slice((userPage - 1) * itemsPerPage, userPage * itemsPerPage);
+
+                          return (
+                            <>
+                              {paginated.map(u => (
+                                <TR key={u.id}>
+                                  <TD className="font-medium text-zinc-900 break-words">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      {u.full_name}
+                                      {u.is_year_coordinator && (
+                                        <Badge variant="primary" className="bg-indigo-600 text-white border-none shadow-sm px-3 py-1 rounded-full">
+                                          <CalendarRange size={12} />
+                                          Year {u.year_scope} Overall Coord
+                                        </Badge>
+                                      )}
+                                      {!!u.is_coordinator && (
+                                        <Badge variant="warning">Class Coord</Badge>
+                                      )}
+                                      {isAdmin && (
+                                        <Badge variant={
+                                          u.role === 'HOD' ? 'info' :
+                                            u.role === 'CLASS_ADVISOR' ? 'primary' : 'neutral'
+                                        }>
+                                          {u.role === 'CLASS_ADVISOR' ? 'Advisor' : u.role}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </TD>
+                                  <TD className="text-zinc-500 break-all">{u.register_number || u.username}</TD>
+                                  {isAdvisor && <TD className="text-zinc-500">{u.email}</TD>}
+                                  {!isAdvisor && (
+                                    <TD>
+                                      <span className="px-2 py-1 bg-zinc-100 rounded text-xs text-zinc-600">
+                                        {isAdmin ? (u.department_name || '—') : u.class_name}
+                                      </span>
+                                    </TD>
+                                  )}
+                                  <TD className="text-right">
+                                    <div className="flex justify-end gap-2">
+                                      {u.role === 'STUDENT' && (
+                                        <Button
+                                          variant="ghost"
+                                          className="p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50"
+                                          onClick={() => {
+                                            const activeClassId = (user?.class_id || myClass?.id)?.toString();
+                                            const isMyClassStudent = activeClassId && u.class_id?.toString() === activeClassId;
+                                            if (isAdmin || isHOD || isMyClassStudent || user?.is_year_coordinator) {
+                                              setViewingStudentProfileId(u.id);
+                                            } else {
+                                              addToast('Class Advisors can only view profiles of students in their assigned class', 'error');
+                                            }
+                                          }}
+                                          title="View Full Student Profile"
+                                        >
+                                          <User size={18} />
+                                        </Button>
+                                      )}
+                                      {(isAdvisor || isHOD || isAdmin) && u.role === 'STUDENT' && (
+                                        <Button
+                                          variant="ghost"
+                                          className={cn("p-2", u.is_coordinator ? "text-amber-600" : "text-zinc-400")}
+                                          onClick={() => toggleCoordinator(u.id, u.is_coordinator || false)}
+                                          title={u.is_coordinator ? "Remove Coordinator" : "Make Coordinator"}
+                                        >
+                                          <ShieldCheck size={18} />
+                                        </Button>
+                                      )}
+                                      {isHOD && u.role === 'CLASS_ADVISOR' && (
+                                        <Button
+                                          variant="ghost"
+                                          className={cn("p-2", u.is_year_coordinator ? "text-indigo-600" : "text-zinc-400")}
+                                          onClick={() => toggleYearCoordinator(u.id, u.is_year_coordinator || false, u.year_scope)}
+                                          title={u.is_year_coordinator ? "Remove Year Coordinator" : "Assign Year Coordinator"}
+                                        >
+                                          <CalendarRange size={18} />
+                                        </Button>
+                                      )}
+                                      <Button
+                                        variant="ghost"
+                                        className="p-2 text-zinc-400 hover:text-blue-600"
+                                        onClick={() => resetPassword(u.id)}
+                                        title="Reset Password"
+                                      >
+                                        <ShieldCheck size={18} className="text-blue-500" />
+                                      </Button>
+                                      <button
+                                        onClick={async () => {
+                                          const roleLabel = u.role === 'CLASS_ADVISOR' ? 'Advisor' : u.role === 'HOD' ? 'HOD' : 'User';
+                                          if (confirm(`Delete ${roleLabel} ${u.full_name}? This cannot be undone.`)) {
+                                            const res = await fetch(`${API_URL}/api/users/${u.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+                                            if (res.ok) {
+                                              fetchInitialData();
+                                              addToast(`${roleLabel} deleted successfully.`, 'success');
+                                            } else {
+                                              const data = await res.json();
+                                              addToast(data.error || 'Failed to delete user', 'error');
+                                            }
+                                          }
+                                        }}
+                                        className="p-2 transition-colors text-zinc-400 hover:text-red-500"
+                                      >
+                                        <Trash2 size={18} />
+                                      </button>
+                                    </div>
+                                  </TD>
+                                </TR>
+                              ))}
+                              {filtered.length > itemsPerPage && (
+                                <TR>
+                                  <TD colSpan={6} className="bg-zinc-50/30">
+                                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-1">
+                                      <p className="text-xs font-medium text-zinc-500 whitespace-nowrap">
+                                        Showing {(userPage - 1) * itemsPerPage + 1} to {Math.min(userPage * itemsPerPage, filtered.length)} of {filtered.length} entries
+                                      </p>
+                                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                                        <Button
+                                          variant="secondary"
+                                          className="px-3 py-1 h-8 text-xs font-semibold"
+                                          disabled={userPage === 1}
+                                          onClick={() => setUserPage(prev => prev - 1)}
+                                        >
+                                          Previous
+                                        </Button>
+                                        <div className="flex items-center gap-1">
+                                          {getPaginationRange(userPage, totalPages).map((p, idx) => typeof p === 'number' ? (
+                                            <button
+                                              key={idx}
+                                              onClick={() => setUserPage(p)}
+                                              className={cn(
+                                                "w-8 h-8 rounded-lg text-xs font-bold transition-all",
+                                                userPage === p ? "bg-black text-white shadow-sm" : "text-zinc-600 hover:bg-zinc-100"
+                                              )}
+                                            >
+                                              {p}
+                                            </button>
+                                          ) : (
+                                            <span key={idx} className="w-5 text-center text-xs text-zinc-400 font-bold">...</span>
+                                          ))}
+                                        </div>
+                                        <Button
+                                          variant="secondary"
+                                          className="px-3 py-1 h-8 text-xs font-semibold"
+                                          disabled={userPage === totalPages}
+                                          onClick={() => setUserPage(prev => prev + 1)}
+                                        >
+                                          Next
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </TD>
+                                </TR>
+                              )}
+                              {filtered.length === 0 && (
+                                <TR>
+                                  <TD colSpan={6} className="text-center text-zinc-500 text-sm py-12">
+                                    No matching records found.
+                                  </TD>
+                                </TR>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </TBody>
+                    </Table>
+                  </PageLayout>
+                </motion.div>
+              )}
+
+              {view === 'tasks' && (
+                <motion.div
+                  key="tasks"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="w-full h-full flex flex-col min-h-0"
+                >
+                  <PageLayout>
+                    {isStudent && myInvitations.length > 0 && (
+                      <div className="space-y-4 mb-8">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+                            <h3 className="text-sm font-extrabold uppercase tracking-wider text-indigo-950 flex items-center gap-2">
+                              <Users size={18} className="text-indigo-600" />
+                              Pending Team Formation Invitation{myInvitations.length > 1 ? 's' : ''} ({myInvitations.length})
+                            </h3>
+                          </div>
+                        </div>
+                        {myInvitations.map(inv => (
+                          <div
+                            key={inv.id}
+                            className="p-5 bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 text-white rounded-2xl shadow-xl border border-indigo-700/50 flex flex-col md:flex-row md:items-center justify-between gap-5 transition-all hover:shadow-2xl"
+                          >
+                            <div className="flex items-start gap-4">
+                              <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/20 shadow-inner">
+                                <Users size={24} className="text-indigo-200" />
+                              </div>
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full">
+                                    Team Invitation
+                                  </span>
+                                  {inv.task_category && (
+                                    <span className="bg-purple-500/30 text-purple-200 border border-purple-400/30 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                      {inv.task_category}
+                                    </span>
+                                  )}
+                                </div>
+                                <h4 className="text-base font-extrabold text-white leading-snug">
+                                  You are invited to join team <span className="text-amber-300 underline font-black">"{inv.team_name}"</span>
+                                </h4>
+                                <p className="text-xs text-indigo-200 font-medium flex items-center gap-1.5 flex-wrap">
+                                  <span>Invited by: <strong className="text-white">{inv.inviter_name || 'Classmate'}</strong></span>
+                                  <span>•</span>
+                                  <span>Task: <strong className="text-indigo-100">{inv.task_title}</strong></span>
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-indigo-700/50">
+                              <Button
+                                type="button"
+                                onClick={() => handleRespondInvitation(inv.id, 'ACCEPT')}
+                                className="bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs px-5 py-2.5 rounded-xl border-none shadow-lg hover:shadow-emerald-500/25 transition-all flex items-center gap-2 cursor-pointer"
+                              >
+                                <CheckCircle2 size={16} /> Accept Invitation
+                              </Button>
+                              <Button
+                                type="button"
+                                onClick={() => handleRespondInvitation(inv.id, 'DECLINE')}
+                                className="bg-white/10 hover:bg-white/20 text-indigo-100 hover:text-white font-bold text-xs px-4 py-2.5 rounded-xl border border-white/20 backdrop-blur-sm transition-all cursor-pointer"
+                              >
+                                Decline
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {(isAdmin || isHOD || isAdvisor || isCoordinator) && (
+                      <ContentCard className={cn(
+                        user?.is_year_coordinator ? "border-indigo-100 bg-indigo-50/10" : ""
+                      )}>
+                        <h3 className={cn(
+                          "text-xl font-bold mb-6 flex items-center gap-3",
+                          user?.is_year_coordinator ? "text-indigo-900" : "text-zinc-900"
+                        )}>
+                          <div className={cn(
+                            "w-10 h-10 rounded-lg flex items-center justify-center shrink-0",
+                            user?.is_year_coordinator ? "bg-indigo-600 text-white" : "bg-black text-white"
+                          )}>
+                            <Plus size={20} />
+                          </div>
+                          {user?.is_year_coordinator ? `Post Year ${user.year_scope} Task` : 'Post New Task'}
+                        </h3>
+                        <form onSubmit={handleTaskPreview} className="space-y-4 w-full">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full min-w-0">
+                            <div className="min-w-0">
+                              <Input
+                                placeholder="Task Title"
+                                value={newTask.title}
+                                onChange={e => setNewTask(prev => ({ ...prev, title: e.target.value }))}
+                                required
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <CategoryDropdown
+                                value={newTask.category}
+                                onChange={val => setNewTask(prev => ({ ...prev, category: val }))}
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <Input
+                                placeholder="Apply Link (Optional)"
+                                value={newTask.external_link}
+                                onChange={e => setNewTask(prev => ({ ...prev, external_link: e.target.value }))}
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex flex-col gap-1.5">
+                                <div className="relative flex items-center">
+                                  <input
+                                    type="datetime-local"
+                                    value={newTask.deadline}
+                                    onChange={e => setNewTask(prev => ({ ...prev, deadline: e.target.value }))}
+                                    required
+                                    title="Select Deadline Date and Time"
+                                    min={(() => { const d = new Date(); const pad = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; })()}
+                                    className="w-full h-11 px-4 rounded-lg border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black transition-all text-sm bg-white text-zinc-800 cursor-pointer [color-scheme:light]"
+                                  />
+                                </div>
+                                {/* Quick shortcut pills & selected formatted preview */}
+                                <div className="flex flex-wrap gap-1 items-center">
+                                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mr-0.5">Quick:</span>
+                                  {[
+                                    { label: '+1 Day', ms: 24 * 60 * 60 * 1000 },
+                                    { label: '+3 Days', ms: 3 * 24 * 60 * 60 * 1000 },
+                                    { label: '+7 Days', ms: 7 * 24 * 60 * 60 * 1000 },
+                                    { label: '+30 Days', ms: 30 * 24 * 60 * 60 * 1000 },
+                                  ].map(({ label, ms }) => {
+                                    const d = new Date(Date.now() + ms);
+                                    const pad = (n: number) => String(n).padStart(2, '0');
+                                    const iso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                                    return (
+                                      <button
+                                        key={label}
+                                        type="button"
+                                        onClick={() => setNewTask(prev => ({ ...prev, deadline: iso }))}
+                                        className="px-2 py-0.5 text-[11px] font-medium rounded-md border border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100 hover:border-zinc-300 transition-all"
+                                      >
+                                        {label}
+                                      </button>
+                                    );
+                                  })}
+                                  {newTask.deadline && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setNewTask(prev => ({ ...prev, deadline: '' }))}
+                                      className="px-2 py-0.5 text-[11px] font-medium rounded-md border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-all ml-auto"
+                                    >
+                                      Clear
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="min-w-0">
+                              <Input
+                                placeholder="Screenshot Instruction (e.g. Upload registration page)"
+                                value={newTask.screenshot_instruction}
+                                onChange={e => setNewTask(prev => ({ ...prev, screenshot_instruction: e.target.value }))}
+                                required
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <Input
+                                placeholder="Custom Verification Field Label (e.g. Team ID)"
+                                value={newTask.custom_field_label}
+                                onChange={e => setNewTask(prev => ({ ...prev, custom_field_label: e.target.value }))}
+                                required
+                              />
+                            </div>
+
+                            {/* Task Submission Type Selector */}
+                            <div className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-4 md:col-span-2 space-y-3">
+                              <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest block">
+                                Task Submission Type
+                              </label>
+                              <div className="flex items-center gap-6">
+                                <label className="flex items-center gap-2 cursor-pointer font-semibold text-sm text-zinc-800">
+                                  <input
+                                    type="radio"
+                                    name="submission_type"
+                                    value="INDIVIDUAL"
+                                    checked={newTask.submission_type === 'INDIVIDUAL'}
+                                    onChange={() => setNewTask(prev => ({ ...prev, submission_type: 'INDIVIDUAL' }))}
+                                    className="w-4 h-4 text-black border-zinc-300 focus:ring-black"
+                                  />
+                                  <span>Individual Task</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer font-semibold text-sm text-zinc-800">
+                                  <input
+                                    type="radio"
+                                    name="submission_type"
+                                    value="TEAM"
+                                    checked={newTask.submission_type === 'TEAM'}
+                                    onChange={() => setNewTask(prev => ({ ...prev, submission_type: 'TEAM' }))}
+                                    className="w-4 h-4 text-indigo-600 border-zinc-300 focus:ring-indigo-500"
+                                  />
+                                  <span className="flex items-center gap-1.5 font-bold text-indigo-600">
+                                    <Users size={16} /> Team Task
+                                  </span>
+                                </label>
+                              </div>
+
+                              {newTask.submission_type === 'TEAM' && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-zinc-200">
+                                  <div>
+                                    <label className="text-xs font-bold text-zinc-600 mb-1 block">
+                                      Minimum Team Size
+                                    </label>
+                                    <Input
+                                      type="number"
+                                      min={2}
+                                      max={10}
+                                      value={newTask.min_team_size}
+                                      onChange={e => setNewTask(prev => ({ ...prev, min_team_size: parseInt(e.target.value, 10) || 2 }))}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs font-bold text-zinc-600 mb-1 block">
+                                      Maximum Team Size
+                                    </label>
+                                    <Input
+                                      type="number"
+                                      min={2}
+                                      max={20}
+                                      value={newTask.max_team_size}
+                                      onChange={e => setNewTask(prev => ({ ...prev, max_team_size: parseInt(e.target.value, 10) || 5 }))}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {isAdmin && (
+                              <div className="min-w-0">
+                                <Select
+                                  value={newTask.department_id || ''}
+                                  onChange={e => setNewTask(prev => ({ ...prev, department_id: e.target.value, class_ids: [] }))}
+                                >
+                                  <option value="">Global Task (Visible to All)</option>
+                                  {[...departments].sort((a, b) => a.name.localeCompare(b.name)).map(d => (
+                                    <option key={d.id} value={d.id}>{d.name}</option>
+                                  ))}
+                                </Select>
+                              </div>
+                            )}
+
+                            {user?.is_year_coordinator && (
+                              <div className="w-full p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
+                                <p className="text-sm font-bold text-indigo-700 mb-1 flex items-center gap-2">
+                                  <CalendarRange size={16} /> Year {user.year_scope} Coordinator Scope
+                                </p>
+                                <p className="text-xs text-indigo-600 font-medium">
+                                  This task will be automatically assigned to all classes in Year {user.year_scope}.
+                                </p>
+                              </div>
+                            )}
+
+                            {(isAdmin || isHOD || user?.is_year_coordinator) && (
+                              <div className="w-full bg-white border border-zinc-200 rounded-lg p-3 md:col-span-2 min-w-0">
+                                <div className="flex items-center justify-between mb-3">
+                                  <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest block">
+                                    {isAdmin ? 'Select Specific Classes (Optional)' :
+                                      user?.is_year_coordinator ? `Classes in Year ${user.year_scope}` :
+                                        'Assign to Classes'}
+                                  </label>
+                                  {(() => {
+                                    const availClasses = classes.filter(c => {
+                                      if (isAdmin) return !newTask.department_id || c.department_id?.toString() === newTask.department_id?.toString();
+                                      if (user?.is_year_coordinator) return c.year === user.year_scope && c.department_id?.toString() === user.department_id?.toString();
+                                      return c.department_id?.toString() === user?.department_id?.toString();
+                                    });
+                                    const allSelected = availClasses.length > 0 && availClasses.every(c => (newTask.class_ids || []).map(String).includes(String(c.id)));
+                                    return (
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (allSelected) {
+                                              setNewTask(prev => ({ ...prev, class_ids: [] }));
+                                            } else {
+                                              setNewTask(prev => ({ ...prev, class_ids: availClasses.map(c => c.id) }));
+                                            }
+                                          }}
+                                          className="text-[11px] font-bold text-blue-600 hover:text-blue-800 transition-colors"
+                                        >
+                                          {allSelected ? 'Deselect All' : `Select All (${availClasses.length})`}
+                                        </button>
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                                  {[...classes]
+                                    .filter(c => {
+                                      if (isAdmin) return !newTask.department_id || c.department_id?.toString() === newTask.department_id?.toString();
+                                      if (user?.is_year_coordinator) return c.year === user.year_scope && c.department_id?.toString() === user.department_id?.toString();
+                                      return c.department_id?.toString() === user?.department_id?.toString();
+                                    })
+                                    .sort((a, b) => (a.year || 0) - (b.year || 0) || (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }))
+                                    .map(c => (
+                                      <label key={c.id} className="flex items-center gap-2 p-2 hover:bg-zinc-50 rounded-md cursor-pointer transition-colors border border-transparent hover:border-zinc-200">
+                                        <input
+                                          type="checkbox"
+                                          className="w-4 h-4 rounded border-zinc-300 text-black focus:ring-black/20 font-medium text-xs"
+                                          checked={(newTask.class_ids || []).map(String).includes(String(c.id))}
+                                          onChange={(e) => {
+                                            if (e.target.checked) {
+                                              setNewTask(prev => ({ ...prev, class_ids: [...(prev.class_ids || []), c.id] }));
+                                            } else {
+                                              setNewTask(prev => ({ ...prev, class_ids: (prev.class_ids || []).filter(id => String(id) !== String(c.id)) }));
+                                            }
+                                          }}
+                                        />
+                                        <span className="text-sm font-medium text-zinc-700">{c.name}</span>
+                                      </label>
+                                    ))}
+                                </div>
+                                <p className="text-xs text-zinc-500 mt-3 bg-zinc-50 p-2 rounded min-h-[2.5rem] flex items-center font-medium">
+                                  {(newTask.class_ids || []).length === 0 ? (
+                                    <>
+                                      <Info size={14} className="inline mr-1 text-zinc-400 shrink-0" /> {user?.is_year_coordinator ? `No specific classes selected. This task will be automatically assigned to ALL Year ${user.year_scope} classes.` :
+                                        `No specific classes selected. This task will act as a ${newTask.department_id ? 'Class-Wide' : 'Global'} broadcast to everyone applicable.`}
+                                    </>
+                                  ) : (
+                                    <>
+                                      Assigned to: {(newTask.class_ids || []).map(id => classes.find(c => String(c.id) === String(id))?.name || id).join(', ')}
+                                    </>
+                                  )}
+                                </p>
+                              </div>
+                            )}
+
+                            <div className="w-full bg-zinc-50 border border-zinc-200 rounded-xl p-4 md:col-span-2 min-w-0">
+                              <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest block mb-2 flex items-center gap-1.5">
+                                <ImageIcon size={14} /> Hackathon / Event Poster (Image or PDF) (Optional)
+                              </label>
+                              {posterPreview ? (
+                                <div className="relative rounded-lg overflow-hidden border border-zinc-200 bg-white p-3 flex items-center justify-between group">
+                                  {posterPreview === 'PDF_DOCUMENT' ? (
+                                    <div className="flex items-center gap-3">
+                                      <div className="p-3 bg-red-100 text-red-600 rounded-xl">
+                                        <FileText size={24} />
+                                      </div>
+                                      <div>
+                                        <p className="text-sm font-bold text-zinc-900">{posterFile?.name || 'Event_Poster.pdf'}</p>
+                                        <p className="text-xs text-zinc-500 font-medium">PDF Document Poster Attached</p>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <img src={posterPreview} alt="Poster preview" className="max-h-48 rounded object-contain" />
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePosterSelect(null)}
+                                    className="p-1.5 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors shadow"
+                                    title="Remove poster"
+                                  >
+                                    <X size={16} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <label className="border-2 border-dashed border-zinc-200 hover:border-black rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-all bg-white hover:bg-zinc-50">
+                                  <Upload size={24} className="text-zinc-400 mb-1" />
+                                  <span className="text-xs font-bold text-zinc-700">Click or Drag & Drop poster (Image or PDF) here</span>
+                                  <span className="text-[10px] text-zinc-400 font-medium">Upload poster banner or PDF flyer (e.g. Hackathon, Workshop, Event Poster)</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*,.pdf,application/pdf"
+                                    className="hidden"
+                                    onChange={e => handlePosterSelect(e.target.files?.[0] || null)}
+                                  />
+                                </label>
+                              )}
+                            </div>
+                          </div>
+                          <Textarea
+                            placeholder="Task Description..."
+                            value={newTask.description}
+                            onChange={e => setNewTask(prev => ({ ...prev, description: e.target.value }))}
+                            required
+                          />
+                          <div className="flex gap-4">
+                            <Button type="submit" variant="secondary" className="flex-1">
+                              <ImageIcon size={18} /> Live Preview
+                            </Button>
+                            <Button type="button" onClick={createTask} disabled={isUploadingPoster} className="flex-1">
+                              {isUploadingPoster ? <Loader2 size={18} className="animate-spin" /> : <ClipboardList size={18} />} Post Task
+                            </Button>
+                          </div>
+                        </form>
+                      </ContentCard>
+                    )}
+
+                    <div className="space-y-4 pb-12">
+                      {isStudent && myInvitations.length > 0 && (
+                        <div className="space-y-3 mb-6">
+                          {myInvitations.map(inv => (
+                            <div key={inv.id} className="p-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 text-white rounded-2xl shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                                  <Users size={20} className="text-white" />
+                                </div>
+                                <div>
+                                  <p className="font-bold text-sm">Team Invitation Received!</p>
+                                  <p className="text-xs text-indigo-100 font-medium">
+                                    {inv.inviter_name || 'Classmate'} invited you to join team <span className="font-bold text-white">"{inv.team_name}"</span> for task <span className="font-bold text-white">"{inv.task_title}"</span>
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <Button
+                                  onClick={() => handleRespondInvitation(inv.id, 'ACCEPT')}
+                                  className="bg-white text-indigo-700 hover:bg-indigo-50 font-bold text-xs px-4 py-2 rounded-xl border-none shadow-sm"
+                                >
+                                  Accept Invitation
+                                </Button>
+                                <Button
+                                  onClick={() => handleRespondInvitation(inv.id, 'DECLINE')}
+                                  className="bg-white/20 hover:bg-white/30 text-white font-semibold text-xs px-4 py-2 rounded-xl border border-white/30"
+                                >
+                                  Decline
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {isStudent && (
+                        <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar mb-4">
+                          <button
+                            type="button"
+                            onClick={() => setStudentTaskFilter('ALL')}
+                            className={cn(
+                              "px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border cursor-pointer",
+                              studentTaskFilter === 'ALL' ? "bg-black text-white border-black shadow-sm" : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
+                            )}
+                          >
+                            All Tasks ({tasks.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setStudentTaskFilter('PENDING_ACTION')}
+                            className={cn(
+                              "px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border cursor-pointer flex items-center gap-1.5",
+                              studentTaskFilter === 'PENDING_ACTION' ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                            )}
+                          >
+                            <Clock size={14} /> Pending Action
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setStudentTaskFilter('UNDER_REVIEW')}
+                            className={cn(
+                              "px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border cursor-pointer flex items-center gap-1.5",
+                              studentTaskFilter === 'UNDER_REVIEW' ? "bg-amber-600 text-white border-amber-600 shadow-sm" : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
+                            )}
+                          >
+                            <Clock size={14} /> Under Review
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setStudentTaskFilter('VERIFIED')}
+                            className={cn(
+                              "px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border cursor-pointer flex items-center gap-1.5",
+                              studentTaskFilter === 'VERIFIED' ? "bg-emerald-600 text-white border-emerald-600 shadow-sm" : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                            )}
+                          >
+                            <CheckCircle2 size={14} /> Verified
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setStudentTaskFilter('OVERDUE')}
+                            className={cn(
+                              "px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border cursor-pointer flex items-center gap-1.5",
+                              studentTaskFilter === 'OVERDUE' ? "bg-rose-600 text-white border-rose-600 shadow-sm" : "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
+                            )}
+                          >
+                            <AlertTriangle size={14} /> Overdue / Closed
+                          </button>
+                        </div>
+                      )}
+
+                      {tasks.filter(task => {
+                        if (!isStudent || studentTaskFilter === 'ALL') return true;
+                        const sub = submissions.find(s => String(s.task_id) === String(task.id) && String(s.user_id) === String(user?.id));
+                        const isDeadlinePassed = task.deadline && new Date(task.deadline) < new Date();
+                        const isClosed = task.status === 'CLOSED' || isDeadlinePassed;
+
+                        if (studentTaskFilter === 'PENDING_ACTION') return !sub && !isClosed;
+                        if (studentTaskFilter === 'UNDER_REVIEW') return sub?.status === 'SUBMITTED';
+                        if (studentTaskFilter === 'VERIFIED') return sub?.status === 'VERIFIED';
+                        if (studentTaskFilter === 'OVERDUE') return (!sub && isClosed) || sub?.status === 'REJECTED';
+                        return true;
+                      }).map(task => {
+                        const submission = submissions.find(s => s.task_id === task.id && s.user_id?.toString() === user?.id?.toString());
+                        const isDeadlinePassed = task.deadline && new Date(task.deadline) < new Date();
+                        const isWithin24h = task.deadline && !isDeadlinePassed && (new Date(task.deadline).getTime() - new Date().getTime()) < 24 * 60 * 60 * 1000;
+
+                        const categoryColors: Record<string, string> = {
+                          'Competition': 'bg-rose-50 text-rose-600 border-rose-100',
+                          'Course': 'bg-indigo-50 text-indigo-600 border-indigo-100',
+                          'Workshop': 'bg-amber-50 text-amber-600 border-amber-100',
+                          'College Work': 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                        };
+                        const categoryIcons: Record<string, string> = {
+                          'Competition': '',
+                          'Course': '',
+                          'Workshop': '',
+                          'College Work': ''
+                        };
+
+                        const catStyle = categoryColors[task.category || ''] || 'bg-zinc-50 text-zinc-600 border-zinc-200';
+                        const catIcon = categoryIcons[task.category || ''] || '';
+                        const isHighlighted = String(highlightedTaskId) === String(task.id);
+
+                        return (
+                          <Card
+                            key={task.id}
+                            id={`task-${task.id}`}
+                            className={cn(
+                              "group hover:shadow-md transition-all duration-300",
+                              isHighlighted ? "ring-2 ring-indigo-500 bg-indigo-50/15 shadow-xl" : ""
+                            )}
+                          >
+                            {task.poster_url && (
+                              <div className="relative mb-5 rounded-xl overflow-hidden bg-zinc-950 border border-zinc-200 group/poster max-h-80 flex items-center justify-center">
+                                {task.poster_url.toLowerCase().includes('.pdf') ? (
+                                  <div
+                                    onClick={() => setSelectedPosterModal(task.poster_url || null)}
+                                    className="w-full p-6 bg-gradient-to-r from-red-900/80 via-zinc-900 to-zinc-950 text-white flex items-center justify-between cursor-pointer group-hover/poster:opacity-90 transition-opacity"
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div className="p-3 bg-red-600 text-white rounded-xl shadow-lg">
+                                        <FileText size={28} />
+                                      </div>
+                                      <div>
+                                        <p className="text-sm font-bold text-white">Event / Hackathon Poster (PDF)</p>
+                                        <p className="text-xs text-zinc-400 font-medium">Click to View or Download PDF Flyer</p>
+                                      </div>
+                                    </div>
+                                    <span className="text-xs font-bold flex items-center gap-1.5 bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20">
+                                      <Maximize2 size={14} /> Open PDF
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <img
+                                      src={task.poster_url}
+                                      alt={`${task.title} Poster`}
+                                      className="w-full h-full max-h-80 object-cover object-center group-hover/poster:scale-105 transition-transform duration-500 cursor-pointer"
+                                      onClick={() => setSelectedPosterModal(task.poster_url || null)}
+                                    />
+                                    <div
+                                      className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover/poster:opacity-100 transition-opacity flex items-end justify-between p-4 cursor-pointer"
+                                      onClick={() => setSelectedPosterModal(task.poster_url || null)}
+                                    >
+                                      <span className="text-white text-xs font-bold flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20">
+                                        <Maximize2 size={14} /> Click to View Full Poster
+                                      </span>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            )}
+
+                            <div className="flex flex-col md:flex-row justify-between items-start mb-4 gap-4">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1.5", catStyle)}>
+                                    {renderCategoryIcon(task.category || '', 12)}
+                                    <span>{task.category || 'General'}</span>
+                                  </span>
+                                  {task.submission_type === 'TEAM' && (
+                                    <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                      <Users size={12} /> Team (Min {task.min_team_size || 2} - Max {task.max_team_size || 5})
+                                    </span>
+                                  )}
+                                  <h4 className="font-bold text-zinc-900 text-lg md:text-xl break-words">{task.title}</h4>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                                  <span className="font-medium text-zinc-700">{task.creator_name}</span>
+                                  <span className="hidden md:inline">•</span>
+                                  <span>{new Date(task.created_at).toLocaleDateString()}</span>
+                                  <span className="hidden md:inline">•</span>
+                                  {Array.isArray(task.class_ids) && task.class_ids.length > 0 ? (
+                                    (() => {
+                                      const names = task.class_ids
+                                        .map(id => classes.find(c => String(c.id) === String(id))?.name)
+                                        .filter((name): name is string => Boolean(name));
+                                      const displayText = names.length > 0 ? names.join(', ') : 'Assigned Section';
+                                      return (
+                                        <span
+                                          className="bg-purple-50 text-purple-600 border border-purple-100 px-2.5 py-0.5 rounded-full text-xs font-semibold max-w-[240px] md:max-w-md truncate inline-block align-middle"
+                                          title={displayText}
+                                        >
+                                          {displayText}
+                                        </span>
+                                      );
+                                    })()
+                                  ) : (
+                                    <span className={cn(
+                                      "px-2 py-0.5 rounded-full border border-transparent whitespace-nowrap",
+                                      task.department_name ? "bg-blue-50 text-blue-600 border-blue-100" : "bg-orange-50 text-orange-600 border-orange-100"
+                                    )}>
+                                      {task.department_name ? 'Class Task' : 'Global Task'}
+                                    </span>
+                                  )}
+                                  {(!isStudent || isCoordinator) && (
+                                    <>
+                                      <span className="hidden md:inline">•</span>
+                                      <span className="bg-zinc-100 text-zinc-700 px-2.5 py-0.5 rounded-full flex items-center gap-1.5 whitespace-nowrap border border-zinc-200 font-semibold text-xs">
+                                        <Users size={12} className="text-zinc-500" /> {task.submission_count || 0} {isHOD || isAdmin ? 'submitted (All Sections)' : 'submitted (Class)'}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-left md:text-right shrink-0 flex flex-col items-start md:items-end gap-2">
+                                <div>
+                                  <p className="text-[10px] text-zinc-400 uppercase font-bold flex items-center gap-1 md:justify-end">
+                                    <Clock size={12} /> Deadline
+                                  </p>
+                                  <p className={cn(
+                                    "text-sm font-bold flex flex-col md:items-end",
+                                    isDeadlinePassed ? "text-red-500" : (isWithin24h ? "text-orange-500" : "text-zinc-600")
+                                  )}>
+                                    {task.deadline ? new Date(task.deadline).toLocaleString() : "No deadline"}
+                                    {isDeadlinePassed ? (
+                                      <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-extrabold mt-1 uppercase">Deadline Passed</span>
+                                    ) : isWithin24h ? (
+                                      <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-extrabold mt-1 uppercase">Due within 24h</span>
+                                    ) : task.deadline ? (
+                                      <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold mt-1">
+                                        {(() => {
+                                          const diffMs = new Date(task.deadline).getTime() - Date.now();
+                                          const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                                          const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                                          return `${diffDays}d ${diffHours}h remaining`;
+                                        })()}
+                                      </span>
+                                    ) : null}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            <p className="text-zinc-600 text-sm mb-6 whitespace-pre-wrap break-words">{task.description}</p>
+
+                            <div className="flex flex-wrap items-center gap-3 mb-6">
+                              <button
+                                type="button"
+                                onClick={() => copyTaskShareLink(task.id)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-colors"
+                                title="Share Task Link"
+                              >
+                                <Share2 size={14} /> Share Task Link
+                              </button>
+
+                              {task.external_link && (
+                                <a
+                                  href={task.external_link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 text-blue-600 hover:underline text-xs font-semibold bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100"
+                                >
+                                  <ExternalLink size={14} /> Apply Link
+                                </a>
+                              )}
+                            </div>
+
+                            {isStudent && task.status === 'OPEN' && (
+                              <div className="bg-zinc-50 p-5 rounded-xl border border-zinc-200 mt-6 shadow-sm space-y-4">
+                                {task.submission_type === 'TEAM' ? (
+                                  <div className="space-y-3">
+                                    {(() => {
+                                      const pendingInvForTask = myInvitations.find(inv => String(inv.task_id) === String(task.id));
+                                      if (pendingInvForTask) {
+                                        return (
+                                          <div className="p-4 bg-gradient-to-r from-amber-500 via-indigo-600 to-purple-700 text-white rounded-xl shadow-md flex flex-wrap items-center justify-between gap-4">
+                                            <div className="space-y-0.5">
+                                              <div className="flex items-center gap-2">
+                                                <Badge variant="primary" className="bg-white text-indigo-900 font-extrabold border-none">
+                                                  PENDING INVITATION
+                                                </Badge>
+                                              </div>
+                                              <p className="text-sm font-black">
+                                                {pendingInvForTask.inviter_name || 'A classmate'} invited you to join team <span className="underline">"{pendingInvForTask.team_name}"</span>!
+                                              </p>
+                                            </div>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                              <Button
+                                                type="button"
+                                                onClick={() => handleRespondInvitation(pendingInvForTask.id, 'ACCEPT')}
+                                                className="bg-white text-indigo-700 hover:bg-indigo-50 font-black text-xs px-4 py-2 rounded-xl shadow-sm border-none"
+                                              >
+                                                Accept Invitation
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                onClick={() => handleRespondInvitation(pendingInvForTask.id, 'DECLINE')}
+                                                className="bg-black/30 hover:bg-black/50 text-white font-bold text-xs px-4 py-2 rounded-xl border border-white/30"
+                                              >
+                                                Decline
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        );
+                                      }
+                                      return null;
+                                    })()}
+                                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-indigo-50/90 border border-indigo-200 rounded-xl shadow-xs">
+                                      <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                          <Badge variant="primary" className="bg-indigo-600 text-white border-none">
+                                            <Users size={12} /> Team Task
+                                          </Badge>
+                                          <span className="text-xs font-bold text-indigo-950">
+                                            Requires Team of {task.min_team_size || 2} - {task.max_team_size || 5} Members
+                                          </span>
+                                        </div>
+                                        <p className="text-xs text-indigo-700 font-medium">
+                                          Form a team with your classmates, accept pending invitations, or manage your current team and proof submission.
+                                        </p>
+                                      </div>
+                                      <Button
+                                        type="button"
+                                        onClick={() => openTeamModal(task)}
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-sm shrink-0 flex items-center gap-2"
+                                      >
+                                        <Users size={16} /> Manage / View Team
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : isDeadlinePassed ? (
+                                  <div className="text-center py-6">
+                                    <div className="w-12 h-12 bg-zinc-100 text-zinc-400 rounded-full flex items-center justify-center mx-auto mb-3">
+                                      <Clock size={24} />
+                                    </div>
+                                    <h5 className="font-bold text-zinc-500 mb-1">Uploads Closed</h5>
+                                    <p className="text-sm text-zinc-400 max-w-sm mx-auto">
+                                      The deadline for this task has passed. Submissions are no longer accepted.
+                                    </p>
+                                  </div>
+                                ) : (
+                                  (() => {
+                                    const isLocked = submission?.status === 'REJECTED' && (submission.resubmission_count || 0) >= 2;
+
+                                    // Already opted out (show reason banner with option to edit)
+                                    if (submission?.status === 'NOT_PARTICIPATING' && !isEditingOptOut[task.id]) {
+                                      return (
+                                        <div className="p-4 bg-orange-50/90 border border-orange-200 rounded-xl space-y-3 shadow-sm">
+                                          <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <div className="flex items-center gap-2 text-orange-800 font-bold text-sm">
+                                              <AlertTriangle size={18} className="text-orange-500 shrink-0" />
+                                              <span>Status: Skip / Not Interested</span>
+                                            </div>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setNotParticipating(prev => ({ ...prev, [task.id]: true }));
+                                                setNotParticipatingReason(prev => ({ ...prev, [task.id]: submission.not_participating_reason || '' }));
+                                                setIsEditingOptOut(prev => ({ ...prev, [task.id]: true }));
+                                              }}
+                                              className="text-xs font-bold text-orange-700 hover:text-orange-950 bg-orange-100 hover:bg-orange-200 px-3 py-1.5 rounded-lg border border-orange-300 transition-colors"
+                                            >
+                                              Edit Reason / Change Option
+                                            </button>
+                                          </div>
+                                          <div className="pl-4 border-l-3 border-orange-400 bg-white/70 p-3 rounded-r-lg border border-zinc-200/60">
+                                            <p className="text-[11px] font-bold text-orange-600 uppercase tracking-wider mb-0.5">Submitted Reason:</p>
+                                            <p className="text-sm text-zinc-900 font-semibold break-words leading-relaxed">
+                                              "{submission.not_participating_reason || 'No specific reason provided'}"
+                                            </p>
+                                          </div>
+                                        </div>
+                                      );
+                                    }
+
+                                    if (isLocked) {
+                                      return (
+                                        <div className="text-center py-6">
+                                          <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                                            <XCircle size={24} />
+                                          </div>
+                                          <h5 className="font-bold text-red-600 mb-1">Submission Locked</h5>
+                                          <p className="text-sm text-red-500 max-w-sm mx-auto">
+                                            You have exceeded the maximum number of resubmissions (2) for this task. It cannot be submitted again.
+                                          </p>
+                                        </div>
+                                      );
+                                    }
+
+                                    if (!submission || submission.status === 'REJECTED') {
+                                      const isOptingOut = notParticipating[task.id] || false;
+                                      return (
+                                        <div className="space-y-4">
+                                          {submission?.status === 'REJECTED' && (
+                                            <div className="p-4 bg-red-50 border-2 border-red-200 rounded-xl text-xs text-red-700 shadow-sm space-y-2">
+                                              <p className="font-extrabold text-sm mb-1 flex items-center gap-1.5 text-red-800">
+                                                <XCircle size={16} className="text-red-500" /> Submission Rejected by Advisor / HOD
+                                              </p>
+                                              <p className="font-medium bg-white/80 p-2.5 rounded-lg border border-red-200 text-zinc-900">
+                                                <strong>Note / Reason:</strong> "{submission.rejection_reason || submission.verification_note || 'No specific note provided'}"
+                                              </p>
+                                              <p className="font-bold text-red-700">Please review the reason above, update your proof, and resubmit below.</p>
+                                            </div>
+                                          )}
+
+                                          {/* ── Intent Selector (works for any task type) ── */}
+                                          <div>
+                                            <p className="text-xs font-semibold text-zinc-500 mb-2 uppercase tracking-wide">Will you be submitting this task?</p>
+                                            <div className="grid grid-cols-2 gap-3">
+                                              {/* Yes, submit */}
+                                              <button
+                                                type="button"
+                                                onClick={() => setNotParticipating(prev => ({ ...prev, [task.id]: false }))}
+                                                className={cn(
+                                                  'flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all font-semibold text-sm',
+                                                  !isOptingOut
+                                                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm'
+                                                    : 'border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300'
+                                                )}
+                                              >
+                                                <CheckCircle2 size={22} className={!isOptingOut ? 'text-emerald-500' : 'text-zinc-300'} />
+                                                <span>Yes, I'll Submit</span>
+                                              </button>
+
+                                              {/* Skip / Not Interested */}
+                                              <button
+                                                type="button"
+                                                onClick={() => setNotParticipating(prev => ({ ...prev, [task.id]: true }))}
+                                                className={cn(
+                                                  'flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all font-semibold text-sm',
+                                                  isOptingOut
+                                                    ? 'border-orange-400 bg-orange-50 text-orange-700 shadow-sm'
+                                                    : 'border-zinc-200 bg-white text-zinc-400 hover:border-zinc-300'
+                                                )}
+                                              >
+                                                <AlertTriangle size={22} className={isOptingOut ? 'text-orange-500' : 'text-zinc-300'} />
+                                                <span>Skip / Not Interested</span>
+                                              </button>
+                                            </div>
+                                          </div>
+
+                                          {/* ── If NOT participating: just reason ── */}
+                                          {isOptingOut ? (
+                                            <div className="space-y-3 pt-1">
+                                              <label className="text-sm font-bold text-zinc-700 flex items-center gap-1.5">
+                                                <AlertTriangle size={14} className="text-orange-500" />
+                                                Reason for Not Participating <span className="text-red-500">*</span>
+                                              </label>
+                                              <Textarea
+                                                placeholder="e.g. Already participated in a similar event / Not relevant to my current semester..."
+                                                value={notParticipatingReason[task.id] || ''}
+                                                onChange={e => setNotParticipatingReason(prev => ({ ...prev, [task.id]: e.target.value }))}
+                                                className="min-h-[90px]"
+                                              />
+                                              <Button
+                                                onClick={() => submitNotParticipating(task.id)}
+                                                disabled={uploading === task.id || !(notParticipatingReason[task.id] || '').trim()}
+                                                className={cn(
+                                                  'w-full font-bold bg-orange-500 hover:bg-orange-600 text-white',
+                                                  (uploading === task.id || !(notParticipatingReason[task.id] || '').trim()) && 'opacity-50 cursor-not-allowed'
+                                                )}
+                                              >
+                                                {uploading === task.id
+                                                  ? <Loader2 size={18} className="animate-spin" />
+                                                  : <><AlertTriangle size={16} /> Confirm: Not Participating</>}
+                                              </Button>
+                                            </div>
+                                          ) : (
+                                            /* ── If PARTICIPATING: custom field + screenshot both mandatory ── */
+                                            <div className="space-y-4 pt-1">
+                                              <div>
+                                                <label className="text-sm font-bold text-zinc-700 mb-1.5 flex items-center gap-1">
+                                                  {task.custom_field_label || 'Custom Field'}
+                                                  <span className="text-red-500 ml-0.5">*</span>
+                                                  <span className="text-[10px] font-medium text-zinc-400 ml-1">(Required)</span>
+                                                </label>
+                                                <Input
+                                                  placeholder={`Enter ${task.custom_field_label || 'value'}...`}
+                                                  value={customFieldValue}
+                                                  onChange={e => setCustomFieldValue(e.target.value)}
+                                                  className={cn(!customFieldValue.trim() && 'border-red-200 focus:border-red-400')}
+                                                />
+                                              </div>
+                                              <div>
+                                                <label className="text-sm font-bold text-zinc-700 mb-1.5 flex items-center gap-1">
+                                                  {task.screenshot_instruction || 'Upload Screenshot'}
+                                                  <span className="text-red-500 ml-0.5">*</span>
+                                                  <span className="text-[10px] font-medium text-zinc-400 ml-1">(Required)</span>
+                                                </label>
+                                                <div className="flex flex-col gap-3">
+                                                  <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    id={`file-${task.id}`}
+                                                    className="hidden"
+                                                    onChange={e => handleFileUpload(task.id, e.target.files?.[0] || null)}
+                                                  />
+                                                  <div className="flex items-center gap-3">
+                                                    <div className="flex-1 w-full">
+                                                      {selectedFiles[task.id] ? (
+                                                        <div className="relative w-full border-2 border-emerald-400 bg-emerald-50/80 rounded-xl p-3 md:p-4 flex flex-col md:flex-row items-center justify-between gap-3 shadow-xs">
+                                                          <div className="flex items-center gap-3 min-w-0 flex-1 w-full">
+                                                            <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-emerald-300 bg-white shrink-0 shadow-sm flex items-center justify-center">
+                                                              <img
+                                                                src={URL.createObjectURL(selectedFiles[task.id])}
+                                                                alt="Screenshot preview"
+                                                                className="w-full h-full object-cover"
+                                                              />
+                                                            </div>
+                                                            <div className="min-w-0 flex-1">
+                                                              <div className="flex items-center gap-1 text-emerald-700 font-bold text-xs md:text-sm">
+                                                                <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
+                                                                <span>Screenshot Loaded</span>
+                                                              </div>
+                                                              <p className="text-xs text-zinc-700 font-semibold truncate mt-0.5" title={selectedFiles[task.id].name}>
+                                                                {selectedFiles[task.id].name}
+                                                              </p>
+                                                              <p className="text-[10px] text-emerald-700/70 font-medium">
+                                                                {(selectedFiles[task.id].size / (1024 * 1024)).toFixed(2)} MB
+                                                              </p>
+                                                            </div>
+                                                          </div>
+                                                          <div className="flex items-center gap-2 shrink-0 w-full md:w-auto justify-end">
+                                                            <button
+                                                              type="button"
+                                                              onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                document.getElementById(`file-${task.id}`)?.click();
+                                                              }}
+                                                              className="text-xs font-semibold text-zinc-700 hover:text-zinc-900 bg-white hover:bg-zinc-100 px-2.5 py-1.5 rounded-lg border border-zinc-200 transition-colors flex items-center gap-1 shadow-xs"
+                                                              title="Change screenshot"
+                                                            >
+                                                              <Upload size={13} /> Change
+                                                            </button>
+                                                            <button
+                                                              type="button"
+                                                              onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleDeleteScreenshot(task.id);
+                                                              }}
+                                                              className="text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg border border-red-200 transition-colors flex items-center gap-1.5 shadow-xs"
+                                                              title="Delete screenshot if wrongly uploaded before submission"
+                                                            >
+                                                              <Trash2 size={14} /> Delete
+                                                            </button>
+                                                          </div>
+                                                        </div>
+                                                      ) : (
+                                                        <div
+                                                          className={cn(
+                                                            'relative w-full border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center transition-all cursor-pointer group',
+                                                            isDraggingScreenshot === task.id ? 'border-blue-500 bg-blue-50 scale-105' : 'border-red-200 bg-white text-zinc-400 hover:border-black hover:text-black'
+                                                          )}
+                                                          onDragOver={e => { e.preventDefault(); setIsDraggingScreenshot(task.id); }}
+                                                          onDragLeave={() => setIsDraggingScreenshot(null)}
+                                                          onDrop={e => { e.preventDefault(); setIsDraggingScreenshot(null); handleFileUpload(task.id, e.dataTransfer.files[0]); }}
+                                                          onClick={() => document.getElementById(`file-${task.id}`)?.click()}
+                                                        >
+                                                          <Upload size={24} className="mb-2 group-hover:-translate-y-1 transition-transform" />
+                                                          <p className="font-bold text-center text-[10px] md:text-sm uppercase tracking-wide">Upload Screenshot</p>
+                                                          <p className="text-[10px] opacity-60 text-center">Drag or Click to upload (Max 5MB)</p>
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                    <Button
+                                                      onClick={() => submitTask(task.id)}
+                                                      disabled={uploading === task.id || !selectedFiles[task.id] || !customFieldValue.trim()}
+                                                      variant={selectedFiles[task.id] && customFieldValue.trim() ? 'primary' : 'secondary'}
+                                                      className={cn(
+                                                        'h-auto px-6 py-4 shrink-0 font-black uppercase tracking-wider text-sm',
+                                                        (uploading === task.id || !selectedFiles[task.id] || !customFieldValue.trim()) && 'opacity-50 cursor-not-allowed'
+                                                      )}
+                                                    >
+                                                      {uploading === task.id ? <Loader2 size={20} className="animate-spin" /> : 'Submit'}
+                                                    </Button>
+                                                  </div>
+                                                  <div className="flex items-start gap-2 text-zinc-400">
+                                                    <span className="text-xs shrink-0 mt-0.5">*</span>
+                                                    <p className="text-xs italic leading-tight">{task.screenshot_instruction || 'Ensure your screenshot clearly shows completion or registration details before submitting.'}</p>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    }
+                                    return (
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                          <div className={cn(
+                                            "w-10 h-10 rounded-full flex items-center justify-center",
+                                            submission.status === 'VERIFIED' ? "bg-emerald-100 text-emerald-600" : "bg-orange-100 text-orange-600"
+                                          )}>
+                                            {submission.status === 'VERIFIED' ? <CheckCircle2 size={20} /> : <Clock size={20} />}
+                                          </div>
+                                          <div>
+                                            <p className="text-sm font-bold text-zinc-900">
+                                              {submission.status === 'VERIFIED' ? 'Completed' : 'Under Review'}
+                                            </p>
+                                            <p className="text-xs text-zinc-500">
+                                              {submission.status === 'VERIFIED' ? `Verified on ${new Date(submission.verified_at!).toLocaleDateString()}` : 'Waiting for verification review'}
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <a
+                                          href={submission.screenshot_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-xs font-medium text-blue-600 hover:underline flex items-center gap-1"
+                                        >
+                                          <ImageIcon size={14} /> View Screenshot
+                                        </a>
+                                      </div>
+                                    );
+                                  })()
+                                )}
+                              </div>
+                            )}
+                            {((isHOD && (String(task.department_id) === String(user?.department_id) || (Array.isArray(task.class_ids) && task.class_ids.some(cid => classes.find(c => String(c.id) === String(cid))?.department_id?.toString() === user?.department_id?.toString()))))) && (
+                              <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-zinc-100 pt-4">
+                                <Button
+                                  variant="secondary"
+                                  className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 text-xs font-bold flex items-center gap-1.5"
+                                  onClick={() => {
+                                    setExtendingTask(task);
+                                    const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
+                                    const pad = (n: number) => String(n).padStart(2, '0');
+                                    setExtendedDeadline(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
+                                  }}
+                                >
+                                  <Clock size={14} /> Extend Deadline & Reopen
+                                </Button>
+
+                                <Button
+                                  variant="ghost"
+                                  className="text-zinc-500 hover:text-zinc-900 text-xs font-semibold"
+                                  onClick={() => toggleTaskStatus(task.id, task.status)}
+                                >
+                                  {task.status === 'OPEN' ? 'Close Task' : 'Open Task'}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  className="text-zinc-400 hover:text-red-500 text-xs font-semibold"
+                                  onClick={() => deleteTask(task.id)}
+                                >
+                                  <Trash2 size={16} /> Delete
+                                </Button>
+                              </div>
+                            )}
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  </PageLayout>
+                </motion.div>
+              )}
+
+              {view === 'verifications' && (
+                <motion.div
+                  key="verifications"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="w-full h-full flex flex-col min-h-0"
+                >
+                  <PageLayout>
+                    <div className="flex justify-between items-center">
+                      <div className="flex gap-2 flex-wrap">
+                        {['PENDING', 'VERIFIED', 'REJECTED', 'NOT INTERESTED', 'ALL'].map(f => (
+                          <button
+                            key={f}
+                            onClick={() => setVerificationFilter(f as any)}
+                            className={cn(
+                              "px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap",
+                              verificationFilter === f ? "bg-black text-white" : "bg-white text-zinc-400 border border-zinc-200 hover:border-zinc-300"
+                            )}
+                          >
+                            {f}
+                          </button>
+                        ))}
+                      </div>
+                      {selectedSubmissions.length > 0 && (
+                        <Button
+                          variant="success"
+                          onClick={() => {
+                            if (confirm(`Verify ${selectedSubmissions.length} submissions?`)) {
+                              Promise.all(selectedSubmissions.map(id =>
+                                fetch(`${API_URL}/api/submissions/${id}/verify`, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                  body: JSON.stringify({ status: 'VERIFIED' })
+                                })
+                              )).then(() => {
+                                setSelectedSubmissions([]);
+                                fetchInitialData();
+                              });
+                            }
+                          }}
+                        >
+                          Bulk Verify ({selectedSubmissions.length})
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                      <div className={cn((isHOD || isAdmin || user?.is_year_coordinator) ? "md:col-span-2" : "md:col-span-3", "relative")}>
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+                        <Input
+                          placeholder="Search submissions by student name or register number..."
+                          className="pl-10 h-10 text-sm"
+                          value={submissionSearchTerm}
+                          onChange={e => { setSubmissionSearchTerm(e.target.value); setSubmissionPage(1); }}
+                        />
+                      </div>
+
+                      {(isHOD || isAdmin || user?.is_year_coordinator) && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          {isAdmin && (
+                            <Select
+                              value={verificationDeptFilter}
+                              onChange={e => {
+                                setVerificationDeptFilter(e.target.value);
+                                setVerificationYearFilter('');
+                                setVerificationClassFilter('');
+                                setSubmissionPage(1);
+                              }}
+                            >
+                              <option value="">All Departments</option>
+                              {departments.map(d => (
+                                <option key={d.id} value={d.id.toString()}>{d.name}</option>
+                              ))}
+                            </Select>
+                          )}
+                          {(isHOD || isAdmin) && (
+                            <Select
+                              value={verificationYearFilter}
+                              onChange={e => {
+                                setVerificationYearFilter(e.target.value);
+                                setVerificationClassFilter('');
+                                setSubmissionPage(1);
+                              }}
+                            >
+                              <option value="">All Years</option>
+                              <option value="1">1st Year</option>
+                              <option value="2">2nd Year</option>
+                              <option value="3">3rd Year</option>
+                              <option value="4">4th Year</option>
+                            </Select>
+                          )}
+                          <Select
+                            value={verificationClassFilter}
+                            onChange={e => { setVerificationClassFilter(e.target.value); setSubmissionPage(1); }}
+                          >
+                            <option value="">All Classes / Sections</option>
+                            {classes.filter(c => {
+                              if (verificationDeptFilter && c.department_id?.toString() !== verificationDeptFilter) return false;
+                              if (verificationYearFilter && String(c.year) !== verificationYearFilter) return false;
+                              if (isAdmin) return true;
+                              if (isHOD) return c.department_id?.toString() === user?.department_id?.toString();
+                              if (user?.is_year_coordinator) return c.department_id?.toString() === user?.department_id?.toString() && Number(c.year) === Number(user?.year_scope || user?.year);
+                              if (isAdvisor || (user?.role === 'STUDENT' && user?.is_coordinator)) return String(c.id) === String(user?.class_id);
+                              return c.department_id?.toString() === user?.department_id?.toString();
+                            }).sort((a, b) => (a.year || 0) - (b.year || 0) || (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' })).map(c => (
+                              <option key={c.id} value={c.id.toString()}>{c.name}</option>
+                            ))}
+                          </Select>
+                        </div>
+                      )}
+
+                      <div>
+                        <Select
+                          value={verificationTaskFilter}
+                          onChange={e => { setVerificationTaskFilter(e.target.value); setSubmissionPage(1); }}
+                        >
+                          <option value="">All Tasks</option>
+                          {tasks.map(t => (
+                            <option key={t.id} value={t.id.toString()}>{t.title}</option>
+                          ))}
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* Faculty & Coordinator Team Submissions Review Section */}
+                    {(!verificationTaskFilter || tasks.find(t => t.id.toString() === verificationTaskFilter)?.submission_type === 'TEAM') && (() => {
+                      const filteredTeamSubs = teamSubmissions.filter(sub => {
+                        // 0. Filter by Task Dropdown
+                        if (verificationTaskFilter && sub.task_id?.toString() !== verificationTaskFilter) {
+                          return false;
+                        }
+
+                        // 1. Filter by Status Tab
+                        if (verificationFilter === 'PENDING') {
+                          if (sub.status !== 'PENDING') return false;
+                        } else if (verificationFilter === 'VERIFIED') {
+                          if (sub.status !== 'APPROVED' && sub.status !== 'VERIFIED') return false;
+                        } else if (verificationFilter === 'REJECTED') {
+                          if (sub.status !== 'REJECTED') return false;
+                        } else if (verificationFilter === 'NOT INTERESTED') {
+                          return false;
+                        }
+                        // 'ALL' tab includes all team submissions
+
+                        // 2. Filter by Search Query
+                        if (submissionSearchTerm) {
+                          const q = submissionSearchTerm.toLowerCase();
+                          const matchesTeamName = sub.team_name?.toLowerCase().includes(q);
+                          const matchesLeader = sub.leader_name?.toLowerCase().includes(q) || sub.leader_regno?.toLowerCase().includes(q);
+                          const matchesMember = sub.members?.some(m => (m.full_name || m.username)?.toLowerCase().includes(q) || m.register_number?.toLowerCase().includes(q));
+                          const matchesTaskTitle = sub.task_title?.toLowerCase().includes(q);
+                          if (!matchesTeamName && !matchesLeader && !matchesMember && !matchesTaskTitle) return false;
+                        }
+
+                        // 3. Filter by Class
+                        if (!isAdmin && !isHOD && !user?.is_year_coordinator) {
+                          const userClassId = user?.class_id?.toString();
+                          const matchesTeamClass = sub.class_id?.toString() === userClassId;
+                          const leaderUser = users.find(u => u.id === sub.leader_id || u.register_number === sub.leader_regno);
+                          const matchesClass = matchesTeamClass || leaderUser?.class_id?.toString() === userClassId ||
+                            sub.members?.some(m => users.find(u => u.id === m.id || u.register_number === m.register_number)?.class_id?.toString() === userClassId);
+                          if (!matchesClass) return false;
+                        } else if (verificationDeptFilter || verificationClassFilter || verificationYearFilter) {
+                          const leaderUser = users.find(u => u.id === sub.leader_id || u.register_number === sub.leader_regno);
+                          const subClassId = sub.class_id?.toString() || leaderUser?.class_id?.toString();
+                          const subClass = classes.find(c => c.id.toString() === subClassId);
+
+                          if (verificationDeptFilter) {
+                            const deptId = subClass?.department_id?.toString() || leaderUser?.department_id?.toString();
+                            if (deptId && deptId !== verificationDeptFilter) return false;
+                          }
+                          if (verificationYearFilter && subClass && String(subClass.year) !== verificationYearFilter) {
+                            return false;
+                          }
+                          if (verificationClassFilter) {
+                            const matchesTeamClass = sub.class_id?.toString() === verificationClassFilter;
+                            const matchesClass = matchesTeamClass || leaderUser?.class_id?.toString() === verificationClassFilter ||
+                              sub.members?.some(m => users.find(u => u.id === m.id || u.register_number === m.register_number)?.class_id?.toString() === verificationClassFilter);
+                            if (!matchesClass) return false;
+                          }
+                        } else if (user?.is_year_coordinator) {
+                          const leaderUser = users.find(u => u.id === sub.leader_id || u.register_number === sub.leader_regno);
+                          const subClassId = sub.class_id?.toString() || leaderUser?.class_id?.toString();
+                          const subClass = classes.find(c => c.id.toString() === subClassId);
+                          if (subClass && Number(subClass.year) !== Number(user?.year_scope)) return false;
+                        }
+
+                        return true;
+                      });
+
+                      if (filteredTeamSubs.length === 0 && teamSubmissions.length === 0) return null;
+
+                      return (
+                        <div className="mb-8 space-y-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="primary" className="bg-indigo-600 text-white border-none">
+                                <Users size={12} /> Team Task Submissions
+                              </Badge>
+                              <span className="text-xs text-zinc-500 font-bold">
+                                {filteredTeamSubs.length} Team{filteredTeamSubs.length !== 1 ? 's' : ''} {verificationFilter === 'ALL' ? 'Submitted' : verificationFilter}
+                              </span>
+                            </div>
+                          </div>
+
+                          {filteredTeamSubs.length === 0 ? (
+                            <div className="p-8 bg-zinc-50 border border-zinc-200 rounded-2xl text-center text-xs text-zinc-500">
+                              No {verificationFilter.toLowerCase()} team submissions found.
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {filteredTeamSubs.map(sub => (
+                                <Card key={sub.id} className="p-5 space-y-4 border border-zinc-200 hover:border-indigo-300 transition-colors">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md">
+                                          {sub.task_title || tasks.find(t => String(t.id) === String(sub.task_id))?.title || 'Team Task'}
+                                        </span>
+                                      </div>
+                                      <h4 className="font-extrabold text-zinc-900 text-base flex items-center gap-2">
+                                        {sub.team_name}
+                                      </h4>
+                                      <p className="text-xs text-zinc-500 font-medium">
+                                        Leader: <span className="font-bold text-zinc-800">{sub.leader_name}</span> ({sub.leader_regno})
+                                      </p>
+                                    </div>
+                                    <Badge variant={
+                                      sub.status === 'APPROVED' || sub.status === 'VERIFIED' ? 'success' :
+                                        sub.status === 'REJECTED' ? 'danger' : 'warning'
+                                    }>
+                                      {sub.status}
+                                    </Badge>
+                                  </div>
+
+                                  {/* Members list */}
+                                  {sub.members && sub.members.length > 0 && (
+                                    <div className="bg-zinc-50 p-3 rounded-xl space-y-1 border border-zinc-100">
+                                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Accepted Members ({sub.members.length})</p>
+                                      <div className="flex flex-wrap gap-1.5 pt-1">
+                                        {sub.members.map(m => {
+                                          const isLeader = String(m.student_id) === String(sub.leader_id) || m.register_number === sub.leader_regno;
+                                          return (
+                                            <span key={m.id} className={cn(
+                                              "border px-2 py-0.5 rounded-lg text-xs font-semibold flex items-center gap-1.5",
+                                              isLeader ? "bg-indigo-50 border-indigo-200 text-indigo-900" : "bg-white border-zinc-200 text-zinc-700"
+                                            )}>
+                                              {m.full_name || m.username} ({m.register_number})
+                                              {isLeader ? (
+                                                <span className="bg-indigo-600 text-white text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase">Leader</span>
+                                              ) : (
+                                                <span className="bg-zinc-100 text-zinc-600 text-[9px] px-1.5 py-0.2 rounded font-bold uppercase">Member</span>
+                                              )}
+                                            </span>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Proof Image */}
+                                  {sub.proof_url && (
+                                    <div className="rounded-xl overflow-hidden bg-zinc-900 border border-zinc-200 max-h-48 flex items-center justify-center cursor-pointer" onClick={() => window.open(sub.proof_url, '_blank')}>
+                                      <img src={sub.proof_url} alt="Team Proof" className="max-h-48 object-contain" />
+                                    </div>
+                                  )}
+
+                                  {sub.remarks && (
+                                    <p className="text-xs text-zinc-600 italic bg-zinc-50 p-2.5 rounded-lg border border-zinc-100">
+                                      "{sub.remarks}"
+                                    </p>
+                                  )}
+
+                                  {sub.status === 'PENDING' && (
+                                    <div className="flex gap-2 pt-2 border-t border-zinc-100">
+                                      <Button
+                                        variant="success"
+                                        className="flex-1 text-xs py-2 font-bold"
+                                        onClick={() => handleReviewTeamSubmission(sub.id, 'APPROVED')}
+                                      >
+                                        <CheckCircle2 size={16} /> Approve Team
+                                      </Button>
+                                      <Button
+                                        variant="danger"
+                                        className="flex-1 text-xs py-2 font-bold"
+                                        onClick={() => handleReviewTeamSubmission(sub.id, 'REJECTED')}
+                                      >
+                                        <XCircle size={16} /> Reject Team
+                                      </Button>
+                                    </div>
+                                  )}
+                                </Card>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    <Table className="min-w-[800px] md:min-w-0">
+                      <THead>
+                        <TR>
+                          <TH className="w-12">
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 rounded border-zinc-300"
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  setSelectedSubmissions(submissions.filter(s => s.status === 'SUBMITTED').map(s => s.id));
+                                } else {
+                                  setSelectedSubmissions([]);
+                                }
+                              }}
+                            />
+                          </TH>
+                          <TH>Student</TH>
+                          <TH>Task</TH>
+                          {verificationFilter === 'NOT INTERESTED' ? (
+                            <TH colSpan={2}>Reason for Not Interested</TH>
+                          ) : (
+                            <>
+                              <TH>Custom Field</TH>
+                              <TH>Screenshot</TH>
+                            </>
+                          )}
+                          <TH className="text-center">Status</TH>
+                          <TH className="text-right">Actions</TH>
+                        </TR>
+                      </THead>
+                      <TBody>
+                        {(() => {
+                          const filtered = submissions
+                            .filter(s => {
+                              if (verificationFilter === 'ALL') return true;
+                              if (verificationFilter === 'PENDING') return s.status === 'SUBMITTED';
+                              if (verificationFilter === 'NOT INTERESTED') return s.status === 'NOT_PARTICIPATING';
+                              return s.status === verificationFilter;
+                            })
+                            .filter(s => {
+                              const std = users.find(u => u.id === s.user_id);
+                              const subClassId = s.class_id?.toString() || std?.class_id?.toString();
+
+                              if (!isAdmin && !isHOD && !user?.is_year_coordinator) {
+                                const userClassId = user?.class_id?.toString();
+                                return userClassId ? subClassId === userClassId : true;
+                              }
+                              if (verificationDeptFilter) {
+                                const std = users.find(u => u.id === s.user_id);
+                                const subClass = classes.find(c => c.id.toString() === subClassId);
+                                const deptId = subClass?.department_id?.toString() || std?.department_id?.toString();
+                                if (deptId && deptId !== verificationDeptFilter) return false;
+                              }
+                              if (verificationYearFilter) {
+                                const subClass = classes.find(c => c.id.toString() === subClassId);
+                                if (subClass && String(subClass.year) !== verificationYearFilter) return false;
+                              }
+                              if (verificationClassFilter) {
+                                return subClassId === verificationClassFilter;
+                              }
+                              if (user?.is_year_coordinator) {
+                                const subClass = classes.find(c => c.id.toString() === subClassId);
+                                return subClass ? Number(subClass.year) === Number(user?.year_scope) : true;
+                              }
+                              return true;
+                            })
+                            .filter(s => verificationTaskFilter ? s.task_id?.toString() === verificationTaskFilter : true)
+                            .filter(s => {
+                              if (!submissionSearchTerm) return true;
+                              const query = submissionSearchTerm.toLowerCase();
+                              return s.student_name?.toLowerCase().includes(query) || s.register_number?.toLowerCase().includes(query) || s.task_title?.toLowerCase().includes(query) || s.not_participating_reason?.toLowerCase().includes(query);
+                            });
+
+                          if (filtered.length === 0) {
+                            return (
+                              <TR>
+                                <TD colSpan={7} className="text-center py-12">
+                                  <div className="max-w-md mx-auto">
+                                    <Users size={48} className="mx-auto text-zinc-300 mb-4" />
+                                    <p className="font-bold text-base text-zinc-900">No submissions found</p>
+                                    <p className="text-sm text-zinc-400">There are no task submissions matching the filters.</p>
+                                  </div>
+                                </TD>
+                              </TR>
+                            );
+                          }
+
+                          const totalPages = Math.ceil(filtered.length / itemsPerPage);
+                          const paginated = filtered.slice((submissionPage - 1) * itemsPerPage, submissionPage * itemsPerPage);
+
+                          return (
+                            <>
+                              {paginated.map(s => (
+                                <TR key={s.id} className={cn("border-l-4", s.status === 'VERIFIED' ? "border-emerald-500" : s.status === 'REJECTED' ? "border-red-500" : s.status === 'NOT_PARTICIPATING' ? "border-orange-400" : "border-amber-500")}>
+                                  <TD>
+                                    {s.status === 'SUBMITTED' && (
+                                      <input
+                                        type="checkbox"
+                                        className="w-4 h-4 rounded border-zinc-300"
+                                        checked={selectedSubmissions.includes(s.id)}
+                                        onChange={e => {
+                                          if (e.target.checked) setSelectedSubmissions(prev => [...prev, s.id]);
+                                          else setSelectedSubmissions(prev => prev.filter(id => id !== s.id));
+                                        }}
+                                      />
+                                    )}
+                                  </TD>
+                                  <TD>
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center shrink-0">
+                                        <Users size={16} className="text-zinc-500" />
+                                      </div>
+                                      <div className="break-words min-w-0">
+                                        <p className="text-sm font-bold text-zinc-900 leading-tight break-words">{s.student_name}</p>
+                                        <div className="flex items-center gap-2">
+                                          <p className="text-xs text-zinc-500 font-mono italic break-all">{s.register_number}</p>
+                                          <span className="px-1.5 py-0.5 bg-zinc-100 text-zinc-500 text-xs font-bold rounded uppercase border border-zinc-200">
+                                            {s.class_name || 'N/A'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </TD>
+                                  <TD>
+                                    <p className="text-sm font-medium text-zinc-900 break-words">{s.task_title}</p>
+                                    <p className="text-xs text-zinc-400 capitalize">{new Date(s.submitted_at).toLocaleDateString()}</p>
+                                  </TD>
+                                  {s.status === 'NOT_PARTICIPATING' ? (
+                                    <TD colSpan={2}>
+                                      <div className="p-3 bg-orange-50/90 border border-orange-200 rounded-xl max-w-md shadow-xs">
+                                        <p className="text-[10px] font-bold text-orange-600 uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                                          <AlertTriangle size={12} className="text-orange-500 shrink-0" />
+                                          <span>Reason for Not Interested</span>
+                                        </p>
+                                        <p className="text-xs text-orange-950 font-semibold break-words leading-relaxed">
+                                          "{s.not_participating_reason || 'No specific reason provided'}"
+                                        </p>
+                                      </div>
+                                    </TD>
+                                  ) : (
+                                    <>
+                                      <TD>
+                                        <p className="text-xs text-zinc-400 uppercase font-bold mb-1 tracking-widest">Field Data</p>
+                                        <p className="text-sm font-mono text-zinc-900 bg-zinc-100 px-2 py-1 rounded inline-block break-all">
+                                          {s.custom_field_value || '—'}
+                                        </p>
+                                      </TD>
+                                      <TD>
+                                        {s.screenshot_url ? (
+                                          <div className="relative group/img">
+                                            <img
+                                              src={getCloudinaryThumbnail(s.screenshot_url, 150)}
+                                              className="w-12 h-12 object-cover rounded-lg border-2 border-zinc-200 hover:border-black transition-all cursor-zoom-in"
+                                              onClick={() => window.open(s.screenshot_url, '_blank')}
+                                              alt="Thumbnail"
+                                            />
+                                            <div className="absolute top-0 left-0 w-full h-full bg-black/5 rounded-lg pointer-events-none group-hover/img:bg-transparent transition-colors" />
+                                          </div>
+                                        ) : (
+                                          <span className="text-xs text-zinc-400 font-mono italic">No File</span>
+                                        )}
+                                      </TD>
+                                    </>
+                                  )}
+                                  <TD className="text-center">
+                                    <Badge variant={
+                                      s.status === 'VERIFIED' ? 'success' :
+                                        s.status === 'REJECTED' ? 'danger' : 'warning'
+                                    } className={s.status === 'NOT_PARTICIPATING' ? 'bg-orange-100 text-orange-700 border-orange-200' : ''}>
+                                      {s.status === 'SUBMITTED' ? 'PENDING' : s.status === 'NOT_PARTICIPATING' ? 'NOT INTERESTED' : s.status}
+                                    </Badge>
+                                  </TD>
+                                  <TD className="text-right">
+                                    {s.status === 'SUBMITTED' && (
+                                      <div className="flex justify-end gap-2">
+                                        <Button
+                                          variant="success"
+                                          className="px-3 py-1.5 flex items-center gap-2 text-xs"
+                                          onClick={() => verifySubmission(s.id, 'VERIFIED')}
+                                        >
+                                          <CheckCircle2 size={14} /> Verify
+                                        </Button>
+                                        <Button
+                                          variant="danger"
+                                          className="px-3 py-1.5 flex items-center gap-2 text-xs"
+                                          onClick={() => setShowRejectionModal(s.id)}
+                                        >
+                                          <XCircle size={14} /> Reject
+                                        </Button>
+                                      </div>
+                                    )}
+                                    {s.status === 'REJECTED' && (
+                                      <p className="text-xs text-red-500 font-medium">Wait for Resubmission</p>
+                                    )}
+                                    {s.status === 'VERIFIED' && (
+                                      <p className="text-xs text-emerald-500 font-medium flex items-center gap-1 justify-end">
+                                        <CheckCircle2 size={14} /> Verified
+                                      </p>
+                                    )}
+                                    <Button
+                                      variant="ghost"
+                                      className="p-1.5 ml-1 text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-colors rounded-lg"
+                                      onClick={async () => {
+                                        if (confirm('Are you sure you want to delete this submission? This action cannot be undone.')) {
+                                          const res = await fetch(`${API_URL}/api/submissions/${s.id}`, {
+                                            method: 'DELETE',
+                                            headers: { Authorization: `Bearer ${token}` }
+                                          });
+                                          if (res.ok) {
+                                            fetchInitialData();
+                                          } else {
+                                            const data = await res.json();
+                                            alert(data.error || 'Failed to delete submission');
+                                          }
+                                        }
+                                      }}
+                                      title="Delete Submission"
+                                    >
+                                      <Trash2 size={16} />
+                                    </Button>
+                                  </TD>
+                                </TR>
+                              ))}
+                              {filtered.length > itemsPerPage && (
+                                <TR>
+                                  <TD colSpan={7} className="bg-zinc-50/30">
+                                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-1">
+                                      <p className="text-xs font-medium text-zinc-500 whitespace-nowrap">
+                                        Showing {(submissionPage - 1) * itemsPerPage + 1} to {Math.min(submissionPage * itemsPerPage, filtered.length)} of {filtered.length} entries
+                                      </p>
+                                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                                        <Button
+                                          variant="secondary"
+                                          className="px-3 py-1 h-8 text-xs font-semibold"
+                                          disabled={submissionPage === 1}
+                                          onClick={() => setSubmissionPage(prev => prev - 1)}
+                                        >
+                                          Previous
+                                        </Button>
+                                        <div className="flex items-center gap-1">
+                                          {getPaginationRange(submissionPage, totalPages).map((p, idx) => typeof p === 'number' ? (
+                                            <button
+                                              key={idx}
+                                              onClick={() => setSubmissionPage(p)}
+                                              className={cn(
+                                                "w-8 h-8 rounded-lg text-xs font-bold transition-all",
+                                                submissionPage === p ? "bg-black text-white shadow-sm" : "text-zinc-600 hover:bg-zinc-100"
+                                              )}
+                                            >
+                                              {p}
+                                            </button>
+                                          ) : (
+                                            <span key={idx} className="w-5 text-center text-xs text-zinc-400 font-bold">...</span>
+                                          ))}
+                                        </div>
+                                        <Button
+                                          variant="secondary"
+                                          className="px-3 py-1 h-8 text-xs font-semibold"
+                                          disabled={submissionPage === totalPages}
+                                          onClick={() => setSubmissionPage(prev => prev + 1)}
+                                        >
+                                          Next
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </TD>
+                                </TR>
+                              )}
+                              {filtered.length === 0 && (
+                                <TR>
+                                  <TD colSpan={7} className="text-center text-zinc-500 text-sm py-12">
+                                    No submissions found matching your filters.
+                                  </TD>
+                                </TR>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </TBody>
+                    </Table>
+                  </PageLayout>
+                </motion.div>
+              )}
+
+              {
+                view === 'submissions' && (
+                  <motion.div
+                    key="submissions"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="w-full h-full flex flex-col min-h-0"
+                  >
+                    <PageLayout>
+                      <div className="grid grid-cols-1 gap-4">
+                        {submissions.filter(s => s.user_id?.toString() === user?.id?.toString()).length === 0 ? (
+                          <Card className="flex flex-col items-center justify-center py-12 text-zinc-500">
+                            <ImageIcon size={48} className="mb-4 opacity-20" />
+                            <p>No submissions found</p>
+                          </Card>
+                        ) : (
+                          submissions
+                            .filter(s => s.user_id?.toString() === user?.id?.toString())
+                            .map(sub => (
+                              <Card key={sub.id} className="flex flex-col md:flex-row gap-6">
+                                {sub.status === 'NOT_PARTICIPATING' ? (
+                                  <div className="w-full md:w-48 h-48 bg-orange-50 rounded-xl border border-orange-200 p-4 flex flex-col items-center justify-center text-center shrink-0">
+                                    <AlertTriangle size={32} className="text-orange-500 mb-2" />
+                                    <p className="text-xs font-bold text-orange-700 uppercase">Not Participating</p>
+                                    <p className="text-xs text-orange-800 mt-1 line-clamp-4 font-medium">"{sub.not_participating_reason || 'No reason provided'}"</p>
+                                  </div>
+                                ) : (
+                                  <div className="w-full md:w-48 h-48 bg-zinc-100 rounded-xl overflow-hidden border border-zinc-200 shrink-0">
+                                    {sub.screenshot_url ? (
+                                      <img
+                                        src={getCloudinaryThumbnail(sub.screenshot_url, 400)}
+                                        alt="Submission"
+                                        className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
+                                        onClick={() => window.open(sub.screenshot_url, '_blank')}
+                                        referrerPolicy="no-referrer"
+                                      />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center text-zinc-400 text-xs">No image uploaded</div>
+                                    )}
+                                  </div>
+                                )}
+                                <div className="flex-1 flex flex-col justify-between">
+                                  <div>
+                                    <div className="flex justify-between items-start">
+                                      <div>
+                                        <h4 className="font-bold text-zinc-900 text-lg">{sub.task_title}</h4>
+                                        <p className="text-sm text-zinc-500">
+                                          {isAdvisor ? `Student: ${sub.student_name}` : `Submitted on ${new Date(sub.submitted_at).toLocaleString()}`}
+                                        </p>
+                                      </div>
+                                      <Badge variant={
+                                        sub.status === 'VERIFIED' ? 'success' :
+                                          sub.status === 'REJECTED' ? 'danger' : 'warning'
+                                      } className={sub.status === 'NOT_PARTICIPATING' ? 'bg-orange-100 text-orange-700 border-orange-200' : ''}>
+                                        {sub.status === 'NOT_PARTICIPATING' ? 'NOT INTERESTED' : sub.status}
+                                      </Badge>
+                                    </div>
+                                    {sub.verified_at && (
+                                      <p className="text-xs text-zinc-400 mt-2 uppercase font-bold">
+                                        Verified on {new Date(sub.verified_at).toLocaleString()}
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  {(isHOD || isAdmin || isAdvisor || isCoordinator) && sub.status === 'SUBMITTED' && (
+                                    <div className="flex gap-2 mt-4">
+                                      <Button
+                                        variant="success"
+                                        className="flex-1 flex items-center justify-center gap-2"
+                                        onClick={() => verifySubmission(sub.id, 'VERIFIED')}
+                                      >
+                                        <CheckCircle2 size={18} /> Verify
+                                      </Button>
+                                      <Button
+                                        variant="danger"
+                                        className="flex-1 flex items-center justify-center gap-2"
+                                        onClick={() => verifySubmission(sub.id, 'REJECTED')}
+                                      >
+                                        <XCircle size={18} /> Reject
+                                      </Button>
+                                    </div>
+                                  )}
+
+                                  {sub.screenshot_url && (
+                                    <Button
+                                      variant="ghost"
+                                      className="mt-4 text-xs flex items-center gap-2 w-fit"
+                                      onClick={() => window.open(sub.screenshot_url, '_blank')}
+                                    >
+                                      <ExternalLink size={14} /> View Full Screenshot
+                                    </Button>
+                                  )}
+                                </div>
+                              </Card>
+                            ))
+                        )}
+                      </div>
+                    </PageLayout>
+                  </motion.div>
+                )
+              }
+
+              {
+                view === 'profile' && (
+                  <motion.div
+                    key="profile"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="w-full h-full flex flex-col min-h-0 overflow-y-auto"
+                  >
+                    {isStudent ? (
+                      <StudentProfileView
+                        user={user}
+                        token={token}
+                        addToast={addToast}
+                      />
+                    ) : (
+                      <PageLayout>
+                        <Card className="p-8 text-center text-zinc-500">
+                          <Shield size={48} className="mx-auto mb-4 text-zinc-400" />
+                          <h3 className="text-lg font-bold text-zinc-900 mb-1">Student Profile Only</h3>
+                          <p className="text-sm">This profile module is exclusively available to logged-in student accounts.</p>
+                        </Card>
+                      </PageLayout>
+                    )}
+                  </motion.div>
+                )
+              }
+
+              {
+                view === 'leetcode-targets' && (
+                  <motion.div
+                    key="leetcode-targets"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="w-full h-full flex flex-col min-h-0 overflow-y-auto"
+                  >
+                    {renderLeetcodeTargetsView()}
+                  </motion.div>
+                )
+              }
+
+              {
+                view === 'notice-board' && (
+                  <motion.div
+                    key="notice-board"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="w-full h-full flex flex-col min-h-0"
+                  >
+                    <PageLayout>
+                      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
+                        <div>
+                          <h2 className="text-2xl font-black text-zinc-900 tracking-tight flex items-center gap-2">
+                            <Megaphone className="text-indigo-600" size={26} /> Digital Notice Board
+                          </h2>
+                          <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Official Announcements & Communications</p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Button
+                            onClick={handleShareNoticeBoard}
+                            variant="outline"
+                            className="border-zinc-300 hover:bg-zinc-100 text-zinc-700 font-bold px-4 rounded-xl flex items-center gap-1.5"
+                            title="Copy Notice Board link"
+                          >
+                            <Share2 size={16} /> Share Board
+                          </Button>
+                          {(isAdvisor || isHOD || isAdmin) && (
+                            <Button
+                              onClick={openCreateNoticeModal}
+                              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 rounded-xl shadow-lg shadow-indigo-600/20"
+                            >
+                              <Plus size={18} /> Publish Notice
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3 mb-6">
+                        <div className="relative flex-1 min-w-[200px]">
+                          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+                          <Input
+                            placeholder="Search notices..."
+                            value={noticeSearch}
+                            onChange={e => setNoticeSearch(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                        <select
+                          value={noticePriorityFilter}
+                          onChange={e => setNoticePriorityFilter(e.target.value)}
+                          className="h-11 px-3 rounded-lg border border-zinc-200 bg-white text-xs font-bold text-zinc-700"
+                        >
+                          <option value="">All Priorities</option>
+                          <option value="URGENT">🚨 Urgent</option>
+                          <option value="HIGH">🔥 High</option>
+                          <option value="NORMAL">📌 Normal</option>
+                          <option value="LOW">ℹ️ Low</option>
+                        </select>
+                        <select
+                          value={noticeScopeFilter}
+                          onChange={e => setNoticeScopeFilter(e.target.value)}
+                          className="h-11 px-3 rounded-lg border border-zinc-200 bg-white text-xs font-bold text-zinc-700"
+                        >
+                          <option value="">All Scopes</option>
+                          <option value="ALL">🌐 All</option>
+                          <option value="DEPARTMENT">🏢 Department</option>
+                          <option value="CLASS">🎓 Class</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-4">
+                        {notices.length === 0 ? (
+                          <Card className="p-12 text-center text-zinc-400">
+                            <Megaphone size={40} className="mx-auto mb-3 text-zinc-300" />
+                            <p className="font-bold text-zinc-600 text-base">No notices posted yet</p>
+                            <p className="text-xs text-zinc-400 mt-1">Check back later for announcements</p>
+                          </Card>
+                        ) : (
+                          notices.map(notice => {
+                            const isHighlighted = String(highlightedNoticeId) === String(notice.id);
+                            return (
+                              <Card
+                                id={`notice-${notice.id}`}
+                                key={notice.id}
+                                className={cn(
+                                  "p-6 relative transition-all border",
+                                  isHighlighted
+                                    ? "border-indigo-500 ring-2 ring-indigo-500/50 bg-indigo-50/20 shadow-lg"
+                                    : notice.is_pinned
+                                      ? "border-amber-300 bg-amber-50/20 shadow-md"
+                                      : "border-zinc-200 hover:border-zinc-300"
+                                )}
+                              >
+                                <div className="flex items-start justify-between gap-4 mb-3">
+                                  <div className="space-y-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      {isHighlighted && (
+                                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-600 text-white border border-indigo-700 flex items-center gap-1">
+                                          <Share2 size={10} /> SHARED LINK TARGET
+                                        </span>
+                                      )}
+                                      {notice.is_pinned && (
+                                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
+                                          <Pin size={10} /> PINNED
+                                        </span>
+                                      )}
+                                      <span className={cn(
+                                        "px-2.5 py-0.5 rounded-full text-[10px] font-black border",
+                                        notice.priority === 'URGENT' ? "bg-red-50 text-red-600 border-red-200" :
+                                          notice.priority === 'HIGH' ? "bg-orange-50 text-orange-600 border-orange-200" :
+                                            notice.priority === 'LOW' ? "bg-zinc-100 text-zinc-600 border-zinc-200" :
+                                              "bg-blue-50 text-blue-600 border-blue-200"
+                                      )}>
+                                        {notice.priority}
+                                      </span>
+                                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200 uppercase">
+                                        {notice.scope === 'ALL' ? '🌐 GLOBAL' : notice.scope === 'DEPARTMENT' ? `🏢 DEPT: ${notice.department_name || 'DEPARTMENT'}` : notice.scope === 'CLASS' ? `🎓 CLASS: ${notice.class_name || 'CLASS'}` : `${notice.scope} SCOPE`}
+                                      </span>
+                                    </div>
+                                    <h3 className="text-lg font-black text-zinc-900 leading-snug">{notice.title}</h3>
+                                  </div>
+
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      onClick={() => handleShareNotice(notice.id, notice.title)}
+                                      className="p-1.5 text-zinc-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold px-2.5 border border-zinc-200 hover:border-indigo-300"
+                                      title="Share Notice Link"
+                                    >
+                                      <Share2 size={14} />
+                                      <span className="hidden sm:inline">Share</span>
+                                    </button>
+                                    {(isAdvisor || isHOD || isAdmin) && (
+                                      <button
+                                        onClick={() => handlePinNotice(notice.id)}
+                                        className={cn("p-1.5 rounded-lg hover:bg-zinc-100 transition-colors", notice.is_pinned ? "text-amber-600" : "text-zinc-400")}
+                                        title={notice.is_pinned ? "Unpin Notice" : "Pin Notice"}
+                                      >
+                                        <Pin size={16} />
+                                      </button>
+                                    )}
+                                    {(isAdmin || String(notice.created_by) === String(user?.id)) && (
+                                      <button
+                                        onClick={() => handleDeleteNotice(notice.id)}
+                                        className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="Delete Notice"
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <p className="text-sm text-zinc-700 whitespace-pre-wrap leading-relaxed mb-4">{notice.description}</p>
+
+                                {notice.attachment_url && (
+                                  <div className="mb-4">
+                                    <a
+                                      href={notice.attachment_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors border border-indigo-200"
+                                    >
+                                      <Paperclip size={14} /> Download Notice Attachment
+                                    </a>
+                                  </div>
+                                )}
+
+                                <div className="flex items-center justify-between text-xs font-medium text-zinc-400 border-t border-zinc-100 pt-3">
+                                  <span>Posted by <strong className="text-zinc-700">{notice.creator_name}</strong> ({notice.creator_role})</span>
+                                  <span>{new Date(notice.created_at).toLocaleString()}</span>
+                                </div>
+                              </Card>
+                            );
+                          })
+                        )}
+                      </div>
+                    </PageLayout>
+                  </motion.div>
+                )
+              }
+
+              {
+                view === 'feedback' && (
+                  <motion.div
+                    key="feedback"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="w-full h-full flex flex-col min-h-0"
+                  >
+                    <PageLayout>
+                      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
+                        <div>
+                          <h2 className="text-2xl font-black text-zinc-900 tracking-tight flex items-center gap-2">
+                            <MessageSquare className="text-indigo-600" size={26} /> Feedback & Suggestions
+                          </h2>
+                          <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider">
+                            {isStudent ? 'Submit feedback, suggestions, or bugs to advisors' : 'Feedback Dashboard & Case Management'}
+                          </p>
+                        </div>
+
+                        {isStudent && (
+                          <Button
+                            onClick={() => setShowCreateFeedbackModal(true)}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 rounded-xl shadow-lg shadow-indigo-600/20"
+                          >
+                            <Plus size={18} /> New Feedback
+                          </Button>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3 mb-6">
+                        <div className="relative flex-1 min-w-[200px]">
+                          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+                          <Input
+                            placeholder="Search feedback..."
+                            value={feedbackSearch}
+                            onChange={e => setFeedbackSearch(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                        <select
+                          value={feedbackStatusFilter}
+                          onChange={e => setFeedbackStatusFilter(e.target.value)}
+                          className="h-11 px-3 rounded-lg border border-zinc-200 bg-white text-xs font-bold text-zinc-700"
+                        >
+                          <option value="">All Statuses</option>
+                          <option value="Open">🟢 Open</option>
+                          <option value="In Progress">🟡 In Progress</option>
+                          <option value="Resolved">✅ Resolved</option>
+                          <option value="Rejected">❌ Rejected</option>
+                        </select>
+                        <select
+                          value={feedbackCategoryFilter}
+                          onChange={e => setFeedbackCategoryFilter(e.target.value)}
+                          className="h-11 px-3 rounded-lg border border-zinc-200 bg-white text-xs font-bold text-zinc-700"
+                        >
+                          <option value="">All Categories</option>
+                          <option value="Suggestion">💡 Suggestion</option>
+                          <option value="Bug">🐛 Bug</option>
+                          <option value="Complaint">⚠️ Complaint</option>
+                          <option value="Feature Request">✨ Feature Request</option>
+                          <option value="General">💬 General</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-4">
+                        {feedbacks.length === 0 ? (
+                          <Card className="p-12 text-center text-zinc-400">
+                            <MessageSquare size={40} className="mx-auto mb-3 text-zinc-300" />
+                            <p className="font-bold text-zinc-600 text-base">No feedback found</p>
+                            <p className="text-xs text-zinc-400 mt-1">{isStudent ? 'Click "New Feedback" to submit a suggestion or bug report' : 'No feedback cases submitted yet'}</p>
+                          </Card>
+                        ) : (
+                          feedbacks.map(fb => (
+                            <Card key={fb.id} className="p-5 border border-zinc-200 hover:border-zinc-300 transition-all cursor-pointer" onClick={() => openFeedbackDetail(fb)}>
+                              <div className="flex items-start justify-between gap-4 mb-2">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className={cn(
+                                      "px-2.5 py-0.5 rounded-full text-[10px] font-black border",
+                                      fb.status === 'Resolved' ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
+                                        fb.status === 'In Progress' ? "bg-amber-50 text-amber-600 border-amber-200" :
+                                          fb.status === 'Rejected' ? "bg-red-50 text-red-600 border-red-200" :
+                                            "bg-blue-50 text-blue-600 border-blue-200"
+                                    )}>
+                                      {fb.status}
+                                    </span>
+                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-zinc-100 text-zinc-700">
+                                      {fb.category}
+                                    </span>
+                                    <span className={cn(
+                                      "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
+                                      fb.priority === 'Critical' ? "bg-red-100 text-red-700" :
+                                        fb.priority === 'High' ? "bg-orange-100 text-orange-700" : "bg-zinc-100 text-zinc-500"
+                                    )}>
+                                      {fb.priority} Priority
+                                    </span>
+                                  </div>
+                                  <h3 className="text-base font-bold text-zinc-900">{fb.title}</h3>
+                                </div>
+
+                                <span className="text-xs text-zinc-400 shrink-0">{new Date(fb.created_at).toLocaleDateString()}</span>
+                              </div>
+
+                              <p className="text-xs text-zinc-600 line-clamp-2 mb-3">{fb.description}</p>
+
+                              <div className="flex items-center justify-between text-[11px] font-medium text-zinc-400 border-t border-zinc-100 pt-2.5">
+                                <span>Submitted by <strong className="text-zinc-700">{fb.submitter_name}</strong></span>
+                                <span className="flex items-center gap-1 text-indigo-600 font-bold">
+                                  <MessageCircle size={12} /> {fb.reply_count || 0} Replies &rarr;
+                                </span>
+                              </div>
+                            </Card>
+                          ))
+                        )}
+                      </div>
+                    </PageLayout>
+                  </motion.div>
+                )
+              }
+
+              {
+                view === 'settings' && (
+                  <motion.div
+                    key="settings"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="w-full h-full flex flex-col min-h-0"
+                  >
+                    <SettingsView
                       user={user}
                       token={token}
                       addToast={addToast}
                     />
+                  </motion.div>
+                )
+              }
+            </AnimatePresence>
+          </div>
+
+          <AnimatePresence>
+            {showExportModal && (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                  className="bg-white rounded-[2rem] p-6 md:p-8 max-w-xl w-full shadow-2xl relative border border-zinc-100 max-h-[90vh] overflow-y-auto"
+                >
+                  <button
+                    onClick={() => setShowExportModal(false)}
+                    className="absolute top-5 right-5 p-2 hover:bg-zinc-100 rounded-full transition-colors"
+                  >
+                    <X size={20} className="text-zinc-400" />
+                  </button>
+
+                  <h3 className="text-2xl font-black text-zinc-900 tracking-tight pr-8">Report Studio</h3>
+                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mt-1.5 mb-6">
+                    {isAdmin ? 'System-Wide Report' : isHOD ? 'Department Report' : user?.is_year_coordinator ? `Year ${user?.year_scope} Report` : `Class Report — ${user?.class_name || 'My Class'}`}
+                  </p>
+
+                  <div className="space-y-4">
+
+                    {/* HOD / Admin: multi-class checkbox picker */}
+                    {(isAdmin || isHOD) && (() => {
+                      const availableClasses = isAdmin
+                        ? classes
+                        : (hodStats?.classStats || classes.filter(c => c.department_id?.toString() === user?.department_id?.toString()));
+                      return (
+                        <div>
+                          <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5">
+                            <Users size={11} />
+                            Select Classes <span className="normal-case text-zinc-300 font-medium">(pick multiple)</span>
+                          </label>
+                          <div className="max-h-40 overflow-y-auto border border-zinc-100 rounded-2xl bg-zinc-50 p-3 flex flex-col gap-2">
+                            {(availableClasses as any[]).slice().sort((a: any, b: any) => (a.year || 0) - (b.year || 0) || (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' })).map((c: any) => {
+                              const cid = c.id.toString();
+                              const checked = reportFilters.classIds.includes(cid);
+                              return (
+                                <label key={cid} className="flex items-center gap-3 cursor-pointer group">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => setReportFilters(prev => ({
+                                      ...prev,
+                                      classIds: checked
+                                        ? prev.classIds.filter(id => id !== cid)
+                                        : [...prev.classIds, cid]
+                                    }))}
+                                    className="w-4 h-4 rounded accent-blue-600 cursor-pointer"
+                                  />
+                                  <span className={`text-sm font-bold transition-colors ${checked ? 'text-blue-700' : 'text-zinc-700 group-hover:text-zinc-900'}`}>{c.name}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                          {reportFilters.classIds.length > 0 && (
+                            <p className="text-[10px] font-bold text-blue-600 mt-1.5">
+                              {reportFilters.classIds.length} class{reportFilters.classIds.length > 1 ? 'es' : ''} selected — report will combine all selected classes
+                            </p>
+                          )}
+                          {reportFilters.classIds.length === 0 && (
+                            <p className="text-[10px] font-medium text-zinc-400 mt-1.5">No class selected — will include all classes</p>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Year Coordinator: multi-class checkbox picker */}
+                    {user?.is_year_coordinator && !isAdmin && !isHOD && (() => {
+                      const availableClasses = classes.filter(c => Number(c.year) === Number(user?.year_scope) && c.department_id?.toString() === user?.department_id?.toString());
+                      return (
+                        <div>
+                          <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5">
+                            <Users size={11} />
+                            Select Classes <span className="normal-case text-zinc-300 font-medium">(pick multiple)</span>
+                          </label>
+                          <div className="max-h-40 overflow-y-auto border border-zinc-100 rounded-2xl bg-zinc-50 p-3 flex flex-col gap-2">
+                            {availableClasses.slice().sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' })).map((c: any) => {
+                              const cid = c.id.toString();
+                              const checked = reportFilters.classIds.includes(cid);
+                              return (
+                                <label key={cid} className="flex items-center gap-3 cursor-pointer group">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => setReportFilters(prev => ({
+                                      ...prev,
+                                      classIds: checked
+                                        ? prev.classIds.filter(id => id !== cid)
+                                        : [...prev.classIds, cid]
+                                    }))}
+                                    className="w-4 h-4 rounded accent-blue-600 cursor-pointer"
+                                  />
+                                  <span className={`text-sm font-bold transition-colors ${checked ? 'text-blue-700' : 'text-zinc-700 group-hover:text-zinc-900'}`}>{c.name}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                          {reportFilters.classIds.length > 0 && (
+                            <p className="text-[10px] font-bold text-blue-600 mt-1.5">
+                              {reportFilters.classIds.length} class{reportFilters.classIds.length > 1 ? 'es' : ''} selected — report will combine all selected classes
+                            </p>
+                          )}
+                          {reportFilters.classIds.length === 0 && (
+                            <p className="text-[10px] font-medium text-zinc-400 mt-1.5">No class selected — will include all year classes</p>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Class Advisor & Student Coordinator: assigned class indicator */}
+                    {(isAdvisor || isCoordinator) && !isAdmin && !isHOD && !user?.is_year_coordinator && (
+                      <div>
+                        <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 block">Assigned Class</label>
+                        <div className="p-3 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold text-zinc-800">
+                          {myClass?.name || classes.find(c => c.id.toString() === user?.class_id?.toString())?.name || 'My Class'}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Task selector */}
+                    <div>
+                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5"><ClipboardList size={11} /> Task</label>
+                      <select
+                        className="w-full p-3 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                        value={reportFilters.taskId}
+                        onChange={(e) => setReportFilters(prev => ({ ...prev, taskId: e.target.value }))}
+                      >
+                        <option value="">All Tasks</option>
+                        {tasks.map((t: any) => (
+                          <option key={t.id} value={t.id.toString()}>{t.title}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Submission Status */}
+                    <div>
+                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5"><ShieldCheck size={11} /> Submission Status</label>
+                      <StatusDropdown
+                        value={reportFilters.status || 'ALL'}
+                        onChange={(val) => setReportFilters(prev => ({ ...prev, status: val }))}
+                      />
+                    </div>
+
+
+
+
+                    <div className="flex gap-4 pt-2">
+                      <Button variant="ghost" onClick={() => { setShowExportModal(false); setReportFilters({ classIds: [], taskId: '', status: 'ALL' }); }} className="flex-1 rounded-2xl">Cancel</Button>
+                      <Button
+                        onClick={() => exportToExcel(reportFilters)}
+                        className="flex-1 rounded-2xl bg-black hover:bg-zinc-800 text-white flex items-center justify-center gap-2"
+                      >
+                        <FileDown size={18} /> Download Excel
+                      </Button>
+                    </div>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+
+            {showFooterModal && (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="bg-white rounded-3xl p-6 md:p-8 max-w-2xl w-full max-h-[85vh] overflow-y-auto shadow-2xl relative"
+                >
+                  <button
+                    onClick={() => setShowFooterModal(null)}
+                    className="absolute top-6 right-6 p-2 hover:bg-zinc-100 rounded-full transition-colors"
+                  >
+                    <XCircle size={24} className="text-zinc-400" />
+                  </button>
+
+                  {showFooterModal === 'PRIVACY' && (
+                    <div className="space-y-4">
+                      <h3 className="text-2xl font-black">Privacy Policy</h3>
+                      <div className="text-zinc-600 leading-relaxed text-sm space-y-4">
+                        <p>The VSBEC IT Academic Task Management System respects the privacy of all users.</p>
+                        <p>Information collected through the platform, including login credentials, academic task records, submissions, and user activity, is used only for academic administration and internal institutional purposes.</p>
+                        <p>User data is securely stored and accessed only by authorized administrators, department staff, and relevant academic authorities. The system does not share personal information with external parties without institutional approval.</p>
+                        <p>All users are expected to maintain confidentiality of their account credentials and report any unauthorized access immediately.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {showFooterModal === 'TERMS' && (
+                    <div className="space-y-4">
+                      <h3 className="text-2xl font-black">Terms of Service</h3>
+                      <div className="text-zinc-600 leading-relaxed text-sm space-y-4">
+                        <p>By using the VSBEC IT Academic Task Management System, users agree to use the platform only for academic and institutional purposes.</p>
+                        <p>Students, faculty, and administrators must provide accurate information and use their assigned accounts responsibly.</p>
+                        <p>Any misuse of the system, unauthorized access, manipulation of records, or disruption of platform operations may lead to institutional action.</p>
+                        <p>The institution reserves the right to modify features, permissions, or policies whenever required for academic management.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {showFooterModal === 'SUPPORT' && (
+                    <div className="space-y-4">
+                      <h3 className="text-2xl font-black">Support</h3>
+                      <div className="text-zinc-600 leading-relaxed text-sm space-y-4">
+                        <p>For technical assistance, login issues, task-related concerns, or system access problems, users may contact the concerned department administrator or system support team.</p>
+                        <p>Support is provided during working hours through the institution’s official communication channels.</p>
+                        <p>For unresolved issues, users may report directly to the IT Department responsible for maintaining the platform.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <Button onClick={() => setShowFooterModal(null)} className="w-full mt-8">Close</Button>
+                </motion.div>
+              </div>
+            )}
+
+            {selectedPosterModal && (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center justify-center p-2"
+                >
+                  <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+                    <a
+                      href={selectedPosterModal}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-2.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors border border-white/20 flex items-center gap-1.5 text-xs font-bold px-4"
+                    >
+                      <ExternalLink size={16} /> Open in New Tab
+                    </a>
+                    <button
+                      onClick={() => setSelectedPosterModal(null)}
+                      className="p-2.5 bg-black/70 text-white rounded-full hover:bg-black/90 transition-colors border border-white/20"
+                      title="Close Poster View"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                  {selectedPosterModal.toLowerCase().includes('.pdf') ? (
+                    <iframe
+                      src={selectedPosterModal}
+                      title="Event Poster PDF Viewer"
+                      className="w-full h-[85vh] rounded-xl shadow-2xl border border-zinc-700 bg-white"
+                    />
                   ) : (
-                    <PageLayout>
-                      <Card className="p-8 text-center text-zinc-500">
-                        <Shield size={48} className="mx-auto mb-4 text-zinc-400" />
-                        <h3 className="text-lg font-bold text-zinc-900 mb-1">Student Profile Only</h3>
-                        <p className="text-sm">This profile module is exclusively available to logged-in student accounts.</p>
-                      </Card>
-                    </PageLayout>
+                    <img
+                      src={selectedPosterModal}
+                      alt="Full Poster View"
+                      className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl border border-zinc-700"
+                    />
                   )}
                 </motion.div>
-              )
-            }
+              </div>
+            )}
 
-            {
-              view === 'notice-board' && (
+            {sharedTaskModal && (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
                 <motion.div
-                  key="notice-board"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="w-full h-full flex flex-col min-h-0"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="bg-white rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl relative space-y-6 max-h-[95vh] overflow-y-auto"
                 >
-                  <PageLayout>
-                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
+                  <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold text-lg">
+                        ✓
+                      </div>
                       <div>
-                        <h2 className="text-2xl font-black text-zinc-900 tracking-tight flex items-center gap-2">
-                          <Megaphone className="text-indigo-600" size={26} /> Digital Notice Board
-                        </h2>
-                        <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Official Announcements & Communications</p>
+                        <h3 className="text-lg font-bold text-zinc-900">Task Posted Successfully!</h3>
+                        <p className="text-xs text-zinc-500 font-medium">Ready to share with students and advisors</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setSharedTaskModal(null)} className="p-1 hover:bg-zinc-100 rounded-full">
+                      <X size={20} className="text-zinc-400" />
+                    </button>
+                  </div>
+
+                  {sharedTaskModal.poster_url && (
+                    <div className="rounded-xl overflow-hidden max-h-44 bg-zinc-950 border border-zinc-200 flex items-center justify-center">
+                      <img src={sharedTaskModal.poster_url} alt="Poster" className="max-h-44 object-contain" />
+                    </div>
+                  )}
+
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Task Title</p>
+                    <p className="text-base font-bold text-zinc-900">{sharedTaskModal.title}</p>
+                  </div>
+
+                  <div className="space-y-2 bg-zinc-50 p-4 rounded-xl border border-zinc-200">
+                    <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest block">Direct Share Link</label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        readOnly
+                        value={`${window.location.origin}${window.location.pathname}?taskId=${sharedTaskModal.id}`}
+                        className="text-xs font-mono bg-white"
+                      />
+                      <Button
+                        type="button"
+                        onClick={() => copyTaskShareLink(sharedTaskModal.id)}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white shrink-0 font-bold"
+                      >
+                        <Copy size={16} /> Copy
+                      </Button>
+                    </div>
+                  </div>
+
+                  <Button onClick={() => setSharedTaskModal(null)} className="w-full">
+                    Done
+                  </Button>
+                </motion.div>
+              </div>
+            )}
+
+            {teamModalTask && (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="bg-white rounded-3xl p-6 md:p-8 max-w-2xl w-full shadow-2xl relative space-y-6 max-h-[90vh] overflow-y-auto"
+                >
+                  <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+                        <Users size={20} />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-zinc-900">{teamModalTask.title} — Team Management</h3>
+                        <p className="text-xs text-zinc-500 font-medium">Min {teamModalTask.min_team_size || 2} - Max {teamModalTask.max_team_size || 5} Members</p>
+                      </div>
+                    </div>
+                    <button onClick={() => { setTeamModalTask(null); setCurrentTaskTeam(null); }} className="p-1.5 hover:bg-zinc-100 rounded-full transition-colors">
+                      <X size={20} className="text-zinc-400" />
+                    </button>
+                  </div>
+
+                  {!currentTaskTeam ? (
+                    /* Form a New Team View */
+                    <div className="space-y-6">
+                      <div className="bg-indigo-50/70 border border-indigo-100 p-4 rounded-2xl space-y-1">
+                        <h4 className="font-bold text-sm text-indigo-900">Form a New Team</h4>
+                        <p className="text-xs text-indigo-700">
+                          Create a team for this task and invite your classmates. As team leader, you will be able to manage members and upload the final proof submission.
+                        </p>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-zinc-700 uppercase tracking-wider block">Team Name <span className="text-red-500">*</span></label>
+                        <Input
+                          placeholder="e.g. Cyber Squad / Tech Titans"
+                          value={newTeamName}
+                          onChange={e => setNewTeamName(e.target.value)}
+                          className="h-11 font-semibold"
+                        />
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-zinc-700 uppercase tracking-wider block">
+                            Select Classmates to Invite (Optional)
+                          </label>
+                          <span className="text-xs text-zinc-400 font-mono">
+                            Max {teamModalTask.max_team_size ? teamModalTask.max_team_size - 1 : 4} invites
+                          </span>
+                        </div>
+
+                        {eligibleClassmates.length > 0 && (
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+                            <Input
+                              placeholder="Search classmate by Name or Reg No..."
+                              value={classmateSearchTerm}
+                              onChange={e => setClassmateSearchTerm(e.target.value)}
+                              className="pl-9 h-9 text-xs"
+                            />
+                          </div>
+                        )}
+
+                        {(() => {
+                          const filtered = eligibleClassmates.filter(s =>
+                            !classmateSearchTerm ||
+                            (s.full_name || '').toLowerCase().includes(classmateSearchTerm.toLowerCase()) ||
+                            (s.register_number || '').toLowerCase().includes(classmateSearchTerm.toLowerCase()) ||
+                            (s.username || '').toLowerCase().includes(classmateSearchTerm.toLowerCase())
+                          );
+
+                          if (filtered.length === 0) {
+                            return (
+                              <div className="p-6 bg-zinc-50 border border-zinc-200 rounded-2xl text-center text-xs text-zinc-500">
+                                {classmateSearchTerm ? 'No matching classmates found.' : 'No available classmates in your section for this task (all students might already be in teams).'}
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="max-h-60 overflow-y-auto border border-zinc-200 rounded-2xl p-3 bg-zinc-50/50 space-y-2 custom-scrollbar">
+                              {filtered.map(student => {
+                                const isSelected = selectedClassmateIds.includes(student.id);
+                                return (
+                                  <label
+                                    key={student.id}
+                                    className={cn(
+                                      "flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border",
+                                      isSelected ? "bg-indigo-50/90 border-indigo-300 shadow-sm" : "bg-white border-zinc-200 hover:border-indigo-300"
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={e => {
+                                          if (e.target.checked) {
+                                            if (selectedClassmateIds.length >= (teamModalTask.max_team_size ? teamModalTask.max_team_size - 1 : 4)) {
+                                              return addToast(`Max team limit is ${teamModalTask.max_team_size || 5} including leader`, 'warning');
+                                            }
+                                            setSelectedClassmateIds(prev => [...prev, student.id]);
+                                          } else {
+                                            setSelectedClassmateIds(prev => prev.filter(id => id !== student.id));
+                                          }
+                                        }}
+                                        className="w-4 h-4 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500"
+                                      />
+                                      <div>
+                                        <p className="text-sm font-extrabold text-zinc-900">{student.full_name}</p>
+                                        <p className="text-xs text-indigo-600 font-mono font-semibold">Reg No: {student.register_number || student.username}</p>
+                                      </div>
+                                    </div>
+                                    {isSelected && (
+                                      <Badge variant="primary" className="bg-indigo-600 text-white text-[10px]">
+                                        Selected
+                                      </Badge>
+                                    )}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-3">
                         <Button
-                          onClick={handleShareNoticeBoard}
-                          variant="outline"
-                          className="border-zinc-300 hover:bg-zinc-100 text-zinc-700 font-bold px-4 rounded-xl flex items-center gap-1.5"
-                          title="Copy Notice Board link"
+                          onClick={handleCreateSoloTeam}
+                          disabled={isSubmittingTeam}
+                          variant="secondary"
+                          className="flex-1 h-12 border-zinc-300 font-bold rounded-2xl flex items-center justify-center gap-2 text-xs"
                         >
-                          <Share2 size={16} /> Share Board
+                          <User size={16} /> Complete as Solo (Individual)
                         </Button>
-                        {(isAdvisor || isHOD || isAdmin) && (
+                        <Button
+                          onClick={handleCreateTeam}
+                          disabled={isSubmittingTeam || !newTeamName.trim()}
+                          className="flex-1 h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 text-xs"
+                        >
+                          {isSubmittingTeam ? <Loader2 size={18} className="animate-spin" /> : <Users size={16} />} Create Team & Send Invites
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Manage Existing Team View */
+                    <div className="space-y-6">
+                      <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-zinc-50 border border-zinc-200 rounded-2xl">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-lg font-extrabold text-zinc-900">{currentTaskTeam.team_name}</h4>
+                            <Badge variant={
+                              currentTaskTeam.status === 'APPROVED' ? 'success' :
+                                currentTaskTeam.status === 'REJECTED' ? 'danger' :
+                                  currentTaskTeam.status === 'SUBMITTED' ? 'info' :
+                                    currentTaskTeam.status === 'READY' ? 'warning' : 'neutral'
+                            }>
+                              {currentTaskTeam.status}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-zinc-500 font-medium mt-0.5">
+                            Leader: <span className="font-bold text-zinc-800">{currentTaskTeam.leader_name}</span> ({currentTaskTeam.leader_regno})
+                          </p>
+                        </div>
+
+                        {user?.id?.toString() === currentTaskTeam.leader_id?.toString() && currentTaskTeam.status !== 'APPROVED' && (
                           <Button
-                            onClick={openCreateNoticeModal}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 rounded-xl shadow-lg shadow-indigo-600/20"
+                            variant="ghost"
+                            onClick={() => handleDeleteTeam(currentTaskTeam.id)}
+                            className="text-red-500 hover:bg-red-50 hover:text-red-700 text-xs font-bold px-3 py-1.5 rounded-xl border border-red-100"
                           >
-                            <Plus size={18} /> Publish Notice
+                            <Trash2 size={14} /> Delete Team
                           </Button>
                         )}
                       </div>
-                    </div>
 
-                    <div className="flex flex-wrap items-center gap-3 mb-6">
-                      <div className="relative flex-1 min-w-[200px]">
-                        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
-                        <Input
-                          placeholder="Search notices..."
-                          value={noticeSearch}
-                          onChange={e => setNoticeSearch(e.target.value)}
-                          className="pl-10"
-                        />
-                      </div>
-                      <select
-                        value={noticePriorityFilter}
-                        onChange={e => setNoticePriorityFilter(e.target.value)}
-                        className="h-11 px-3 rounded-lg border border-zinc-200 bg-white text-xs font-bold text-zinc-700"
-                      >
-                        <option value="">All Priorities</option>
-                        <option value="URGENT">🚨 Urgent</option>
-                        <option value="HIGH">🔥 High</option>
-                        <option value="NORMAL">📌 Normal</option>
-                        <option value="LOW">ℹ️ Low</option>
-                      </select>
-                      <select
-                        value={noticeScopeFilter}
-                        onChange={e => setNoticeScopeFilter(e.target.value)}
-                        className="h-11 px-3 rounded-lg border border-zinc-200 bg-white text-xs font-bold text-zinc-700"
-                      >
-                        <option value="">All Scopes</option>
-                        <option value="ALL">🌐 All</option>
-                        <option value="DEPARTMENT">🏢 Department</option>
-                        <option value="CLASS">🎓 Class</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-4">
-                      {notices.length === 0 ? (
-                        <Card className="p-12 text-center text-zinc-400">
-                          <Megaphone size={40} className="mx-auto mb-3 text-zinc-300" />
-                          <p className="font-bold text-zinc-600 text-base">No notices posted yet</p>
-                          <p className="text-xs text-zinc-400 mt-1">Check back later for announcements</p>
-                        </Card>
-                      ) : (
-                        notices.map(notice => {
-                          const isHighlighted = String(highlightedNoticeId) === String(notice.id);
-                          return (
-                            <Card
-                              id={`notice-${notice.id}`}
-                              key={notice.id}
-                              className={cn(
-                                "p-6 relative transition-all border",
-                                isHighlighted
-                                  ? "border-indigo-500 ring-2 ring-indigo-500/50 bg-indigo-50/20 shadow-lg"
-                                  : notice.is_pinned
-                                  ? "border-amber-300 bg-amber-50/20 shadow-md"
-                                  : "border-zinc-200 hover:border-zinc-300"
-                              )}
-                            >
-                              <div className="flex items-start justify-between gap-4 mb-3">
-                                <div className="space-y-1 min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    {isHighlighted && (
-                                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-600 text-white border border-indigo-700 flex items-center gap-1">
-                                        <Share2 size={10} /> SHARED LINK TARGET
-                                      </span>
-                                    )}
-                                    {notice.is_pinned && (
-                                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
-                                        <Pin size={10} /> PINNED
-                                      </span>
-                                    )}
-                                    <span className={cn(
-                                      "px-2.5 py-0.5 rounded-full text-[10px] font-black border",
-                                      notice.priority === 'URGENT' ? "bg-red-50 text-red-600 border-red-200" :
-                                      notice.priority === 'HIGH' ? "bg-orange-50 text-orange-600 border-orange-200" :
-                                      notice.priority === 'LOW' ? "bg-zinc-100 text-zinc-600 border-zinc-200" :
-                                      "bg-blue-50 text-blue-600 border-blue-200"
-                                    )}>
-                                      {notice.priority}
-                                    </span>
-                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200 uppercase">
-                                      {notice.scope === 'ALL' ? '🌐 GLOBAL' : notice.scope === 'DEPARTMENT' ? `🏢 DEPT: ${notice.department_name || 'DEPARTMENT'}` : notice.scope === 'CLASS' ? `🎓 CLASS: ${notice.class_name || 'CLASS'}` : `${notice.scope} SCOPE`}
-                                    </span>
+                      {/* Team Members List */}
+                      <div className="space-y-3">
+                        <h5 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                          Team Members ({(currentTaskTeam.members || []).filter(m => m.status === 'ACCEPTED').length} Accepted)
+                        </h5>
+                        <div className="space-y-2">
+                          {(currentTaskTeam.members || []).map(m => {
+                            const isLeader = m.student_id?.toString() === currentTaskTeam.leader_id?.toString();
+                            return (
+                              <div key={m.id} className="flex items-center justify-between p-3 bg-white border border-zinc-200 rounded-2xl">
+                                <div className="flex items-center gap-3">
+                                  <div className={cn(
+                                    "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold",
+                                    isLeader ? "bg-indigo-600 text-white" : "bg-zinc-100 text-zinc-600"
+                                  )}>
+                                    {isLeader ? 'L' : 'M'}
                                   </div>
-                                  <h3 className="text-lg font-black text-zinc-900 leading-snug">{notice.title}</h3>
+                                  <div>
+                                    <p className="text-sm font-bold text-zinc-900 flex items-center gap-2">
+                                      {m.full_name || m.username}
+                                      {isLeader && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-extrabold">Leader</span>}
+                                    </p>
+                                    <p className="text-xs text-zinc-400 font-mono">{m.register_number}</p>
+                                  </div>
                                 </div>
 
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <button
-                                    onClick={() => handleShareNotice(notice.id, notice.title)}
-                                    className="p-1.5 text-zinc-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold px-2.5 border border-zinc-200 hover:border-indigo-300"
-                                    title="Share Notice Link"
-                                  >
-                                    <Share2 size={14} />
-                                    <span className="hidden sm:inline">Share</span>
-                                  </button>
-                                  {(isAdvisor || isHOD || isAdmin) && (
+                                <div className="flex items-center gap-3">
+                                  <Badge variant={
+                                    m.status === 'ACCEPTED' ? 'success' :
+                                      m.status === 'PENDING' ? 'warning' :
+                                        m.status === 'DECLINED' ? 'danger' : 'neutral'
+                                  }>
+                                    {m.status}
+                                  </Badge>
+
+                                  {user?.id?.toString() === currentTaskTeam.leader_id?.toString() && !isLeader && currentTaskTeam.status !== 'APPROVED' && (
                                     <button
-                                      onClick={() => handlePinNotice(notice.id)}
-                                      className={cn("p-1.5 rounded-lg hover:bg-zinc-100 transition-colors", notice.is_pinned ? "text-amber-600" : "text-zinc-400")}
-                                      title={notice.is_pinned ? "Unpin Notice" : "Pin Notice"}
-                                    >
-                                      <Pin size={16} />
-                                    </button>
-                                  )}
-                                  {(isAdmin || String(notice.created_by) === String(user?.id)) && (
-                                    <button
-                                      onClick={() => handleDeleteNotice(notice.id)}
+                                      onClick={() => handleRemoveTeamMember(m.id)}
                                       className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                      title="Delete Notice"
+                                      title="Remove Member"
                                     >
                                       <Trash2 size={16} />
                                     </button>
                                   )}
                                 </div>
                               </div>
-
-                              <p className="text-sm text-zinc-700 whitespace-pre-wrap leading-relaxed mb-4">{notice.description}</p>
-
-                              {notice.attachment_url && (
-                                <div className="mb-4">
-                                  <a
-                                    href={notice.attachment_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors border border-indigo-200"
-                                  >
-                                    <Paperclip size={14} /> Download Notice Attachment
-                                  </a>
-                                </div>
-                              )}
-
-                              <div className="flex items-center justify-between text-xs font-medium text-zinc-400 border-t border-zinc-100 pt-3">
-                                <span>Posted by <strong className="text-zinc-700">{notice.creator_name}</strong> ({notice.creator_role})</span>
-                                <span>{new Date(notice.created_at).toLocaleString()}</span>
-                              </div>
-                            </Card>
-                          );
-                        })
-                      )}
-                    </div>
-                  </PageLayout>
-                </motion.div>
-              )
-            }
-
-            {
-              view === 'feedback' && (
-                <motion.div
-                  key="feedback"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="w-full h-full flex flex-col min-h-0"
-                >
-                  <PageLayout>
-                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
-                      <div>
-                        <h2 className="text-2xl font-black text-zinc-900 tracking-tight flex items-center gap-2">
-                          <MessageSquare className="text-indigo-600" size={26} /> Feedback & Suggestions
-                        </h2>
-                        <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider">
-                          {isStudent ? 'Submit feedback, suggestions, or bugs to advisors' : 'Feedback Dashboard & Case Management'}
-                        </p>
-                      </div>
-
-                      {isStudent && (
-                        <Button
-                          onClick={() => setShowCreateFeedbackModal(true)}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 rounded-xl shadow-lg shadow-indigo-600/20"
-                        >
-                          <Plus size={18} /> New Feedback
-                        </Button>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-3 mb-6">
-                      <div className="relative flex-1 min-w-[200px]">
-                        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
-                        <Input
-                          placeholder="Search feedback..."
-                          value={feedbackSearch}
-                          onChange={e => setFeedbackSearch(e.target.value)}
-                          className="pl-10"
-                        />
-                      </div>
-                      <select
-                        value={feedbackStatusFilter}
-                        onChange={e => setFeedbackStatusFilter(e.target.value)}
-                        className="h-11 px-3 rounded-lg border border-zinc-200 bg-white text-xs font-bold text-zinc-700"
-                      >
-                        <option value="">All Statuses</option>
-                        <option value="Open">🟢 Open</option>
-                        <option value="In Progress">🟡 In Progress</option>
-                        <option value="Resolved">✅ Resolved</option>
-                        <option value="Rejected">❌ Rejected</option>
-                      </select>
-                      <select
-                        value={feedbackCategoryFilter}
-                        onChange={e => setFeedbackCategoryFilter(e.target.value)}
-                        className="h-11 px-3 rounded-lg border border-zinc-200 bg-white text-xs font-bold text-zinc-700"
-                      >
-                        <option value="">All Categories</option>
-                        <option value="Suggestion">💡 Suggestion</option>
-                        <option value="Bug">🐛 Bug</option>
-                        <option value="Complaint">⚠️ Complaint</option>
-                        <option value="Feature Request">✨ Feature Request</option>
-                        <option value="General">💬 General</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-4">
-                      {feedbacks.length === 0 ? (
-                        <Card className="p-12 text-center text-zinc-400">
-                          <MessageSquare size={40} className="mx-auto mb-3 text-zinc-300" />
-                          <p className="font-bold text-zinc-600 text-base">No feedback found</p>
-                          <p className="text-xs text-zinc-400 mt-1">{isStudent ? 'Click "New Feedback" to submit a suggestion or bug report' : 'No feedback cases submitted yet'}</p>
-                        </Card>
-                      ) : (
-                        feedbacks.map(fb => (
-                          <Card key={fb.id} className="p-5 border border-zinc-200 hover:border-zinc-300 transition-all cursor-pointer" onClick={() => openFeedbackDetail(fb)}>
-                            <div className="flex items-start justify-between gap-4 mb-2">
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className={cn(
-                                    "px-2.5 py-0.5 rounded-full text-[10px] font-black border",
-                                    fb.status === 'Resolved' ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
-                                    fb.status === 'In Progress' ? "bg-amber-50 text-amber-600 border-amber-200" :
-                                    fb.status === 'Rejected' ? "bg-red-50 text-red-600 border-red-200" :
-                                    "bg-blue-50 text-blue-600 border-blue-200"
-                                  )}>
-                                    {fb.status}
-                                  </span>
-                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-zinc-100 text-zinc-700">
-                                    {fb.category}
-                                  </span>
-                                  <span className={cn(
-                                    "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-                                    fb.priority === 'Critical' ? "bg-red-100 text-red-700" :
-                                    fb.priority === 'High' ? "bg-orange-100 text-orange-700" : "bg-zinc-100 text-zinc-500"
-                                  )}>
-                                    {fb.priority} Priority
-                                  </span>
-                                </div>
-                                <h3 className="text-base font-bold text-zinc-900">{fb.title}</h3>
-                              </div>
-
-                              <span className="text-xs text-zinc-400 shrink-0">{new Date(fb.created_at).toLocaleDateString()}</span>
-                            </div>
-
-                            <p className="text-xs text-zinc-600 line-clamp-2 mb-3">{fb.description}</p>
-
-                            <div className="flex items-center justify-between text-[11px] font-medium text-zinc-400 border-t border-zinc-100 pt-2.5">
-                              <span>Submitted by <strong className="text-zinc-700">{fb.submitter_name}</strong></span>
-                              <span className="flex items-center gap-1 text-indigo-600 font-bold">
-                                <MessageCircle size={12} /> {fb.reply_count || 0} Replies &rarr;
-                              </span>
-                            </div>
-                          </Card>
-                        ))
-                      )}
-                    </div>
-                  </PageLayout>
-                </motion.div>
-              )
-            }
-
-            {
-              view === 'settings' && (
-                <motion.div
-                  key="settings"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="w-full h-full flex flex-col min-h-0"
-                >
-                  <SettingsView
-                    user={user}
-                    token={token}
-                    addToast={addToast}
-                  />
-                </motion.div>
-              )
-            }
-          </AnimatePresence>
-        </div>
-
-        <AnimatePresence>
-          {showExportModal && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="bg-white rounded-[2rem] p-6 md:p-8 max-w-xl w-full shadow-2xl relative border border-zinc-100 max-h-[90vh] overflow-y-auto"
-              >
-                <button
-                  onClick={() => setShowExportModal(false)}
-                  className="absolute top-5 right-5 p-2 hover:bg-zinc-100 rounded-full transition-colors"
-                >
-                  <X size={20} className="text-zinc-400" />
-                </button>
-
-                <h3 className="text-2xl font-black text-zinc-900 tracking-tight pr-8">Report Studio</h3>
-                <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mt-1.5 mb-6">
-                  {isAdmin ? 'System-Wide Report' : isHOD ? 'Department Report' : user?.is_year_coordinator ? `Year ${user?.year_scope} Report` : `Class Report — ${user?.class_name || 'My Class'}`}
-                </p>
-
-                <div className="space-y-4">
-
-                  {/* HOD / Admin: multi-class checkbox picker */}
-                  {(isAdmin || isHOD) && (() => {
-                    const availableClasses = isAdmin
-                      ? classes
-                      : (hodStats?.classStats || classes.filter(c => c.department_id?.toString() === user?.department_id?.toString()));
-                    return (
-                      <div>
-                        <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5">
-                          <Users size={11} />
-                          Select Classes <span className="normal-case text-zinc-300 font-medium">(pick multiple)</span>
-                        </label>
-                        <div className="max-h-40 overflow-y-auto border border-zinc-100 rounded-2xl bg-zinc-50 p-3 flex flex-col gap-2">
-                          {(availableClasses as any[]).slice().sort((a: any, b: any) => (a.year || 0) - (b.year || 0) || (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' })).map((c: any) => {
-                            const cid = c.id.toString();
-                            const checked = reportFilters.classIds.includes(cid);
-                            return (
-                              <label key={cid} className="flex items-center gap-3 cursor-pointer group">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => setReportFilters(prev => ({
-                                    ...prev,
-                                    classIds: checked
-                                      ? prev.classIds.filter(id => id !== cid)
-                                      : [...prev.classIds, cid]
-                                  }))}
-                                  className="w-4 h-4 rounded accent-blue-600 cursor-pointer"
-                                />
-                                <span className={`text-sm font-bold transition-colors ${checked ? 'text-blue-700' : 'text-zinc-700 group-hover:text-zinc-900'}`}>{c.name}</span>
-                              </label>
                             );
                           })}
                         </div>
-                        {reportFilters.classIds.length > 0 && (
-                          <p className="text-[10px] font-bold text-blue-600 mt-1.5">
-                            {reportFilters.classIds.length} class{reportFilters.classIds.length > 1 ? 'es' : ''} selected — report will combine all selected classes
-                          </p>
-                        )}
-                        {reportFilters.classIds.length === 0 && (
-                          <p className="text-[10px] font-medium text-zinc-400 mt-1.5">No class selected — will include all classes</p>
-                        )}
-                      </div>
-                    );
-                  })()}
-
-                  {/* Year Coordinator: multi-class checkbox picker */}
-                  {user?.is_year_coordinator && !isAdmin && !isHOD && (() => {
-                    const availableClasses = classes.filter(c => Number(c.year) === Number(user?.year_scope) && c.department_id?.toString() === user?.department_id?.toString());
-                    return (
-                      <div>
-                        <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5">
-                          <Users size={11} />
-                          Select Classes <span className="normal-case text-zinc-300 font-medium">(pick multiple)</span>
-                        </label>
-                        <div className="max-h-40 overflow-y-auto border border-zinc-100 rounded-2xl bg-zinc-50 p-3 flex flex-col gap-2">
-                          {availableClasses.slice().sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' })).map((c: any) => {
-                            const cid = c.id.toString();
-                            const checked = reportFilters.classIds.includes(cid);
-                            return (
-                              <label key={cid} className="flex items-center gap-3 cursor-pointer group">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => setReportFilters(prev => ({
-                                    ...prev,
-                                    classIds: checked
-                                      ? prev.classIds.filter(id => id !== cid)
-                                      : [...prev.classIds, cid]
-                                  }))}
-                                  className="w-4 h-4 rounded accent-blue-600 cursor-pointer"
-                                />
-                                <span className={`text-sm font-bold transition-colors ${checked ? 'text-blue-700' : 'text-zinc-700 group-hover:text-zinc-900'}`}>{c.name}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                        {reportFilters.classIds.length > 0 && (
-                          <p className="text-[10px] font-bold text-blue-600 mt-1.5">
-                            {reportFilters.classIds.length} class{reportFilters.classIds.length > 1 ? 'es' : ''} selected — report will combine all selected classes
-                          </p>
-                        )}
-                        {reportFilters.classIds.length === 0 && (
-                          <p className="text-[10px] font-medium text-zinc-400 mt-1.5">No class selected — will include all year classes</p>
-                        )}
-                      </div>
-                    );
-                  })()}
-
-                  {/* Class Advisor & Student Coordinator: assigned class indicator */}
-                  {(isAdvisor || isCoordinator) && !isAdmin && !isHOD && !user?.is_year_coordinator && (
-                    <div>
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 block">Assigned Class</label>
-                      <div className="p-3 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold text-zinc-800">
-                        {myClass?.name || classes.find(c => c.id.toString() === user?.class_id?.toString())?.name || 'My Class'}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Task selector */}
-                  <div>
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5"><ClipboardList size={11} /> Task</label>
-                    <select
-                      className="w-full p-3 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                      value={reportFilters.taskId}
-                      onChange={(e) => setReportFilters(prev => ({ ...prev, taskId: e.target.value }))}
-                    >
-                      <option value="">All Tasks</option>
-                      {tasks.map((t: any) => (
-                        <option key={t.id} value={t.id.toString()}>{t.title}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Submission Status */}
-                  <div>
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5"><ShieldCheck size={11} /> Submission Status</label>
-                    <StatusDropdown
-                      value={reportFilters.status || 'ALL'}
-                      onChange={(val) => setReportFilters(prev => ({ ...prev, status: val }))}
-                    />
-                  </div>
-
-
-
-
-                  <div className="flex gap-4 pt-2">
-                    <Button variant="ghost" onClick={() => { setShowExportModal(false); setReportFilters({ classIds: [], taskId: '', status: 'ALL' }); }} className="flex-1 rounded-2xl">Cancel</Button>
-                    <Button
-                      onClick={() => exportToExcel(reportFilters)}
-                      className="flex-1 rounded-2xl bg-black hover:bg-zinc-800 text-white flex items-center justify-center gap-2"
-                    >
-                      <FileDown size={18} /> Download Excel
-                    </Button>
-                  </div>
-                </div>
-              </motion.div>
-            </div>
-          )}
-
-          {showFooterModal && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white rounded-3xl p-6 md:p-8 max-w-2xl w-full max-h-[85vh] overflow-y-auto shadow-2xl relative"
-              >
-                <button
-                  onClick={() => setShowFooterModal(null)}
-                  className="absolute top-6 right-6 p-2 hover:bg-zinc-100 rounded-full transition-colors"
-                >
-                  <XCircle size={24} className="text-zinc-400" />
-                </button>
-
-                {showFooterModal === 'PRIVACY' && (
-                  <div className="space-y-4">
-                    <h3 className="text-2xl font-black">Privacy Policy</h3>
-                    <div className="text-zinc-600 leading-relaxed text-sm space-y-4">
-                      <p>The VSBEC IT Academic Task Management System respects the privacy of all users.</p>
-                      <p>Information collected through the platform, including login credentials, academic task records, submissions, and user activity, is used only for academic administration and internal institutional purposes.</p>
-                      <p>User data is securely stored and accessed only by authorized administrators, department staff, and relevant academic authorities. The system does not share personal information with external parties without institutional approval.</p>
-                      <p>All users are expected to maintain confidentiality of their account credentials and report any unauthorized access immediately.</p>
-                    </div>
-                  </div>
-                )}
-
-                {showFooterModal === 'TERMS' && (
-                  <div className="space-y-4">
-                    <h3 className="text-2xl font-black">Terms of Service</h3>
-                    <div className="text-zinc-600 leading-relaxed text-sm space-y-4">
-                      <p>By using the VSBEC IT Academic Task Management System, users agree to use the platform only for academic and institutional purposes.</p>
-                      <p>Students, faculty, and administrators must provide accurate information and use their assigned accounts responsibly.</p>
-                      <p>Any misuse of the system, unauthorized access, manipulation of records, or disruption of platform operations may lead to institutional action.</p>
-                      <p>The institution reserves the right to modify features, permissions, or policies whenever required for academic management.</p>
-                    </div>
-                  </div>
-                )}
-
-                {showFooterModal === 'SUPPORT' && (
-                  <div className="space-y-4">
-                    <h3 className="text-2xl font-black">Support</h3>
-                    <div className="text-zinc-600 leading-relaxed text-sm space-y-4">
-                      <p>For technical assistance, login issues, task-related concerns, or system access problems, users may contact the concerned department administrator or system support team.</p>
-                      <p>Support is provided during working hours through the institution’s official communication channels.</p>
-                      <p>For unresolved issues, users may report directly to the IT Department responsible for maintaining the platform.</p>
-                    </div>
-                  </div>
-                )}
-
-                <Button onClick={() => setShowFooterModal(null)} className="w-full mt-8">Close</Button>
-              </motion.div>
-            </div>
-          )}
-
-          {selectedPosterModal && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center justify-center p-2"
-              >
-                <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
-                  <a
-                    href={selectedPosterModal}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="p-2.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors border border-white/20 flex items-center gap-1.5 text-xs font-bold px-4"
-                  >
-                    <ExternalLink size={16} /> Open in New Tab
-                  </a>
-                  <button
-                    onClick={() => setSelectedPosterModal(null)}
-                    className="p-2.5 bg-black/70 text-white rounded-full hover:bg-black/90 transition-colors border border-white/20"
-                    title="Close Poster View"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-                {selectedPosterModal.toLowerCase().includes('.pdf') ? (
-                  <iframe
-                    src={selectedPosterModal}
-                    title="Event Poster PDF Viewer"
-                    className="w-full h-[85vh] rounded-xl shadow-2xl border border-zinc-700 bg-white"
-                  />
-                ) : (
-                  <img
-                    src={selectedPosterModal}
-                    alt="Full Poster View"
-                    className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl border border-zinc-700"
-                  />
-                )}
-              </motion.div>
-            </div>
-          )}
-
-          {sharedTaskModal && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl relative space-y-6 max-h-[95vh] overflow-y-auto"
-              >
-                <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold text-lg">
-                      ✓
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-zinc-900">Task Posted Successfully!</h3>
-                      <p className="text-xs text-zinc-500 font-medium">Ready to share with students and advisors</p>
-                    </div>
-                  </div>
-                  <button onClick={() => setSharedTaskModal(null)} className="p-1 hover:bg-zinc-100 rounded-full">
-                    <X size={20} className="text-zinc-400" />
-                  </button>
-                </div>
-
-                {sharedTaskModal.poster_url && (
-                  <div className="rounded-xl overflow-hidden max-h-44 bg-zinc-950 border border-zinc-200 flex items-center justify-center">
-                    <img src={sharedTaskModal.poster_url} alt="Poster" className="max-h-44 object-contain" />
-                  </div>
-                )}
-
-                <div className="space-y-1">
-                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Task Title</p>
-                  <p className="text-base font-bold text-zinc-900">{sharedTaskModal.title}</p>
-                </div>
-
-                <div className="space-y-2 bg-zinc-50 p-4 rounded-xl border border-zinc-200">
-                  <label className="text-xs font-bold text-zinc-600 uppercase tracking-widest block">Direct Share Link</label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      readOnly
-                      value={`${window.location.origin}${window.location.pathname}?taskId=${sharedTaskModal.id}`}
-                      className="text-xs font-mono bg-white"
-                    />
-                    <Button
-                      type="button"
-                      onClick={() => copyTaskShareLink(sharedTaskModal.id)}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white shrink-0 font-bold"
-                    >
-                      <Copy size={16} /> Copy
-                    </Button>
-                  </div>
-                </div>
-
-                <Button onClick={() => setSharedTaskModal(null)} className="w-full">
-                  Done
-                </Button>
-              </motion.div>
-            </div>
-          )}
-
-          {teamModalTask && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white rounded-3xl p-6 md:p-8 max-w-2xl w-full shadow-2xl relative space-y-6 max-h-[90vh] overflow-y-auto"
-              >
-                <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
-                      <Users size={20} />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-zinc-900">{teamModalTask.title} — Team Management</h3>
-                      <p className="text-xs text-zinc-500 font-medium">Min {teamModalTask.min_team_size || 2} - Max {teamModalTask.max_team_size || 5} Members</p>
-                    </div>
-                  </div>
-                  <button onClick={() => { setTeamModalTask(null); setCurrentTaskTeam(null); }} className="p-1.5 hover:bg-zinc-100 rounded-full transition-colors">
-                    <X size={20} className="text-zinc-400" />
-                  </button>
-                </div>
-
-                {!currentTaskTeam ? (
-                  /* Form a New Team View */
-                  <div className="space-y-6">
-                    <div className="bg-indigo-50/70 border border-indigo-100 p-4 rounded-2xl space-y-1">
-                      <h4 className="font-bold text-sm text-indigo-900">Form a New Team</h4>
-                      <p className="text-xs text-indigo-700">
-                        Create a team for this task and invite your classmates. As team leader, you will be able to manage members and upload the final proof submission.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-zinc-700 uppercase tracking-wider block">Team Name <span className="text-red-500">*</span></label>
-                      <Input
-                        placeholder="e.g. Cyber Squad / Tech Titans"
-                        value={newTeamName}
-                        onChange={e => setNewTeamName(e.target.value)}
-                        className="h-11 font-semibold"
-                      />
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs font-bold text-zinc-700 uppercase tracking-wider block">
-                          Select Classmates to Invite (Optional)
-                        </label>
-                        <span className="text-xs text-zinc-400 font-mono">
-                          Max {teamModalTask.max_team_size ? teamModalTask.max_team_size - 1 : 4} invites
-                        </span>
                       </div>
 
-                      {eligibleClassmates.length > 0 && (
-                        <div className="relative">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
-                          <Input
-                            placeholder="Search classmate by Name or Reg No..."
-                            value={classmateSearchTerm}
-                            onChange={e => setClassmateSearchTerm(e.target.value)}
-                            className="pl-9 h-9 text-xs"
-                          />
-                        </div>
-                      )}
-
-                      {(() => {
-                        const filtered = eligibleClassmates.filter(s =>
-                          !classmateSearchTerm ||
-                          (s.full_name || '').toLowerCase().includes(classmateSearchTerm.toLowerCase()) ||
-                          (s.register_number || '').toLowerCase().includes(classmateSearchTerm.toLowerCase()) ||
-                          (s.username || '').toLowerCase().includes(classmateSearchTerm.toLowerCase())
-                        );
-
-                        if (filtered.length === 0) {
-                          return (
-                            <div className="p-6 bg-zinc-50 border border-zinc-200 rounded-2xl text-center text-xs text-zinc-500">
-                              {classmateSearchTerm ? 'No matching classmates found.' : 'No available classmates in your section for this task (all students might already be in teams).'}
-                            </div>
-                          );
-                        }
-
-                        return (
-                          <div className="max-h-60 overflow-y-auto border border-zinc-200 rounded-2xl p-3 bg-zinc-50/50 space-y-2 custom-scrollbar">
-                            {filtered.map(student => {
-                              const isSelected = selectedClassmateIds.includes(student.id);
+                      {/* Pending Invitations */}
+                      {currentTaskTeam.invitations && currentTaskTeam.invitations.length > 0 && (
+                        <div className="space-y-2">
+                          <h5 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Pending Invitations</h5>
+                          <div className="space-y-2">
+                            {currentTaskTeam.invitations.map(inv => {
+                              const isMe = String(inv.student_id) === String(user?.id);
                               return (
-                                <label
-                                  key={student.id}
-                                  className={cn(
-                                    "flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all border",
-                                    isSelected ? "bg-indigo-50/90 border-indigo-300 shadow-sm" : "bg-white border-zinc-200 hover:border-indigo-300"
-                                  )}
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <input
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      onChange={e => {
-                                        if (e.target.checked) {
-                                          if (selectedClassmateIds.length >= (teamModalTask.max_team_size ? teamModalTask.max_team_size - 1 : 4)) {
-                                            return addToast(`Max team limit is ${teamModalTask.max_team_size || 5} including leader`, 'warning');
-                                          }
-                                          setSelectedClassmateIds(prev => [...prev, student.id]);
-                                        } else {
-                                          setSelectedClassmateIds(prev => prev.filter(id => id !== student.id));
-                                        }
-                                      }}
-                                      className="w-4 h-4 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500"
-                                    />
-                                    <div>
-                                      <p className="text-sm font-extrabold text-zinc-900">{student.full_name}</p>
-                                      <p className="text-xs text-indigo-600 font-mono font-semibold">Reg No: {student.register_number || student.username}</p>
+                                <div key={inv.id} className="flex items-center justify-between p-3 bg-amber-50/90 border border-amber-200 rounded-xl text-xs text-amber-900 font-semibold shadow-xs">
+                                  <span>{isMe ? "You have been invited to join this team!" : `Waiting for ${inv.student_name} to respond...`}</span>
+                                  {isMe ? (
+                                    <div className="flex items-center gap-2">
+                                      <Button
+                                        size="sm"
+                                        onClick={() => handleRespondInvitation(inv.id, 'ACCEPT')}
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs px-3 py-1.5 rounded-xl shadow-sm border-none"
+                                      >
+                                        Accept
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleRespondInvitation(inv.id, 'DECLINE')}
+                                        className="bg-white hover:bg-zinc-100 text-zinc-700 font-bold text-xs px-3 py-1.5 rounded-xl border border-zinc-200"
+                                      >
+                                        Decline
+                                      </Button>
                                     </div>
-                                  </div>
-                                  {isSelected && (
-                                    <Badge variant="primary" className="bg-indigo-600 text-white text-[10px]">
-                                      Selected
-                                    </Badge>
+                                  ) : (
+                                    <Badge variant="warning">Pending</Badge>
                                   )}
-                                </label>
+                                </div>
                               );
                             })}
                           </div>
-                        );
-                      })()}
+                        </div>
+                      )}
+
+                      {/* Invite Additional Classmates Section for Leader */}
+                      {user?.id?.toString() === currentTaskTeam.leader_id?.toString() && currentTaskTeam.status !== 'APPROVED' && (
+                        <div className="pt-4 border-t border-zinc-200 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h5 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                              Invite Additional Classmates
+                            </h5>
+                            <span className="text-xs text-zinc-400 font-mono">
+                              Max {teamModalTask?.max_team_size || 5} members
+                            </span>
+                          </div>
+
+                          {eligibleClassmates.length > 0 ? (
+                            <div className="space-y-3">
+                              <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+                                <Input
+                                  placeholder="Search classmate by Name or Reg No..."
+                                  value={classmateSearchTerm}
+                                  onChange={e => setClassmateSearchTerm(e.target.value)}
+                                  className="pl-9 h-9 text-xs"
+                                />
+                              </div>
+
+                              {(() => {
+                                const filtered = eligibleClassmates.filter(s =>
+                                  !classmateSearchTerm ||
+                                  (s.full_name || '').toLowerCase().includes(classmateSearchTerm.toLowerCase()) ||
+                                  (s.register_number || '').toLowerCase().includes(classmateSearchTerm.toLowerCase()) ||
+                                  (s.username || '').toLowerCase().includes(classmateSearchTerm.toLowerCase())
+                                );
+
+                                if (filtered.length === 0) {
+                                  return (
+                                    <p className="text-xs text-zinc-400 italic">No matching classmates found.</p>
+                                  );
+                                }
+
+                                const currentTotal = ((currentTaskTeam.members || []).filter(m => ['ACCEPTED', 'PENDING'].includes(m.status)).length) + (currentTaskTeam.invitations || []).length;
+                                const maxAllowed = teamModalTask?.max_team_size || 5;
+
+                                return (
+                                  <div className="max-h-40 overflow-y-auto border border-zinc-200 rounded-2xl p-2.5 bg-zinc-50/50 space-y-1.5 custom-scrollbar">
+                                    {filtered.map(student => {
+                                      const isSelected = selectedClassmateIds.includes(student.id);
+                                      return (
+                                        <label
+                                          key={student.id}
+                                          className={cn(
+                                            "flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all border text-xs",
+                                            isSelected ? "bg-indigo-50/90 border-indigo-300 shadow-sm" : "bg-white border-zinc-200 hover:border-indigo-300"
+                                          )}
+                                        >
+                                          <div className="flex items-center gap-2.5">
+                                            <input
+                                              type="checkbox"
+                                              checked={isSelected}
+                                              onChange={e => {
+                                                if (e.target.checked) {
+                                                  if (currentTotal + selectedClassmateIds.length >= maxAllowed) {
+                                                    return addToast(`Max team limit is ${maxAllowed} members`, 'warning');
+                                                  }
+                                                  setSelectedClassmateIds(prev => [...prev, student.id]);
+                                                } else {
+                                                  setSelectedClassmateIds(prev => prev.filter(id => id !== student.id));
+                                                }
+                                              }}
+                                              className="w-3.5 h-3.5 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500"
+                                            />
+                                            <div>
+                                              <p className="font-bold text-zinc-900">{student.full_name}</p>
+                                              <p className="text-[10px] text-zinc-400 font-mono">Reg No: {student.register_number || student.username}</p>
+                                            </div>
+                                          </div>
+                                          {isSelected && (
+                                            <Badge variant="primary" className="bg-indigo-600 text-white text-[10px]">
+                                              Selected
+                                            </Badge>
+                                          )}
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })()}
+
+                              {selectedClassmateIds.length > 0 && (
+                                <Button
+                                  onClick={handleInviteMoreClassmates}
+                                  className="w-full h-10 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2"
+                                >
+                                  <UserPlus size={16} /> Send Invitation ({selectedClassmateIds.length})
+                                </Button>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-zinc-400 italic">No available classmates in your section to invite.</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Team Task Proof Submission / Status Section */}
+                      <div className="pt-4 border-t border-zinc-200 space-y-4">
+                        <h5 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Team Submission Status</h5>
+
+                        {currentTaskTeam.submission ? (
+                          <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-2xl space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-zinc-600">Submitted Proof</span>
+                              <Badge variant={
+                                currentTaskTeam.submission.status === 'APPROVED' ? 'success' :
+                                  currentTaskTeam.submission.status === 'REJECTED' ? 'danger' : 'warning'
+                              }>
+                                {currentTaskTeam.submission.status}
+                              </Badge>
+                            </div>
+
+                            {currentTaskTeam.submission.status === 'REJECTED' && (
+                              <div className="p-3 bg-red-50 border border-red-200 rounded-xl space-y-1 text-xs text-red-700">
+                                <p className="font-extrabold flex items-center gap-1.5 text-red-800">
+                                  <XCircle size={15} /> Submission Rejected
+                                </p>
+                                <p className="font-semibold">
+                                  <span className="font-bold text-red-900">Feedback / Reason:</span> {currentTaskTeam.submission.remarks || 'Please check task instructions and upload corrected proof screenshot below.'}
+                                </p>
+                              </div>
+                            )}
+
+                            {currentTaskTeam.submission.proof_url && (
+                              <img
+                                src={currentTaskTeam.submission.proof_url}
+                                alt="Team Proof"
+                                className="max-h-48 rounded-xl object-contain border border-zinc-200 cursor-pointer"
+                                onClick={() => window.open(currentTaskTeam.submission?.proof_url, '_blank')}
+                              />
+                            )}
+
+                            {currentTaskTeam.submission.remarks && currentTaskTeam.submission.status !== 'REJECTED' && (
+                              <p className="text-xs text-zinc-600 bg-white p-3 rounded-xl border border-zinc-200">
+                                <span className="font-bold text-zinc-800">Remarks:</span> {currentTaskTeam.submission.remarks}
+                              </p>
+                            )}
+                          </div>
+                        ) : null}
+
+                        {user?.id?.toString() === currentTaskTeam.leader_id?.toString() && (!currentTaskTeam.submission || currentTaskTeam.submission.status === 'REJECTED') && (
+                          /* Leader Proof Upload / Re-upload */
+                          <div className="space-y-4 bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100">
+                            <h6 className="text-xs font-bold text-indigo-900 uppercase tracking-wider">
+                              {currentTaskTeam.submission?.status === 'REJECTED' ? 'Resubmit Team Task Proof' : 'Submit Team Task Proof'}
+                            </h6>
+                            <div>
+                              <label className="text-xs font-bold text-zinc-700 mb-1.5 block">Proof Screenshot <span className="text-red-500">*</span></label>
+                              {teamProofFile ? (
+                                <div className="bg-white p-3 rounded-xl border border-indigo-200 flex items-center justify-between gap-3 shadow-xs">
+                                  <div className="flex items-center gap-3 overflow-hidden min-w-0">
+                                    <div className="w-12 h-12 rounded-lg overflow-hidden border border-indigo-100 bg-zinc-50 shrink-0 flex items-center justify-center">
+                                      <img
+                                        src={URL.createObjectURL(teamProofFile)}
+                                        alt="Team proof preview"
+                                        className="w-full h-full object-cover"
+                                      />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-semibold text-zinc-800 truncate" title={teamProofFile.name}>{teamProofFile.name}</p>
+                                      <p className="text-[10px] text-zinc-400 font-medium">{(teamProofFile.size / (1024 * 1024)).toFixed(2)} MB</p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setTeamProofFile(null);
+                                      const teamInput = document.getElementById('team-proof-file-input') as HTMLInputElement | null;
+                                      if (teamInput) teamInput.value = '';
+                                      addToast('Team proof screenshot removed', 'info');
+                                    }}
+                                    className="text-xs font-bold text-red-600 hover:text-red-800 flex items-center gap-1 bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg border border-red-200 shrink-0 ml-2 transition-colors"
+                                    title="Delete screenshot before submission"
+                                  >
+                                    <Trash2 size={13} /> Delete / Change
+                                  </button>
+                                </div>
+                              ) : (
+                                <input
+                                  type="file"
+                                  id="team-proof-file-input"
+                                  accept="image/*"
+                                  onChange={e => setTeamProofFile(e.target.files?.[0] || null)}
+                                  className="w-full text-xs text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer"
+                                />
+                              )}
+                            </div>
+
+                            <div>
+                              <label className="text-xs font-bold text-zinc-700 mb-1.5 block">Remarks / Notes (Optional)</label>
+                              <Textarea
+                                placeholder="Add any additional notes for the reviewer..."
+                                value={teamRemarks}
+                                onChange={e => setTeamRemarks(e.target.value)}
+                                className="min-h-[80px]"
+                              />
+                            </div>
+
+                            <Button
+                              onClick={handleSubmitTeamProof}
+                              disabled={isSubmittingTeam || !teamProofFile}
+                              className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2"
+                            >
+                              {isSubmittingTeam ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />} {currentTaskTeam.submission?.status === 'REJECTED' ? 'Resubmit Proof' : 'Submit Task Proof'}
+                            </Button>
+                          </div>
+                        )}
+
+                        {user?.id?.toString() !== currentTaskTeam.leader_id?.toString() && !currentTaskTeam.submission && (
+                          <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-2xl text-center text-xs text-zinc-500 font-medium">
+                            Waiting for team leader (<span className="font-bold text-zinc-800">{currentTaskTeam.leader_name}</span>) to submit the team proof.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
+        </main >
+        {/* HOD Extend Deadline & Reopen Modal */}
+        <AnimatePresence>
+          {extendingTask && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-2xl p-6 md:p-8 w-full max-w-md shadow-2xl space-y-4"
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-black text-zinc-900 flex items-center gap-2">
+                    <Clock className="text-indigo-600" size={20} /> Extend Deadline & Reopen
+                  </h3>
+                  <button onClick={() => setExtendingTask(null)} className="text-zinc-400 hover:text-zinc-600">
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <p className="text-xs text-zinc-600 font-medium">
+                  Task: <span className="font-bold text-zinc-900">{extendingTask.title}</span>
+                </p>
+
+                <div>
+                  <label className="text-xs font-bold text-zinc-700 block mb-1">New Extended Deadline Date & Time <span className="text-red-500">*</span></label>
+                  <input
+                    type="datetime-local"
+                    value={extendedDeadline}
+                    onChange={e => setExtendedDeadline(e.target.value)}
+                    min={(() => { const d = new Date(); const pad = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; })()}
+                    className="w-full h-11 px-4 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-semibold cursor-pointer [color-scheme:light]"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <Button variant="ghost" onClick={() => setExtendingTask(null)}>Cancel</Button>
+                  <Button
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 rounded-xl text-xs"
+                    onClick={() => handleExtendDeadlineAndReopen(extendingTask.id, extendedDeadline)}
+                    disabled={!extendedDeadline}
+                  >
+                    Save New Deadline & Reopen
+                  </Button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+
+          {/* Publish Notice Modal */}
+          {showCreateNoticeModal && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white rounded-2xl shadow-2xl border border-zinc-200 max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+              >
+                <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+                  <h3 className="text-lg font-black text-zinc-900 flex items-center gap-2">
+                    <Megaphone className="text-indigo-600" size={20} /> Publish New Notice
+                  </h3>
+                  <button onClick={() => setShowCreateNoticeModal(false)} className="text-zinc-400 hover:text-zinc-600">
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <form onSubmit={handleCreateNotice} className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-zinc-700 block mb-1">Notice Title <span className="text-red-500">*</span></label>
+                    <Input
+                      placeholder="e.g. Schedule for Mid-Term Exams"
+                      value={noticeForm.title}
+                      onChange={e => setNoticeForm(prev => ({ ...prev, title: e.target.value }))}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-zinc-700 block mb-1">Description / Content <span className="text-red-500">*</span></label>
+                    <textarea
+                      rows={4}
+                      placeholder="Enter full notice announcement details here..."
+                      value={noticeForm.description}
+                      onChange={e => setNoticeForm(prev => ({ ...prev, description: e.target.value }))}
+                      className="w-full p-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black text-sm bg-white text-zinc-800"
+                      required
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-zinc-700 block mb-1">Priority</label>
+                      <Select
+                        value={noticeForm.priority}
+                        onChange={e => setNoticeForm(prev => ({ ...prev, priority: e.target.value }))}
+                      >
+                        <option value="LOW">Low</option>
+                        <option value="NORMAL">Normal</option>
+                        <option value="HIGH">High</option>
+                        <option value="URGENT">Urgent</option>
+                      </Select>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <Button
-                        onClick={handleCreateSoloTeam}
-                        disabled={isSubmittingTeam}
-                        variant="secondary"
-                        className="flex-1 h-12 border-zinc-300 font-bold rounded-2xl flex items-center justify-center gap-2 text-xs"
+                    <div>
+                      <label className="text-xs font-bold text-zinc-700 block mb-1">Target Scope</label>
+                      <Select
+                        value={noticeForm.scope}
+                        onChange={e => setNoticeForm(prev => ({ ...prev, scope: e.target.value }))}
                       >
-                        <User size={16} /> Complete as Solo (Individual)
-                      </Button>
-                      <Button
-                        onClick={handleCreateTeam}
-                        disabled={isSubmittingTeam || !newTeamName.trim()}
-                        className="flex-1 h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 text-xs"
-                      >
-                        {isSubmittingTeam ? <Loader2 size={18} className="animate-spin" /> : <Users size={16} />} Create Team & Send Invites
-                      </Button>
+                        {isAdmin && <option value="ALL">All (Global)</option>}
+                        {(isAdmin || isHOD) && <option value="DEPARTMENT">Department</option>}
+                        <option value="CLASS">Class</option>
+                      </Select>
                     </div>
                   </div>
-                ) : (
-                  /* Manage Existing Team View */
-                  <div className="space-y-6">
-                    <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-zinc-50 border border-zinc-200 rounded-2xl">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-lg font-extrabold text-zinc-900">{currentTaskTeam.team_name}</h4>
-                          <Badge variant={
-                            currentTaskTeam.status === 'APPROVED' ? 'success' :
-                            currentTaskTeam.status === 'REJECTED' ? 'danger' :
-                            currentTaskTeam.status === 'SUBMITTED' ? 'info' :
-                            currentTaskTeam.status === 'READY' ? 'warning' : 'neutral'
-                          }>
-                            {currentTaskTeam.status}
-                          </Badge>
+
+                  {noticeForm.scope === 'CLASS' && (() => {
+                    const deptClasses = isHOD && user?.department_id
+                      ? classes.filter(c => String(c.department_id) === String(user.department_id))
+                      : (isAdvisor && user?.class_id ? classes.filter(c => String(c.id) === String(user.class_id)) : classes);
+                    const availClasses = deptClasses.length > 0 ? deptClasses : classes;
+                    const selectedIds = noticeForm.class_ids && noticeForm.class_ids.length > 0
+                      ? noticeForm.class_ids
+                      : (noticeForm.class_id ? [noticeForm.class_id] : []);
+                    const allSelected = availClasses.length > 0 && availClasses.every(c => selectedIds.includes(String(c.id)));
+
+                    return (
+                      <div className="space-y-2 border border-zinc-200 p-3.5 rounded-xl bg-zinc-50/50">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                            <GraduationCap size={16} className="text-indigo-600" /> Target Classes <span className="text-red-500">*</span>
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-semibold text-zinc-500 bg-zinc-200 px-2 py-0.5 rounded-full">
+                              {selectedIds.length} selected
+                            </span>
+                            {availClasses.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (allSelected) {
+                                    setNoticeForm(prev => ({ ...prev, class_ids: [], class_id: '' }));
+                                  } else {
+                                    const allCids = availClasses.map(c => String(c.id));
+                                    setNoticeForm(prev => ({ ...prev, class_ids: allCids, class_id: allCids[0] || '' }));
+                                  }
+                                }}
+                                className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline"
+                              >
+                                {allSelected ? 'Deselect All' : 'Select All'}
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-xs text-zinc-500 font-medium mt-0.5">
-                          Leader: <span className="font-bold text-zinc-800">{currentTaskTeam.leader_name}</span> ({currentTaskTeam.leader_regno})
-                        </p>
-                      </div>
 
-                      {user?.id?.toString() === currentTaskTeam.leader_id?.toString() && currentTaskTeam.status !== 'APPROVED' && (
-                        <Button
-                          variant="ghost"
-                          onClick={() => handleDeleteTeam(currentTaskTeam.id)}
-                          className="text-red-500 hover:bg-red-50 hover:text-red-700 text-xs font-bold px-3 py-1.5 rounded-xl border border-red-100"
-                        >
-                          <Trash2 size={14} /> Delete Team
-                        </Button>
-                      )}
-                    </div>
-
-                    {/* Team Members List */}
-                    <div className="space-y-3">
-                      <h5 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
-                        Team Members ({(currentTaskTeam.members || []).filter(m => m.status === 'ACCEPTED').length} Accepted)
-                      </h5>
-                      <div className="space-y-2">
-                        {(currentTaskTeam.members || []).map(m => {
-                          const isLeader = m.student_id?.toString() === currentTaskTeam.leader_id?.toString();
-                          return (
-                            <div key={m.id} className="flex items-center justify-between p-3 bg-white border border-zinc-200 rounded-2xl">
-                              <div className="flex items-center gap-3">
-                                <div className={cn(
-                                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold",
-                                  isLeader ? "bg-indigo-600 text-white" : "bg-zinc-100 text-zinc-600"
-                                )}>
-                                  {isLeader ? 'L' : 'M'}
-                                </div>
-                                <div>
-                                  <p className="text-sm font-bold text-zinc-900 flex items-center gap-2">
-                                    {m.full_name || m.username}
-                                    {isLeader && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-extrabold">Leader</span>}
-                                  </p>
-                                  <p className="text-xs text-zinc-400 font-mono">{m.register_number}</p>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-3">
-                                <Badge variant={
-                                  m.status === 'ACCEPTED' ? 'success' :
-                                  m.status === 'PENDING' ? 'warning' :
-                                  m.status === 'DECLINED' ? 'danger' : 'neutral'
-                                }>
-                                  {m.status}
-                                </Badge>
-
-                                {user?.id?.toString() === currentTaskTeam.leader_id?.toString() && !isLeader && currentTaskTeam.status !== 'APPROVED' && (
-                                  <button
-                                    onClick={() => handleRemoveTeamMember(m.id)}
-                                    className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                    title="Remove Member"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Pending Invitations */}
-                    {currentTaskTeam.invitations && currentTaskTeam.invitations.length > 0 && (
-                      <div className="space-y-2">
-                        <h5 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Pending Invitations</h5>
-                        <div className="space-y-2">
-                          {currentTaskTeam.invitations.map(inv => {
-                            const isMe = String(inv.student_id) === String(user?.id);
+                        <div className="grid grid-cols-2 gap-2 max-h-44 overflow-y-auto p-1">
+                          {availClasses.map(c => {
+                            const isSelected = selectedIds.includes(String(c.id));
                             return (
-                              <div key={inv.id} className="flex items-center justify-between p-3 bg-amber-50/90 border border-amber-200 rounded-xl text-xs text-amber-900 font-semibold shadow-xs">
-                                <span>{isMe ? "You have been invited to join this team!" : `Waiting for ${inv.student_name} to respond...`}</span>
-                                {isMe ? (
-                                  <div className="flex items-center gap-2">
-                                    <Button
-                                      size="sm"
-                                      onClick={() => handleRespondInvitation(inv.id, 'ACCEPT')}
-                                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs px-3 py-1.5 rounded-xl shadow-sm border-none"
-                                    >
-                                      Accept
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={() => handleRespondInvitation(inv.id, 'DECLINE')}
-                                      className="bg-white hover:bg-zinc-100 text-zinc-700 font-bold text-xs px-3 py-1.5 rounded-xl border border-zinc-200"
-                                    >
-                                      Decline
-                                    </Button>
-                                  </div>
-                                ) : (
-                                  <Badge variant="warning">Pending</Badge>
+                              <label
+                                key={c.id}
+                                className={cn(
+                                  "flex items-center gap-2 p-2 rounded-lg border text-xs font-medium cursor-pointer transition-all",
+                                  isSelected
+                                    ? "bg-indigo-50/80 border-indigo-300 text-indigo-900 shadow-sm"
+                                    : "bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-100"
                                 )}
-                              </div>
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={e => {
+                                    if (e.target.checked) {
+                                      const next = [...selectedIds, String(c.id)];
+                                      setNoticeForm(prev => ({ ...prev, class_ids: next, class_id: next[0] || '' }));
+                                    } else {
+                                      const next = selectedIds.filter(id => id !== String(c.id));
+                                      setNoticeForm(prev => ({ ...prev, class_ids: next, class_id: next[0] || '' }));
+                                    }
+                                  }}
+                                  className="rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                                />
+                                <span className="truncate">{c.name}</span>
+                              </label>
                             );
                           })}
                         </div>
                       </div>
-                    )}
+                    );
+                  })()}
 
-                    {/* Invite Additional Classmates Section for Leader */}
-                    {user?.id?.toString() === currentTaskTeam.leader_id?.toString() && currentTaskTeam.status !== 'APPROVED' && (
-                      <div className="pt-4 border-t border-zinc-200 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h5 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
-                            Invite Additional Classmates
-                          </h5>
-                          <span className="text-xs text-zinc-400 font-mono">
-                            Max {teamModalTask?.max_team_size || 5} members
-                          </span>
-                        </div>
-
-                        {eligibleClassmates.length > 0 ? (
-                          <div className="space-y-3">
-                            <div className="relative">
-                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
-                              <Input
-                                placeholder="Search classmate by Name or Reg No..."
-                                value={classmateSearchTerm}
-                                onChange={e => setClassmateSearchTerm(e.target.value)}
-                                className="pl-9 h-9 text-xs"
-                              />
-                            </div>
-
-                            {(() => {
-                              const filtered = eligibleClassmates.filter(s =>
-                                !classmateSearchTerm ||
-                                (s.full_name || '').toLowerCase().includes(classmateSearchTerm.toLowerCase()) ||
-                                (s.register_number || '').toLowerCase().includes(classmateSearchTerm.toLowerCase()) ||
-                                (s.username || '').toLowerCase().includes(classmateSearchTerm.toLowerCase())
-                              );
-
-                              if (filtered.length === 0) {
-                                return (
-                                  <p className="text-xs text-zinc-400 italic">No matching classmates found.</p>
-                                );
-                              }
-
-                              const currentTotal = ((currentTaskTeam.members || []).filter(m => ['ACCEPTED', 'PENDING'].includes(m.status)).length) + (currentTaskTeam.invitations || []).length;
-                              const maxAllowed = teamModalTask?.max_team_size || 5;
-
-                              return (
-                                <div className="max-h-40 overflow-y-auto border border-zinc-200 rounded-2xl p-2.5 bg-zinc-50/50 space-y-1.5 custom-scrollbar">
-                                  {filtered.map(student => {
-                                    const isSelected = selectedClassmateIds.includes(student.id);
-                                    return (
-                                      <label
-                                        key={student.id}
-                                        className={cn(
-                                          "flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all border text-xs",
-                                          isSelected ? "bg-indigo-50/90 border-indigo-300 shadow-sm" : "bg-white border-zinc-200 hover:border-indigo-300"
-                                        )}
-                                      >
-                                        <div className="flex items-center gap-2.5">
-                                          <input
-                                            type="checkbox"
-                                            checked={isSelected}
-                                            onChange={e => {
-                                              if (e.target.checked) {
-                                                if (currentTotal + selectedClassmateIds.length >= maxAllowed) {
-                                                  return addToast(`Max team limit is ${maxAllowed} members`, 'warning');
-                                                }
-                                                setSelectedClassmateIds(prev => [...prev, student.id]);
-                                              } else {
-                                                setSelectedClassmateIds(prev => prev.filter(id => id !== student.id));
-                                              }
-                                            }}
-                                            className="w-3.5 h-3.5 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500"
-                                          />
-                                          <div>
-                                            <p className="font-bold text-zinc-900">{student.full_name}</p>
-                                            <p className="text-[10px] text-zinc-400 font-mono">Reg No: {student.register_number || student.username}</p>
-                                          </div>
-                                        </div>
-                                        {isSelected && (
-                                          <Badge variant="primary" className="bg-indigo-600 text-white text-[10px]">
-                                            Selected
-                                          </Badge>
-                                        )}
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              );
-                            })()}
-
-                            {selectedClassmateIds.length > 0 && (
-                              <Button
-                                onClick={handleInviteMoreClassmates}
-                                className="w-full h-10 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2"
-                              >
-                                <UserPlus size={16} /> Send Invitation ({selectedClassmateIds.length})
-                              </Button>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-zinc-400 italic">No available classmates in your section to invite.</p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Team Task Proof Submission / Status Section */}
-                    <div className="pt-4 border-t border-zinc-200 space-y-4">
-                      <h5 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Team Submission Status</h5>
-
-                      {currentTaskTeam.submission ? (
-                        <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-2xl space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-zinc-600">Submitted Proof</span>
-                            <Badge variant={
-                              currentTaskTeam.submission.status === 'APPROVED' ? 'success' :
-                              currentTaskTeam.submission.status === 'REJECTED' ? 'danger' : 'warning'
-                            }>
-                              {currentTaskTeam.submission.status}
-                            </Badge>
-                          </div>
-
-                          {currentTaskTeam.submission.status === 'REJECTED' && (
-                            <div className="p-3 bg-red-50 border border-red-200 rounded-xl space-y-1 text-xs text-red-700">
-                              <p className="font-extrabold flex items-center gap-1.5 text-red-800">
-                                <XCircle size={15} /> Submission Rejected
-                              </p>
-                              <p className="font-semibold">
-                                <span className="font-bold text-red-900">Feedback / Reason:</span> {currentTaskTeam.submission.remarks || 'Please check task instructions and upload corrected proof screenshot below.'}
-                              </p>
-                            </div>
-                          )}
-
-                          {currentTaskTeam.submission.proof_url && (
-                            <img
-                              src={currentTaskTeam.submission.proof_url}
-                              alt="Team Proof"
-                              className="max-h-48 rounded-xl object-contain border border-zinc-200 cursor-pointer"
-                              onClick={() => window.open(currentTaskTeam.submission?.proof_url, '_blank')}
-                            />
-                          )}
-
-                          {currentTaskTeam.submission.remarks && currentTaskTeam.submission.status !== 'REJECTED' && (
-                            <p className="text-xs text-zinc-600 bg-white p-3 rounded-xl border border-zinc-200">
-                              <span className="font-bold text-zinc-800">Remarks:</span> {currentTaskTeam.submission.remarks}
-                            </p>
-                          )}
-                        </div>
-                      ) : null}
-
-                      {user?.id?.toString() === currentTaskTeam.leader_id?.toString() && (!currentTaskTeam.submission || currentTaskTeam.submission.status === 'REJECTED') && (
-                        /* Leader Proof Upload / Re-upload */
-                        <div className="space-y-4 bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100">
-                          <h6 className="text-xs font-bold text-indigo-900 uppercase tracking-wider">
-                            {currentTaskTeam.submission?.status === 'REJECTED' ? 'Resubmit Team Task Proof' : 'Submit Team Task Proof'}
-                          </h6>
-                          <div>
-                            <label className="text-xs font-bold text-zinc-700 mb-1.5 block">Proof Screenshot <span className="text-red-500">*</span></label>
-                            {teamProofFile ? (
-                              <div className="bg-white p-3 rounded-xl border border-indigo-200 flex items-center justify-between gap-3 shadow-xs">
-                                <div className="flex items-center gap-3 overflow-hidden min-w-0">
-                                  <div className="w-12 h-12 rounded-lg overflow-hidden border border-indigo-100 bg-zinc-50 shrink-0 flex items-center justify-center">
-                                    <img
-                                      src={URL.createObjectURL(teamProofFile)}
-                                      alt="Team proof preview"
-                                      className="w-full h-full object-cover"
-                                    />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="text-xs font-semibold text-zinc-800 truncate" title={teamProofFile.name}>{teamProofFile.name}</p>
-                                    <p className="text-[10px] text-zinc-400 font-medium">{(teamProofFile.size / (1024 * 1024)).toFixed(2)} MB</p>
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setTeamProofFile(null);
-                                    const teamInput = document.getElementById('team-proof-file-input') as HTMLInputElement | null;
-                                    if (teamInput) teamInput.value = '';
-                                    addToast('Team proof screenshot removed', 'info');
-                                  }}
-                                  className="text-xs font-bold text-red-600 hover:text-red-800 flex items-center gap-1 bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg border border-red-200 shrink-0 ml-2 transition-colors"
-                                  title="Delete screenshot before submission"
-                                >
-                                  <Trash2 size={13} /> Delete / Change
-                                </button>
-                              </div>
-                            ) : (
-                              <input
-                                type="file"
-                                id="team-proof-file-input"
-                                accept="image/*"
-                                onChange={e => setTeamProofFile(e.target.files?.[0] || null)}
-                                className="w-full text-xs text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer"
-                              />
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="text-xs font-bold text-zinc-700 mb-1.5 block">Remarks / Notes (Optional)</label>
-                            <Textarea
-                              placeholder="Add any additional notes for the reviewer..."
-                              value={teamRemarks}
-                              onChange={e => setTeamRemarks(e.target.value)}
-                              className="min-h-[80px]"
-                            />
-                          </div>
-
-                          <Button
-                            onClick={handleSubmitTeamProof}
-                            disabled={isSubmittingTeam || !teamProofFile}
-                            className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2"
-                          >
-                            {isSubmittingTeam ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />} {currentTaskTeam.submission?.status === 'REJECTED' ? 'Resubmit Proof' : 'Submit Task Proof'}
-                          </Button>
-                        </div>
-                      )}
-
-                      {user?.id?.toString() !== currentTaskTeam.leader_id?.toString() && !currentTaskTeam.submission && (
-                        <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-2xl text-center text-xs text-zinc-500 font-medium">
-                          Waiting for team leader (<span className="font-bold text-zinc-800">{currentTaskTeam.leader_name}</span>) to submit the team proof.
-                        </div>
-                      )}
-                    </div>
+                  <div>
+                    <label className="text-xs font-bold text-zinc-700 block mb-1">Attachment File (Optional PDF / Image)</label>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={e => setNoticeFile(e.target.files?.[0] || null)}
+                      className="w-full text-xs text-zinc-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                    />
                   </div>
-                )}
+
+                  <div className="flex justify-end gap-3 pt-3 border-t border-zinc-100">
+                    <Button variant="ghost" type="button" onClick={() => setShowCreateNoticeModal(false)}>Cancel</Button>
+                    <Button className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold" disabled={isPublishingNotice}>
+                      {isPublishingNotice ? 'Publishing...' : 'Publish Notice'}
+                    </Button>
+                  </div>
+                </form>
               </motion.div>
             </div>
           )}
-        </AnimatePresence>
-      </main >
-      {/* HOD Extend Deadline & Reopen Modal */}
-      <AnimatePresence>
-        {extendingTask && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-2xl p-6 md:p-8 w-full max-w-md shadow-2xl space-y-4"
-            >
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-black text-zinc-900 flex items-center gap-2">
-                  <Clock className="text-indigo-600" size={20} /> Extend Deadline & Reopen
-                </h3>
-                <button onClick={() => setExtendingTask(null)} className="text-zinc-400 hover:text-zinc-600">
-                  <X size={18} />
-                </button>
-              </div>
 
-              <p className="text-xs text-zinc-600 font-medium">
-                Task: <span className="font-bold text-zinc-900">{extendingTask.title}</span>
-              </p>
-
-              <div>
-                <label className="text-xs font-bold text-zinc-700 block mb-1">New Extended Deadline Date & Time <span className="text-red-500">*</span></label>
-                <input
-                  type="datetime-local"
-                  value={extendedDeadline}
-                  onChange={e => setExtendedDeadline(e.target.value)}
-                  min={(() => { const d = new Date(); const pad = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; })()}
-                  className="w-full h-11 px-4 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-semibold cursor-pointer [color-scheme:light]"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2">
-                <Button variant="ghost" onClick={() => setExtendingTask(null)}>Cancel</Button>
-                <Button
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 rounded-xl text-xs"
-                  onClick={() => handleExtendDeadlineAndReopen(extendingTask.id, extendedDeadline)}
-                  disabled={!extendedDeadline}
-                >
-                  Save New Deadline & Reopen
-                </Button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-
-        {/* Publish Notice Modal */}
-        {showCreateNoticeModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-2xl border border-zinc-200 max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto"
-            >
-              <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-                <h3 className="text-lg font-black text-zinc-900 flex items-center gap-2">
-                  <Megaphone className="text-indigo-600" size={20} /> Publish New Notice
-                </h3>
-                <button onClick={() => setShowCreateNoticeModal(false)} className="text-zinc-400 hover:text-zinc-600">
-                  <X size={18} />
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateNotice} className="space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-zinc-700 block mb-1">Notice Title <span className="text-red-500">*</span></label>
-                  <Input
-                    placeholder="e.g. Schedule for Mid-Term Exams"
-                    value={noticeForm.title}
-                    onChange={e => setNoticeForm(prev => ({ ...prev, title: e.target.value }))}
-                    required
-                  />
+          {/* Submit Feedback Modal */}
+          {showCreateFeedbackModal && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white rounded-2xl shadow-2xl border border-zinc-200 max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+              >
+                <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+                  <h3 className="text-lg font-black text-zinc-900 flex items-center gap-2">
+                    <MessageSquare className="text-indigo-600" size={20} /> Submit Feedback / Suggestion
+                  </h3>
+                  <button onClick={() => setShowCreateFeedbackModal(false)} className="text-zinc-400 hover:text-zinc-600">
+                    <X size={18} />
+                  </button>
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-zinc-700 block mb-1">Description / Content <span className="text-red-500">*</span></label>
-                  <textarea
-                    rows={4}
-                    placeholder="Enter full notice announcement details here..."
-                    value={noticeForm.description}
-                    onChange={e => setNoticeForm(prev => ({ ...prev, description: e.target.value }))}
-                    className="w-full p-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black text-sm bg-white text-zinc-800"
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
+                <form onSubmit={handleCreateFeedback} className="space-y-4">
                   <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">Priority</label>
-                    <Select
-                      value={noticeForm.priority}
-                      onChange={e => setNoticeForm(prev => ({ ...prev, priority: e.target.value }))}
-                    >
-                      <option value="LOW">Low</option>
-                      <option value="NORMAL">Normal</option>
-                      <option value="HIGH">High</option>
-                      <option value="URGENT">Urgent</option>
-                    </Select>
+                    <label className="text-xs font-bold text-zinc-700 block mb-1">Subject / Title <span className="text-red-500">*</span></label>
+                    <Input
+                      placeholder="Brief summary of your feedback or issue"
+                      value={feedbackForm.title}
+                      onChange={e => setFeedbackForm(prev => ({ ...prev, title: e.target.value }))}
+                      required
+                    />
                   </div>
 
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">Target Scope</label>
-                    <Select
-                      value={noticeForm.scope}
-                      onChange={e => setNoticeForm(prev => ({ ...prev, scope: e.target.value }))}
-                    >
-                      {isAdmin && <option value="ALL">All (Global)</option>}
-                      {(isAdmin || isHOD) && <option value="DEPARTMENT">Department</option>}
-                      <option value="CLASS">Class</option>
-                    </Select>
-                  </div>
-                </div>
-
-                {noticeForm.scope === 'CLASS' && (() => {
-                  const deptClasses = isHOD && user?.department_id
-                    ? classes.filter(c => String(c.department_id) === String(user.department_id))
-                    : (isAdvisor && user?.class_id ? classes.filter(c => String(c.id) === String(user.class_id)) : classes);
-                  const availClasses = deptClasses.length > 0 ? deptClasses : classes;
-                  const selectedIds = noticeForm.class_ids && noticeForm.class_ids.length > 0
-                    ? noticeForm.class_ids
-                    : (noticeForm.class_id ? [noticeForm.class_id] : []);
-                  const allSelected = availClasses.length > 0 && availClasses.every(c => selectedIds.includes(String(c.id)));
-
-                  return (
-                    <div className="space-y-2 border border-zinc-200 p-3.5 rounded-xl bg-zinc-50/50">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
-                          <GraduationCap size={16} className="text-indigo-600" /> Target Classes <span className="text-red-500">*</span>
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-semibold text-zinc-500 bg-zinc-200 px-2 py-0.5 rounded-full">
-                            {selectedIds.length} selected
-                          </span>
-                          {availClasses.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (allSelected) {
-                                  setNoticeForm(prev => ({ ...prev, class_ids: [], class_id: '' }));
-                                } else {
-                                  const allCids = availClasses.map(c => String(c.id));
-                                  setNoticeForm(prev => ({ ...prev, class_ids: allCids, class_id: allCids[0] || '' }));
-                                }
-                              }}
-                              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline"
-                            >
-                              {allSelected ? 'Deselect All' : 'Select All'}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 max-h-44 overflow-y-auto p-1">
-                        {availClasses.map(c => {
-                          const isSelected = selectedIds.includes(String(c.id));
-                          return (
-                            <label
-                              key={c.id}
-                              className={cn(
-                                "flex items-center gap-2 p-2 rounded-lg border text-xs font-medium cursor-pointer transition-all",
-                                isSelected
-                                  ? "bg-indigo-50/80 border-indigo-300 text-indigo-900 shadow-sm"
-                                  : "bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-100"
-                              )}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={e => {
-                                  if (e.target.checked) {
-                                    const next = [...selectedIds, String(c.id)];
-                                    setNoticeForm(prev => ({ ...prev, class_ids: next, class_id: next[0] || '' }));
-                                  } else {
-                                    const next = selectedIds.filter(id => id !== String(c.id));
-                                    setNoticeForm(prev => ({ ...prev, class_ids: next, class_id: next[0] || '' }));
-                                  }
-                                }}
-                                className="rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
-                              />
-                              <span className="truncate">{c.name}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                <div>
-                  <label className="text-xs font-bold text-zinc-700 block mb-1">Attachment File (Optional PDF / Image)</label>
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf"
-                    onChange={e => setNoticeFile(e.target.files?.[0] || null)}
-                    className="w-full text-xs text-zinc-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-                  />
-                </div>
-
-                <div className="flex justify-end gap-3 pt-3 border-t border-zinc-100">
-                  <Button variant="ghost" type="button" onClick={() => setShowCreateNoticeModal(false)}>Cancel</Button>
-                  <Button className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold" disabled={isPublishingNotice}>
-                    {isPublishingNotice ? 'Publishing...' : 'Publish Notice'}
-                  </Button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-
-        {/* Submit Feedback Modal */}
-        {showCreateFeedbackModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-2xl border border-zinc-200 max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto"
-            >
-              <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-                <h3 className="text-lg font-black text-zinc-900 flex items-center gap-2">
-                  <MessageSquare className="text-indigo-600" size={20} /> Submit Feedback / Suggestion
-                </h3>
-                <button onClick={() => setShowCreateFeedbackModal(false)} className="text-zinc-400 hover:text-zinc-600">
-                  <X size={18} />
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateFeedback} className="space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-zinc-700 block mb-1">Subject / Title <span className="text-red-500">*</span></label>
-                  <Input
-                    placeholder="Brief summary of your feedback or issue"
-                    value={feedbackForm.title}
-                    onChange={e => setFeedbackForm(prev => ({ ...prev, title: e.target.value }))}
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">Category</label>
-                    <Select
-                      value={feedbackForm.category}
-                      onChange={e => setFeedbackForm(prev => ({ ...prev, category: e.target.value }))}
-                    >
-                      <option value="GENERAL">General</option>
-                      <option value="ACADEMIC">Academic</option>
-                      <option value="INFRASTRUCTURE">Infrastructure</option>
-                      <option value="BUG_REPORT">Bug Report</option>
-                      <option value="OTHER">Other</option>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">Priority</label>
-                    <Select
-                      value={feedbackForm.priority}
-                      onChange={e => setFeedbackForm(prev => ({ ...prev, priority: e.target.value }))}
-                    >
-                      <option value="LOW">Low</option>
-                      <option value="MEDIUM">Medium</option>
-                      <option value="HIGH">High</option>
-                    </Select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-zinc-700 block mb-1">Details <span className="text-red-500">*</span></label>
-                  <textarea
-                    rows={4}
-                    placeholder="Describe your feedback, suggestion, or issue in detail..."
-                    value={feedbackForm.description}
-                    onChange={e => setFeedbackForm(prev => ({ ...prev, description: e.target.value }))}
-                    className="w-full p-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black text-sm bg-white text-zinc-800"
-                    required
-                  />
-                </div>
-
-                <label className="flex items-center gap-2 cursor-pointer font-medium text-xs text-zinc-700">
-                  <input
-                    type="checkbox"
-                    checked={feedbackForm.is_anonymous}
-                    onChange={e => setFeedbackForm(prev => ({ ...prev, is_anonymous: e.target.checked }))}
-                    className="w-4 h-4 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  Submit anonymously (hide my name from staff)
-                </label>
-
-                <div className="flex justify-end gap-3 pt-3 border-t border-zinc-100">
-                  <Button variant="ghost" type="button" onClick={() => setShowCreateFeedbackModal(false)}>Cancel</Button>
-                  <Button className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold" disabled={isSubmittingFeedback}>
-                    {isSubmittingFeedback ? 'Submitting...' : 'Submit Feedback'}
-                  </Button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-
-        {/* View & Manage Feedback Modal */}
-        {viewingFeedback && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-2xl border border-zinc-200 max-w-2xl w-full p-6 space-y-4 max-h-[90vh] flex flex-col"
-            >
-              <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-                <div>
-                  <span className={cn(
-                    "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider",
-                    viewingFeedback.status === 'RESOLVED' ? "bg-emerald-50 text-emerald-600 border border-emerald-200" :
-                    viewingFeedback.status === 'REJECTED' ? "bg-red-50 text-red-600 border border-red-200" :
-                    viewingFeedback.status === 'UNDER_REVIEW' ? "bg-amber-50 text-amber-600 border border-amber-200" :
-                    "bg-blue-50 text-blue-600 border border-blue-200"
-                  )}>
-                    {viewingFeedback.status}
-                  </span>
-                  <h3 className="text-xl font-black text-zinc-900 mt-1">{viewingFeedback.title}</h3>
-                  <p className="text-xs text-zinc-400 font-medium">Submitted by: {viewingFeedback.submitter_name || 'Anonymous'}</p>
-                </div>
-                <button onClick={() => setViewingFeedback(null)} className="text-zinc-400 hover:text-zinc-600">
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl space-y-2">
-                <p className="text-sm text-zinc-800 whitespace-pre-wrap">{viewingFeedback.description}</p>
-                <div className="flex gap-2 pt-2 border-t border-zinc-200 text-[11px] text-zinc-500 font-semibold">
-                  <span>Category: {viewingFeedback.category}</span> • <span>Priority: {viewingFeedback.priority}</span>
-                </div>
-              </div>
-
-              {/* Staff Actions: Change Status */}
-              {(isAdmin || isHOD || isAdvisor) && (
-                <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl flex items-center justify-between gap-3">
-                  <span className="text-xs font-bold text-indigo-900">Update Status:</span>
-                  <div className="flex gap-2">
-                    {['PENDING', 'UNDER_REVIEW', 'RESOLVED', 'REJECTED'].map(st => (
-                      <button
-                        key={st}
-                        onClick={() => handleUpdateFeedbackStatus(viewingFeedback.id, st)}
-                        className={cn(
-                          "px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all border",
-                          viewingFeedback.status === st
-                            ? "bg-indigo-600 text-white border-indigo-600"
-                            : "bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100"
-                        )}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-zinc-700 block mb-1">Category</label>
+                      <Select
+                        value={feedbackForm.category}
+                        onChange={e => setFeedbackForm(prev => ({ ...prev, category: e.target.value }))}
                       >
-                        {st}
-                      </button>
-                    ))}
+                        <option value="GENERAL">General</option>
+                        <option value="ACADEMIC">Academic</option>
+                        <option value="INFRASTRUCTURE">Infrastructure</option>
+                        <option value="BUG_REPORT">Bug Report</option>
+                        <option value="OTHER">Other</option>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-zinc-700 block mb-1">Priority</label>
+                      <Select
+                        value={feedbackForm.priority}
+                        onChange={e => setFeedbackForm(prev => ({ ...prev, priority: e.target.value }))}
+                      >
+                        <option value="LOW">Low</option>
+                        <option value="MEDIUM">Medium</option>
+                        <option value="HIGH">High</option>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-zinc-700 block mb-1">Details <span className="text-red-500">*</span></label>
+                    <textarea
+                      rows={4}
+                      placeholder="Describe your feedback, suggestion, or issue in detail..."
+                      value={feedbackForm.description}
+                      onChange={e => setFeedbackForm(prev => ({ ...prev, description: e.target.value }))}
+                      className="w-full p-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black text-sm bg-white text-zinc-800"
+                      required
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer font-medium text-xs text-zinc-700">
+                    <input
+                      type="checkbox"
+                      checked={feedbackForm.is_anonymous}
+                      onChange={e => setFeedbackForm(prev => ({ ...prev, is_anonymous: e.target.checked }))}
+                      className="w-4 h-4 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Submit anonymously (hide my name from staff)
+                  </label>
+
+                  <div className="flex justify-end gap-3 pt-3 border-t border-zinc-100">
+                    <Button variant="ghost" type="button" onClick={() => setShowCreateFeedbackModal(false)}>Cancel</Button>
+                    <Button className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold" disabled={isSubmittingFeedback}>
+                      {isSubmittingFeedback ? 'Submitting...' : 'Submit Feedback'}
+                    </Button>
+                  </div>
+                </form>
+              </motion.div>
+            </div>
+          )}
+
+          {/* View & Manage Feedback Modal */}
+          {viewingFeedback && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white rounded-2xl shadow-2xl border border-zinc-200 max-w-2xl w-full p-6 space-y-4 max-h-[90vh] flex flex-col"
+              >
+                <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+                  <div>
+                    <span className={cn(
+                      "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider",
+                      viewingFeedback.status === 'RESOLVED' ? "bg-emerald-50 text-emerald-600 border border-emerald-200" :
+                        viewingFeedback.status === 'REJECTED' ? "bg-red-50 text-red-600 border border-red-200" :
+                          viewingFeedback.status === 'UNDER_REVIEW' ? "bg-amber-50 text-amber-600 border border-amber-200" :
+                            "bg-blue-50 text-blue-600 border border-blue-200"
+                    )}>
+                      {viewingFeedback.status}
+                    </span>
+                    <h3 className="text-xl font-black text-zinc-900 mt-1">{viewingFeedback.title}</h3>
+                    <p className="text-xs text-zinc-400 font-medium">Submitted by: {viewingFeedback.submitter_name || 'Anonymous'}</p>
+                  </div>
+                  <button onClick={() => setViewingFeedback(null)} className="text-zinc-400 hover:text-zinc-600">
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl space-y-2">
+                  <p className="text-sm text-zinc-800 whitespace-pre-wrap">{viewingFeedback.description}</p>
+                  <div className="flex gap-2 pt-2 border-t border-zinc-200 text-[11px] text-zinc-500 font-semibold">
+                    <span>Category: {viewingFeedback.category}</span> • <span>Priority: {viewingFeedback.priority}</span>
                   </div>
                 </div>
-              )}
 
-              {/* Message Thread */}
-              <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar min-h-[160px]">
-                <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Conversation History</h4>
-                {feedbackMessages.length === 0 ? (
-                  <p className="text-xs text-zinc-400 italic">No responses yet.</p>
-                ) : (
-                  feedbackMessages.map(msg => (
-                    <div key={msg.id} className={cn("p-3 rounded-xl border text-xs space-y-1", msg.user_id === user?.id ? "bg-indigo-50 border-indigo-100 ml-6" : "bg-white border-zinc-200 mr-6")}>
-                      <div className="flex items-center justify-between font-bold text-zinc-700">
-                        <span>{msg.author_name} ({msg.author_role})</span>
-                        <span className="text-[10px] text-zinc-400">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                      <p className="text-zinc-800 whitespace-pre-wrap">{msg.message}</p>
+                {/* Staff Actions: Change Status */}
+                {(isAdmin || isHOD || isAdvisor) && (
+                  <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl flex items-center justify-between gap-3">
+                    <span className="text-xs font-bold text-indigo-900">Update Status:</span>
+                    <div className="flex gap-2">
+                      {['PENDING', 'UNDER_REVIEW', 'RESOLVED', 'REJECTED'].map(st => (
+                        <button
+                          key={st}
+                          onClick={() => handleUpdateFeedbackStatus(viewingFeedback.id, st)}
+                          className={cn(
+                            "px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all border",
+                            viewingFeedback.status === st
+                              ? "bg-indigo-600 text-white border-indigo-600"
+                              : "bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100"
+                          )}
+                        >
+                          {st}
+                        </button>
+                      ))}
                     </div>
-                  ))
+                  </div>
                 )}
-              </div>
 
-              {/* Reply Input */}
-              <div className="flex gap-2 pt-2 border-t border-zinc-100">
-                <Input
-                  placeholder="Type a response message..."
-                  value={newFeedbackMsg}
-                  onChange={e => setNewFeedbackMsg(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleSendFeedbackMessage(); }}
-                />
-                <Button className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 shrink-0" onClick={handleSendFeedbackMessage}>
-                  Send
-                </Button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+                {/* Message Thread */}
+                <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar min-h-[160px]">
+                  <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Conversation History</h4>
+                  {feedbackMessages.length === 0 ? (
+                    <p className="text-xs text-zinc-400 italic">No responses yet.</p>
+                  ) : (
+                    feedbackMessages.map(msg => (
+                      <div key={msg.id} className={cn("p-3 rounded-xl border text-xs space-y-1", msg.user_id === user?.id ? "bg-indigo-50 border-indigo-100 ml-6" : "bg-white border-zinc-200 mr-6")}>
+                        <div className="flex items-center justify-between font-bold text-zinc-700">
+                          <span>{msg.author_name} ({msg.author_role})</span>
+                          <span className="text-[10px] text-zinc-400">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <p className="text-zinc-800 whitespace-pre-wrap">{msg.message}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Reply Input */}
+                <div className="flex gap-2 pt-2 border-t border-zinc-100">
+                  <Input
+                    placeholder="Type a response message..."
+                    value={newFeedbackMsg}
+                    onChange={e => setNewFeedbackMsg(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleSendFeedbackMessage(); }}
+                  />
+                  <Button className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 shrink-0" onClick={handleSendFeedbackMessage}>
+                    Send
+                  </Button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+          {renderAssignTargetModal()}
+          {renderAssignGithubTargetModal()}
+          {renderHistoryDetailsModal()}
+        </AnimatePresence>
       </div>
     </FooterContext.Provider>
+
+
   );
 }
 
