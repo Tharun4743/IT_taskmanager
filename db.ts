@@ -394,32 +394,7 @@ export async function initDB() {
       );
     `);
 
-    // ─── Module 3: Feedback Module ───────────────────────────────────────────────
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS feedback (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
-        category VARCHAR(100) NOT NULL DEFAULT 'General',
-        title VARCHAR(255) NOT NULL,
-        description TEXT NOT NULL,
-        priority VARCHAR(50) DEFAULT 'Medium',
-        is_anonymous BOOLEAN DEFAULT FALSE,
-        status VARCHAR(50) DEFAULT 'Open',
-        assigned_to UUID REFERENCES users(id) ON DELETE SET NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
 
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS feedback_messages (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        feedback_id UUID REFERENCES feedback(id) ON DELETE CASCADE NOT NULL,
-        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
-        message TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
 
     // ─── Module 4: Smart Reminder System ────────────────────────────────────────
     await client.query(`
@@ -443,7 +418,6 @@ export async function initDB() {
         task_reminders BOOLEAN DEFAULT TRUE,
         event_reminders BOOLEAN DEFAULT TRUE,
         notice_reminders BOOLEAN DEFAULT TRUE,
-        feedback_notifications BOOLEAN DEFAULT TRUE,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -472,6 +446,9 @@ export async function initDB() {
     `);
     await client.query(`
       ALTER TABLE tasks ADD COLUMN IF NOT EXISTS max_team_size INT DEFAULT 5;
+    `);
+    await client.query(`
+      ALTER TABLE leetcode_daily_progress ADD COLUMN IF NOT EXISTS solved_yesterday INT NOT NULL DEFAULT 0;
     `);
 
     // Create indexes — original tables
@@ -502,9 +479,6 @@ export async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_notices_class ON notices(class_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_notices_publish ON notices(publish_at);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_notices_created_by ON notices(created_by);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_feedback_messages_fid ON feedback_messages(feedback_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_scheduled_notifs_user ON scheduled_notifications(user_id, status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_scheduled_notifs_time ON scheduled_notifications(scheduled_time, status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_status_deadline ON tasks(status, deadline);`);
@@ -537,6 +511,7 @@ export async function initDB() {
         date DATE NOT NULL,
         total_solved INT,
         solved_today INT NOT NULL DEFAULT 0,
+        solved_yesterday INT NOT NULL DEFAULT 0,
         daily_target INT NOT NULL DEFAULT 0,
         status VARCHAR(50) NOT NULL, -- 'COMPLETED', 'NOT_COMPLETED', 'DATA_UNAVAILABLE'
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

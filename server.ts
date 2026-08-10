@@ -4294,160 +4294,6 @@ async function startServer() {
   );
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // MODULE 3 â€” FEEDBACK MODULE
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-
-  // GET /api/feedback
-  app.get('/api/feedback', authenticate, asyncHandler(async (req: any, res: Response) => {
-    const u = req.user;
-    const { category, status, priority, search } = req.query as any;
-    const params: any[] = [u.role];
-    const conditions: string[] = [];
-
-    if (u.role === 'STUDENT') {
-      params.push(u.id);
-      conditions.push(`f.user_id=$${params.length}`);
-    } else if (u.role === 'CLASS_ADVISOR') {
-      params.push(u.class_id);
-      conditions.push(`f.user_id IN (SELECT id FROM users WHERE class_id=$${params.length})`);
-    }
-    // HOD and SUPREME_ADMIN see all
-
-    if (category) { params.push(category); conditions.push(`f.category=$${params.length}`); }
-    if (status) { params.push(status); conditions.push(`f.status=$${params.length}`); }
-    if (priority) { params.push(priority); conditions.push(`f.priority=$${params.length}`); }
-    if (search) { params.push(`%${search}%`); conditions.push(`(f.title ILIKE $${params.length} OR f.description ILIKE $${params.length})`); }
-
-    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-
-    const result = await pool.query(`
-      SELECT f.*,
-        CASE WHEN f.is_anonymous AND $1 NOT IN ('CLASS_ADVISOR','HOD','SUPREME_ADMIN')
-          THEN 'Anonymous' ELSE u.full_name END AS submitter_name,
-        u.role AS submitter_role,
-        COALESCE(u.register_number, u.username) AS submitter_regno,
-        au.full_name AS assigned_to_name,
-        (SELECT COUNT(*) FROM feedback_messages fm WHERE fm.feedback_id = f.id) AS reply_count
-      FROM feedback f
-      JOIN users u ON f.user_id = u.id
-      LEFT JOIN users au ON f.assigned_to = au.id
-      ${where}
-      ORDER BY
-        CASE f.status WHEN 'Open' THEN 0 WHEN 'In Progress' THEN 1 ELSE 2 END,
-        CASE f.priority WHEN 'Critical' THEN 0 WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 ELSE 3 END,
-        f.created_at DESC
-    `, params);
-
-    res.json(result.rows);
-  }));
-
-  // POST /api/feedback
-  app.post('/api/feedback', authenticate, authorize(['STUDENT']), asyncHandler(async (req: any, res: Response) => {
-    const { category, title, description, priority, is_anonymous } = req.body;
-    if (!title || !description) return res.status(400).json({ error: 'Title and description are required' });
-
-    const result = await pool.query(`
-      INSERT INTO feedback (user_id, category, title, description, priority, is_anonymous)
-      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *
-    `, [req.user.id, category || 'General', title.trim(), description.trim(), priority || 'Medium', Boolean(is_anonymous)]);
-
-    if (req.user.class_id) {
-      const advisorRes = await pool.query(
-        `SELECT id FROM users WHERE class_id=$1 AND role='CLASS_ADVISOR' LIMIT 1`, [req.user.class_id]
-      );
-      if (advisorRes.rows[0]) {
-        await pool.query(
-          `INSERT INTO notifications (user_id, message, type) VALUES ($1,$2,'FEEDBACK_REPLY')`,
-          [advisorRes.rows[0].id, `New ${category || 'General'} feedback: "${title.trim()}"`]
-        );
-      }
-    }
-
-    res.status(201).json(result.rows[0]);
-  }));
-
-  // GET /api/feedback/:id
-  app.get('/api/feedback/:id', authenticate, asyncHandler(async (req: any, res: Response) => {
-    const u = req.user;
-    const fbRes = await pool.query(`
-      SELECT f.*, CASE WHEN f.is_anonymous THEN 'Anonymous' ELSE us.full_name END AS submitter_name,
-        au.full_name AS assigned_to_name
-      FROM feedback f
-      JOIN users us ON f.user_id = us.id
-      LEFT JOIN users au ON f.assigned_to = au.id
-      WHERE f.id = $1
-    `, [req.params.id]);
-
-    if (!fbRes.rows[0]) return res.status(404).json({ error: 'Feedback not found' });
-    const fb = fbRes.rows[0];
-
-    const isOwner = String(fb.user_id) === String(u.id);
-    const isStaff = ['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN'].includes(u.role);
-    if (!isOwner && !isStaff) return res.status(403).json({ error: 'Forbidden' });
-
-    const messagesRes = await pool.query(`
-      SELECT fm.*, u.full_name AS author_name, u.role AS author_role
-      FROM feedback_messages fm JOIN users u ON fm.user_id = u.id
-      WHERE fm.feedback_id = $1 ORDER BY fm.created_at ASC
-    `, [req.params.id]);
-
-    res.json({ feedback: fb, messages: messagesRes.rows });
-  }));
-
-  // PATCH /api/feedback/:id â€” staff: update status/priority/assign
-  app.patch('/api/feedback/:id', authenticate, authorize(['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN']), asyncHandler(async (req: any, res: Response) => {
-    const { status, priority, assigned_to } = req.body;
-    const result = await pool.query(`
-      UPDATE feedback SET
-        status=COALESCE($1,status), priority=COALESCE($2,priority),
-        assigned_to=COALESCE($3,assigned_to), updated_at=NOW()
-      WHERE id=$4 RETURNING *
-    `, [status, priority, assigned_to || null, req.params.id]);
-
-    if (!result.rows[0]) return res.status(404).json({ error: 'Feedback not found' });
-
-    if (status === 'Resolved' || status === 'Rejected') {
-      await pool.query(
-        `INSERT INTO notifications (user_id, message, type) VALUES ($1,$2,'FEEDBACK_REPLY')`,
-        [result.rows[0].user_id, `Your feedback "${result.rows[0].title}" has been ${status}`]
-      );
-    }
-    res.json(result.rows[0]);
-  }));
-
-  // POST /api/feedback/:id/messages
-  app.post('/api/feedback/:id/messages', authenticate, asyncHandler(async (req: any, res: Response) => {
-    const { message } = req.body;
-    if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
-
-    const fbRes = await pool.query('SELECT user_id FROM feedback WHERE id = $1', [req.params.id]);
-    if (!fbRes.rows[0]) return res.status(404).json({ error: 'Feedback not found' });
-
-    const isOwner = String(fbRes.rows[0].user_id) === String(req.user.id);
-    const isStaff = ['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN'].includes(req.user.role);
-    if (!isOwner && !isStaff) return res.status(403).json({ error: 'Forbidden' });
-
-    const result = await pool.query(
-      `INSERT INTO feedback_messages (feedback_id, user_id, message) VALUES ($1,$2,$3) RETURNING *`,
-      [req.params.id, req.user.id, message.trim()]
-    );
-
-    if (isStaff) {
-      await pool.query(
-        `INSERT INTO notifications (user_id, message, type) VALUES ($1,$2,'FEEDBACK_REPLY')`,
-        [fbRes.rows[0].user_id, `${req.user.username} replied to your feedback`]
-      );
-    }
-
-    await pool.query(`
-      UPDATE feedback SET status=CASE WHEN status='PENDING' THEN 'UNDER_REVIEW' ELSE status END,
-        updated_at=NOW() WHERE id=$1
-    `, [req.params.id]);
-
-    res.status(201).json(result.rows[0]);
-  }));
-
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // MODULE 4 â€” SMART REMINDER SETTINGS
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
@@ -4458,20 +4304,20 @@ async function startServer() {
     );
     res.json(result.rows[0] || {
       task_reminders: true, event_reminders: true,
-      notice_reminders: true, feedback_notifications: true,
+      notice_reminders: true,
     });
   }));
 
   // PUT /api/reminders/settings
   app.put('/api/reminders/settings', authenticate, asyncHandler(async (req: any, res: Response) => {
-    const { task_reminders, event_reminders, notice_reminders, feedback_notifications } = req.body;
+    const { task_reminders, event_reminders, notice_reminders } = req.body;
     const result = await pool.query(`
       INSERT INTO user_notification_settings
-        (user_id, task_reminders, event_reminders, notice_reminders, feedback_notifications, updated_at)
-      VALUES ($1,$2,$3,$4,$5,NOW())
+        (user_id, task_reminders, event_reminders, notice_reminders, updated_at)
+      VALUES ($1,$2,$3,$4,NOW())
       ON CONFLICT (user_id) DO UPDATE SET
         task_reminders=EXCLUDED.task_reminders, event_reminders=EXCLUDED.event_reminders,
-        notice_reminders=EXCLUDED.notice_reminders, feedback_notifications=EXCLUDED.feedback_notifications,
+        notice_reminders=EXCLUDED.notice_reminders,
         updated_at=NOW()
       RETURNING *
     `, [
@@ -4479,7 +4325,6 @@ async function startServer() {
       task_reminders !== undefined ? Boolean(task_reminders) : true,
       event_reminders !== undefined ? Boolean(event_reminders) : true,
       notice_reminders !== undefined ? Boolean(notice_reminders) : true,
-      feedback_notifications !== undefined ? Boolean(feedback_notifications) : true,
     ]);
     res.json(result.rows[0]);
   }));
@@ -4583,19 +4428,33 @@ async function startServer() {
     return istDate.toISOString().split('T')[0];
   }
 
-  // Utility: Get start and end of week (Monday to Sunday) in IST format
+  // Utility: Get yesterday's date string (YYYY-MM-DD) from a given date string in local/IST time
+  function getYesterdayDateStr(dateStr: string): string {
+    const parts = dateStr.split('-');
+    const date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    date.setDate(date.getDate() - 1);
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  // Utility: Get start and end of week (Sunday to Saturday) in IST format
   function getWeekRange(dateStr: string): { start: string; end: string } {
     const date = new Date(dateStr);
-    const day = date.getDay(); // 0 is Sunday, 1 is Monday
-    const diff = date.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is Sunday
-    const monday = new Date(date.setDate(diff));
+    const day = date.getDay(); // 0 is Sunday, 1 is Monday, ...
     
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
+    // Get Sunday
+    const sunday = new Date(date);
+    sunday.setDate(date.getDate() - day);
+    
+    // Get Saturday
+    const saturday = new Date(sunday);
+    saturday.setDate(sunday.getDate() + 6);
     
     return {
-      start: monday.toISOString().split('T')[0],
-      end: sunday.toISOString().split('T')[0]
+      start: sunday.toISOString().split('T')[0],
+      end: saturday.toISOString().split('T')[0]
     };
   }
 
@@ -4825,20 +4684,29 @@ async function startServer() {
               solvedToday = recentTodayCount;
             }
 
+            // Fetch solved count from yesterday (date = todayStr - 1)
+            const yesterdayStr = getYesterdayDateStr(todayStr);
+            const yesterdayRes = await pool.query(`
+              SELECT solved_today FROM leetcode_daily_progress
+              WHERE user_id = $1 AND date = $2
+            `, [userId, yesterdayStr]);
+            const solvedYesterday = yesterdayRes.rowCount > 0 ? Number(yesterdayRes.rows[0].solved_today) : 0;
+
             const status = activeTarget.id !== null
               ? (solvedToday >= activeTarget.daily_target ? 'COMPLETED' : 'NOT_COMPLETED')
               : 'COMPLETED';
 
             await pool.query(`
-              INSERT INTO leetcode_daily_progress (user_id, date, total_solved, solved_today, daily_target, status)
-              VALUES ($1, $2, $3, $4, $5, $6)
+              INSERT INTO leetcode_daily_progress (user_id, date, total_solved, solved_today, solved_yesterday, daily_target, status)
+              VALUES ($1, $2, $3, $4, $5, $6, $7)
               ON CONFLICT (user_id, date) DO UPDATE
               SET total_solved = EXCLUDED.total_solved,
                   solved_today = EXCLUDED.solved_today,
+                  solved_yesterday = EXCLUDED.solved_yesterday,
                   daily_target = EXCLUDED.daily_target,
                   status = EXCLUDED.status,
                   updated_at = CURRENT_TIMESTAMP
-            `, [userId, todayStr, fetchedCount, solvedToday, activeTarget.daily_target, status]);
+            `, [userId, todayStr, fetchedCount, solvedToday, solvedYesterday, activeTarget.daily_target, status]);
           }
         }));
       }
@@ -5146,7 +5014,7 @@ async function startServer() {
 
     // 2. Fetch daily progress logs for dateStr
     const dailyRes = await pool.query(`
-      SELECT user_id, solved_today, status, total_solved 
+      SELECT user_id, solved_today, solved_yesterday, status, total_solved 
       FROM leetcode_daily_progress 
       WHERE user_id = ANY($1) AND date = $2
     `, [studentIds, dateStr]);
@@ -5178,6 +5046,10 @@ async function startServer() {
       const dailyRow = dailyMap.get(student.id);
       const solvedToday = dailyRow?.total_solved !== null && dailyRow?.total_solved !== undefined
         ? Number(dailyRow.solved_today)
+        : 0;
+
+      const solvedYesterday = dailyRow?.total_solved !== null && dailyRow?.total_solved !== undefined
+        ? Number(dailyRow.solved_yesterday)
         : 0;
 
       let dailyStatus = 'NO_TARGET';
@@ -5225,6 +5097,7 @@ async function startServer() {
         leetcodeUrl: leetcodeUrl,
         dailyTarget: activeTarget.daily_target,
         solvedToday,
+        solvedYesterday,
         remainingDaily,
         completionDailyPct,
         dailyStatus,
@@ -5592,7 +5465,7 @@ async function startServer() {
     res.send(buf);
   }));
 
-  // 3. Weekly Detailed Excel Report (Monday -> Sunday breakdown)
+  // 3. Weekly Detailed Excel Report (Sunday -> Saturday breakdown)
   app.get('/api/leetcode/export/weekly-detailed', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
     const scope = enforceUserScopeFilter(req.user, req.query);
     const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
@@ -5618,30 +5491,30 @@ async function startServer() {
 
     const detailedList = filtered.map(row => {
       const studentId = row.studentId;
-      const mon = dayMap.get(`${studentId}_${week.start}`) || 0;
-      const tueDate = new Date(week.start); tueDate.setDate(tueDate.getDate() + 1);
+      const sun = dayMap.get(`${studentId}_${week.start}`) || 0;
+      const monDate = new Date(week.start); monDate.setDate(monDate.getDate() + 1);
+      const mon = dayMap.get(`${studentId}_${monDate.toISOString().split('T')[0]}`) || 0;
+      const tueDate = new Date(week.start); tueDate.setDate(tueDate.getDate() + 2);
       const tue = dayMap.get(`${studentId}_${tueDate.toISOString().split('T')[0]}`) || 0;
-      const wedDate = new Date(week.start); wedDate.setDate(wedDate.getDate() + 2);
+      const wedDate = new Date(week.start); wedDate.setDate(wedDate.getDate() + 3);
       const wed = dayMap.get(`${studentId}_${wedDate.toISOString().split('T')[0]}`) || 0;
-      const thuDate = new Date(week.start); thuDate.setDate(thuDate.getDate() + 3);
+      const thuDate = new Date(week.start); thuDate.setDate(thuDate.getDate() + 4);
       const thu = dayMap.get(`${studentId}_${thuDate.toISOString().split('T')[0]}`) || 0;
-      const friDate = new Date(week.start); friDate.setDate(friDate.getDate() + 4);
+      const friDate = new Date(week.start); friDate.setDate(friDate.getDate() + 5);
       const fri = dayMap.get(`${studentId}_${friDate.toISOString().split('T')[0]}`) || 0;
-      const satDate = new Date(week.start); satDate.setDate(satDate.getDate() + 5);
-      const sat = dayMap.get(`${studentId}_${satDate.toISOString().split('T')[0]}`) || 0;
-      const sun = dayMap.get(`${studentId}_${week.end}`) || 0;
+      const sat = dayMap.get(`${studentId}_${week.end}`) || 0;
 
       return {
         'Register No': row.registerNumber,
         'Student Name': row.fullName,
         'Section': row.className,
+        'Sun': sun,
         'Mon': mon,
         'Tue': tue,
         'Wed': wed,
         'Thu': thu,
         'Fri': fri,
         'Sat': sat,
-        'Sun': sun,
         'Weekly Solved': row.solvedThisWeek,
         'Weekly Target': row.weeklyTarget,
         'Completion %': `${row.completionWeeklyPct}%`,
@@ -5722,27 +5595,42 @@ async function startServer() {
     res.send(buf);
   }));
 
-  // Daily LeetCode Sync Daemon at 11:50 PM IST
+  // Daily LeetCode Sync Daemon at 8:00 AM IST and 11:50 PM IST
   function scheduleDailySync() {
     const now = new Date();
     const istOffset = 5.5 * 60 * 60 * 1000;
     const nowIST = new Date(now.getTime() + istOffset);
     
-    const targetIST = new Date(nowIST);
-    targetIST.setUTCHours(23, 50, 0, 0); // 11:50 PM IST
+    // Target 1: 8:00 AM IST today
+    const target8AM = new Date(nowIST);
+    target8AM.setUTCHours(8, 0, 0, 0);
     
-    if (nowIST.getTime() >= targetIST.getTime()) {
-      targetIST.setUTCDate(targetIST.getUTCDate() + 1);
+    // Target 2: 11:50 PM IST today
+    const target1150PM = new Date(nowIST);
+    target1150PM.setUTCHours(23, 50, 0, 0);
+    
+    // Determine the next target time
+    let nextTarget: Date;
+    if (nowIST.getTime() < target8AM.getTime()) {
+      nextTarget = target8AM;
+    } else if (nowIST.getTime() < target1150PM.getTime()) {
+      nextTarget = target1150PM;
+    } else {
+      // After 11:50 PM, the next target is 8:00 AM tomorrow
+      const tomorrow = new Date(nowIST.getTime() + 24 * 60 * 60 * 1000);
+      tomorrow.setUTCHours(8, 0, 0, 0);
+      nextTarget = tomorrow;
     }
     
-    const timeUntilSync = targetIST.getTime() - nowIST.getTime();
-    console.log(`[LeetCode Sync Daemon] Scheduled next sync in ${Math.round(timeUntilSync / 1000 / 60)} minutes.`);
+    const timeUntilSync = nextTarget.getTime() - nowIST.getTime();
+    const targetTimeStr = `${nextTarget.getUTCHours().toString().padStart(2, '0')}:${nextTarget.getUTCMinutes().toString().padStart(2, '0')}`;
+    console.log(`[LeetCode Sync Daemon] Scheduled next sync at ${targetTimeStr} IST (in ${Math.round(timeUntilSync / 1000 / 60)} minutes).`);
     
     setTimeout(async () => {
-      console.log('[LeetCode Sync Daemon] Running scheduled daily sync...');
+      console.log(`[LeetCode Sync Daemon] Running scheduled sync...`);
       try {
         await syncLeetcodeProgressForScope();
-        console.log('[LeetCode Sync Daemon] Daily sync completed.');
+        console.log('[LeetCode Sync Daemon] Sync completed.');
       } catch (err) {
         console.error('[LeetCode Sync Daemon] Scheduled sync failed:', err);
       }
@@ -6546,7 +6434,7 @@ async function startServer() {
     res.send(buf);
   }));
 
-  // Weekly Detailed GitHub Report (Mon→Sun breakdown)
+  // Weekly Detailed GitHub Report (Sunday -> Saturday breakdown)
   app.get('/api/github/export/weekly-detailed', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
     const scope = enforceUserScopeFilter(req.user, req.query);
     const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
@@ -6577,10 +6465,13 @@ async function startServer() {
       return {
         'Register No': r.registerNumber, 'Student Name': r.fullName, 'Section': r.className,
         'GitHub': r.githubUsername,
-        'Mon Commits': getDay(id, 0).commits, 'Tue Commits': getDay(id, 1).commits,
-        'Wed Commits': getDay(id, 2).commits, 'Thu Commits': getDay(id, 3).commits,
-        'Fri Commits': getDay(id, 4).commits, 'Sat Commits': getDay(id, 5).commits,
-        'Sun Commits': getDay(id, 6).commits,
+        'Sun Commits': getDay(id, 0).commits,
+        'Mon Commits': getDay(id, 1).commits,
+        'Tue Commits': getDay(id, 2).commits,
+        'Wed Commits': getDay(id, 3).commits,
+        'Thu Commits': getDay(id, 4).commits,
+        'Fri Commits': getDay(id, 5).commits,
+        'Sat Commits': getDay(id, 6).commits,
         'Total Commits': r.commitsThisWeek, 'Commit Target': r.weeklyCommitTarget,
         'Commit %': `${r.completionWeeklyCommitPct}%`, 'Status': r.weeklyCommitStatus.replace('_', ' '),
         'New Repos This Week': r.reposThisWeek,

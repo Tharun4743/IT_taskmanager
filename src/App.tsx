@@ -260,7 +260,7 @@ interface Submission {
 interface Notification {
   id: string | number;
   message: string;
-  type: 'VERIFIED' | 'REJECTED' | 'TASK_CREATED' | 'DISCUSSION_REPLY' | 'DISCUSSION_MENTION' | 'NOTICE_PUBLISHED' | 'FEEDBACK_REPLY' | 'FEEDBACK_RESOLVED' | 'TASK_DEADLINE_TOMORROW' | 'TASK_OVERDUE';
+  type: 'VERIFIED' | 'REJECTED' | 'TASK_CREATED' | 'DISCUSSION_REPLY' | 'DISCUSSION_MENTION' | 'NOTICE_PUBLISHED' | 'TASK_DEADLINE_TOMORROW' | 'TASK_OVERDUE';
   is_read: boolean;
   created_at: string;
 }
@@ -305,34 +305,7 @@ interface Notice {
   created_at: string;
 }
 
-interface Feedback {
-  id: string;
-  user_id: string;
-  category: 'Suggestion' | 'Bug' | 'Complaint' | 'Feature Request' | 'General' | string;
-  title: string;
-  description: string;
-  priority: 'Low' | 'Medium' | 'High' | 'Critical';
-  is_anonymous: boolean;
-  status: 'Open' | 'In Progress' | 'Resolved' | 'Rejected';
-  assigned_to?: string | null;
-  assigned_to_name?: string;
-  submitter_name?: string;
-  submitter_role?: string;
-  submitter_regno?: string;
-  reply_count?: number;
-  created_at: string;
-  updated_at?: string;
-}
 
-interface FeedbackMessage {
-  id: string;
-  feedback_id: string;
-  user_id: string;
-  message: string;
-  created_at: string;
-  author_name?: string;
-  author_role?: string;
-}
 
 interface HODStats {
   taskStats: {
@@ -2214,7 +2187,7 @@ function SettingsView({
     task_reminders: true,
     event_reminders: true,
     notice_reminders: true,
-    feedback_notifications: true
+    
   });
 
   useEffect(() => {
@@ -2440,7 +2413,7 @@ function SettingsView({
             {[
               { key: 'task_reminders', title: 'Task Deadline Reminders', desc: 'Get automated in-app alerts 24 hours before deadlines and when tasks are overdue' },
               { key: 'notice_reminders', title: 'Digital Notice Board Alerts', desc: 'Receive notifications when new announcements or urgent notices are published' },
-              { key: 'feedback_notifications', title: 'Feedback & Support Updates', desc: 'Get notified when your feedback case receives responses or status changes' },
+              
               { key: 'event_reminders', title: 'Event & Calendar Notifications', desc: 'Receive reminders for scheduled academic department events' }
             ].map(({ key, title, desc }) => (
               <label key={key} className="flex items-start justify-between gap-4 p-3 hover:bg-zinc-50 rounded-xl transition-colors cursor-pointer border border-zinc-100">
@@ -3289,18 +3262,7 @@ export default function App() {
     setShowCreateNoticeModal(true);
   };
 
-  // Feedback State
-  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
-  const [feedbackSearch, setFeedbackSearch] = useState('');
-  const [feedbackStatusFilter, setFeedbackStatusFilter] = useState('');
-  const [feedbackCategoryFilter, setFeedbackCategoryFilter] = useState('');
-  const [showCreateFeedbackModal, setShowCreateFeedbackModal] = useState(false);
-  const [viewingFeedback, setViewingFeedback] = useState<Feedback | null>(null);
-  const [feedbackForm, setFeedbackForm] = useState({ category: 'GENERAL', title: '', description: '', priority: 'MEDIUM', is_anonymous: false });
-  const [feedbackMessages, setFeedbackMessages] = useState<FeedbackMessage[]>([]);
-  const [newFeedbackMsg, setNewFeedbackMsg] = useState('');
-  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
-
+  
   const fetchNotices = async () => {
     if (!token) return;
     try {
@@ -3316,22 +3278,7 @@ export default function App() {
     }
   };
 
-  const fetchFeedbacks = async () => {
-    if (!token) return;
-    try {
-      const res = await fetch(`${API_URL}/api/feedback`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setFeedbacks(data);
-      }
-    } catch (e) {
-      console.error('Error fetching feedbacks:', e);
-    }
-  };
-
-  const handlePinNotice = async (id: string) => {
+    const handlePinNotice = async (id: string) => {
     try {
       const res = await fetch(`${API_URL}/api/notices/${id}/pin`, {
         method: 'PATCH',
@@ -3464,97 +3411,7 @@ export default function App() {
     }
   };
 
-  const handleCreateFeedback = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!feedbackForm.title.trim() || !feedbackForm.description.trim()) {
-      addToast('Title and Description are required', 'error');
-      return;
-    }
-    setIsSubmittingFeedback(true);
-    try {
-      const res = await fetch(`${API_URL}/api/feedback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(feedbackForm)
-      });
-      if (res.ok) {
-        addToast('Feedback submitted successfully!', 'success');
-        setShowCreateFeedbackModal(false);
-        setFeedbackForm({ category: 'GENERAL', title: '', description: '', priority: 'MEDIUM', is_anonymous: false });
-        fetchFeedbacks();
-      } else {
-        const err = await res.json();
-        addToast(err.error || 'Failed to submit feedback', 'error');
-      }
-    } catch (e) {
-      addToast('Error submitting feedback', 'error');
-    } finally {
-      setIsSubmittingFeedback(false);
-    }
-  };
-
-  const openFeedbackDetail = async (fb: Feedback) => {
-    setViewingFeedback(fb);
-    try {
-      const res = await fetch(`${API_URL}/api/feedback/${fb.id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setFeedbackMessages(data.messages || []);
-      }
-    } catch (e) {
-      console.error('Failed to load feedback details:', e);
-    }
-  };
-
-  const handleSendFeedbackMessage = async () => {
-    if (!viewingFeedback || !newFeedbackMsg.trim()) return;
-    try {
-      const res = await fetch(`${API_URL}/api/feedback/${viewingFeedback.id}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ message: newFeedbackMsg })
-      });
-      if (res.ok) {
-        const newMsg = await res.json();
-        setFeedbackMessages(prev => [...prev, {
-          ...newMsg,
-          author_name: user?.full_name || 'Me',
-          author_role: user?.role || 'USER'
-        }]);
-        setNewFeedbackMsg('');
-        fetchFeedbacks();
-      } else {
-        addToast('Failed to send message', 'error');
-      }
-    } catch (e) {
-      addToast('Error sending message', 'error');
-    }
-  };
-
-  const handleUpdateFeedbackStatus = async (id: string, status: string, assigned_to?: string) => {
-    try {
-      const res = await fetch(`${API_URL}/api/feedback/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status, assigned_to })
-      });
-      if (res.ok) {
-        addToast('Feedback status updated', 'success');
-        fetchFeedbacks();
-        if (viewingFeedback && viewingFeedback.id === id) {
-          setViewingFeedback(prev => prev ? { ...prev, status, assigned_to: assigned_to || prev.assigned_to } : null);
-        }
-      } else {
-        addToast('Failed to update status', 'error');
-      }
-    } catch (e) {
-      addToast('Error updating status', 'error');
-    }
-  };
-
-  // Task Poster & Share Link State
+    // Task Poster & Share Link State
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
   const [isUploadingPoster, setIsUploadingPoster] = useState(false);
@@ -6328,7 +6185,7 @@ export default function App() {
                 </div>
                 <div className="flex items-baseline gap-2 mb-4">
                   <span className="text-5xl font-black text-zinc-900">{myLeetcodeProgress?.solvedToday ?? 0}</span>
-                  <span className="text-zinc-400 font-bold">/ {myLeetcodeProgress?.dailyTarget ?? 0} solved today</span>
+                  <span className="text-zinc-400 font-bold">/ {myLeetcodeProgress?.dailyTarget ?? 0} solved today (Yesterday: {myLeetcodeProgress?.solvedYesterday ?? 0})</span>
                 </div>
               </div>
               <div>
@@ -6702,7 +6559,12 @@ export default function App() {
                           Section / Class {leetcodeSortColumn === 'className' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
                         </th>
                         <th className="px-6 py-4">LeetCode Profile</th>
-                        <th className="px-6 py-4 text-center">Problems Solved / Target</th>
+                        <th className="px-6 py-4 text-center">
+                          {leetcodeViewType === 'DAILY' ? 'Today / Target' : 'This Week / Target'}
+                        </th>
+                        {leetcodeViewType === 'DAILY' && (
+                          <th className="px-6 py-4 text-center">Yesterday</th>
+                        )}
                         <th onClick={() => handleSortHeader('status')} className="px-6 py-4 text-center cursor-pointer select-none">
                           Status {leetcodeSortColumn === 'status' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
                         </th>
@@ -6756,6 +6618,11 @@ export default function App() {
                               <td className="px-6 py-4 text-center font-semibold">
                                 <span className="text-zinc-900 font-bold">{solved}</span> / <span className="text-zinc-400">{target}</span>
                               </td>
+                              {isDaily && (
+                                <td className="px-6 py-4 text-center font-semibold text-zinc-600">
+                                  {row.solvedYesterday ?? 0}
+                                </td>
+                              )}
                               <td className="px-6 py-4 text-center">
                                 <span className={cn(
                                   "inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full",
@@ -7623,12 +7490,6 @@ export default function App() {
             </>
           )}
 
-          <SidebarItem
-            icon={<MessageSquare size={20} />}
-            label="Feedback"
-            active={view === 'feedback'}
-            onClick={() => { setView('feedback'); fetchFeedbacks(); setIsMobileSidebarOpen(false); }}
-          />
 
           <SidebarItem
             icon={<Settings size={20} />}
@@ -8201,7 +8062,7 @@ export default function App() {
                                   </div>
                                   <div className="flex items-baseline gap-2 mb-4">
                                     <span className="text-4xl font-black text-zinc-900">{myLeetcodeProgress?.solvedToday ?? 0}</span>
-                                    <span className="text-xs font-bold text-zinc-400">/ {myLeetcodeProgress?.dailyTarget ?? 0} solved today</span>
+                                    <span className="text-xs font-bold text-zinc-400">/ {myLeetcodeProgress?.dailyTarget ?? 0} solved today (Yesterday: {myLeetcodeProgress?.solvedYesterday ?? 0})</span>
                                   </div>
                                 </div>
                                 <div>
@@ -10773,126 +10634,6 @@ export default function App() {
               }
 
               {
-                view === 'feedback' && (
-                  <motion.div
-                    key="feedback"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="w-full h-full flex flex-col min-h-0"
-                  >
-                    <PageLayout>
-                      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
-                        <div>
-                          <h2 className="text-2xl font-black text-zinc-900 tracking-tight flex items-center gap-2">
-                            <MessageSquare className="text-indigo-600" size={26} /> Feedback & Suggestions
-                          </h2>
-                          <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider">
-                            {isStudent ? 'Submit feedback, suggestions, or bugs to advisors' : 'Feedback Dashboard & Case Management'}
-                          </p>
-                        </div>
-
-                        {isStudent && (
-                          <Button
-                            onClick={() => setShowCreateFeedbackModal(true)}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 rounded-xl shadow-lg shadow-indigo-600/20"
-                          >
-                            <Plus size={18} /> New Feedback
-                          </Button>
-                        )}
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-3 mb-6">
-                        <div className="relative flex-1 min-w-[200px]">
-                          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
-                          <Input
-                            placeholder="Search feedback..."
-                            value={feedbackSearch}
-                            onChange={e => setFeedbackSearch(e.target.value)}
-                            className="pl-10"
-                          />
-                        </div>
-                        <select
-                          value={feedbackStatusFilter}
-                          onChange={e => setFeedbackStatusFilter(e.target.value)}
-                          className="h-11 px-3 rounded-lg border border-zinc-200 bg-white text-xs font-bold text-zinc-700"
-                        >
-                          <option value="">All Statuses</option>
-                          <option value="Open">🟢 Open</option>
-                          <option value="In Progress">🟡 In Progress</option>
-                          <option value="Resolved">✅ Resolved</option>
-                          <option value="Rejected">❌ Rejected</option>
-                        </select>
-                        <select
-                          value={feedbackCategoryFilter}
-                          onChange={e => setFeedbackCategoryFilter(e.target.value)}
-                          className="h-11 px-3 rounded-lg border border-zinc-200 bg-white text-xs font-bold text-zinc-700"
-                        >
-                          <option value="">All Categories</option>
-                          <option value="Suggestion">💡 Suggestion</option>
-                          <option value="Bug">🐛 Bug</option>
-                          <option value="Complaint">⚠️ Complaint</option>
-                          <option value="Feature Request">✨ Feature Request</option>
-                          <option value="General">💬 General</option>
-                        </select>
-                      </div>
-
-                      <div className="space-y-4">
-                        {feedbacks.length === 0 ? (
-                          <Card className="p-12 text-center text-zinc-400">
-                            <MessageSquare size={40} className="mx-auto mb-3 text-zinc-300" />
-                            <p className="font-bold text-zinc-600 text-base">No feedback found</p>
-                            <p className="text-xs text-zinc-400 mt-1">{isStudent ? 'Click "New Feedback" to submit a suggestion or bug report' : 'No feedback cases submitted yet'}</p>
-                          </Card>
-                        ) : (
-                          feedbacks.map(fb => (
-                            <Card key={fb.id} className="p-5 border border-zinc-200 hover:border-zinc-300 transition-all cursor-pointer" onClick={() => openFeedbackDetail(fb)}>
-                              <div className="flex items-start justify-between gap-4 mb-2">
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className={cn(
-                                      "px-2.5 py-0.5 rounded-full text-[10px] font-black border",
-                                      fb.status === 'Resolved' ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
-                                        fb.status === 'In Progress' ? "bg-amber-50 text-amber-600 border-amber-200" :
-                                          fb.status === 'Rejected' ? "bg-red-50 text-red-600 border-red-200" :
-                                            "bg-blue-50 text-blue-600 border-blue-200"
-                                    )}>
-                                      {fb.status}
-                                    </span>
-                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-zinc-100 text-zinc-700">
-                                      {fb.category}
-                                    </span>
-                                    <span className={cn(
-                                      "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-                                      fb.priority === 'Critical' ? "bg-red-100 text-red-700" :
-                                        fb.priority === 'High' ? "bg-orange-100 text-orange-700" : "bg-zinc-100 text-zinc-500"
-                                    )}>
-                                      {fb.priority} Priority
-                                    </span>
-                                  </div>
-                                  <h3 className="text-base font-bold text-zinc-900">{fb.title}</h3>
-                                </div>
-
-                                <span className="text-xs text-zinc-400 shrink-0">{new Date(fb.created_at).toLocaleDateString()}</span>
-                              </div>
-
-                              <p className="text-xs text-zinc-600 line-clamp-2 mb-3">{fb.description}</p>
-
-                              <div className="flex items-center justify-between text-[11px] font-medium text-zinc-400 border-t border-zinc-100 pt-2.5">
-                                <span>Submitted by <strong className="text-zinc-700">{fb.submitter_name}</strong></span>
-                                <span className="flex items-center gap-1 text-indigo-600 font-bold">
-                                  <MessageCircle size={12} /> {fb.reply_count || 0} Replies &rarr;
-                                </span>
-                              </div>
-                            </Card>
-                          ))
-                        )}
-                      </div>
-                    </PageLayout>
-                  </motion.div>
-                )
-              }
-
-              {
                 view === 'settings' && (
                   <motion.div
                     key="settings"
@@ -11933,187 +11674,6 @@ export default function App() {
             </div>
           )}
 
-          {/* Submit Feedback Modal */}
-          {showCreateFeedbackModal && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white rounded-2xl shadow-2xl border border-zinc-200 max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto"
-              >
-                <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-                  <h3 className="text-lg font-black text-zinc-900 flex items-center gap-2">
-                    <MessageSquare className="text-indigo-600" size={20} /> Submit Feedback / Suggestion
-                  </h3>
-                  <button onClick={() => setShowCreateFeedbackModal(false)} className="text-zinc-400 hover:text-zinc-600">
-                    <X size={18} />
-                  </button>
-                </div>
-
-                <form onSubmit={handleCreateFeedback} className="space-y-4">
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">Subject / Title <span className="text-red-500">*</span></label>
-                    <Input
-                      placeholder="Brief summary of your feedback or issue"
-                      value={feedbackForm.title}
-                      onChange={e => setFeedbackForm(prev => ({ ...prev, title: e.target.value }))}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-bold text-zinc-700 block mb-1">Category</label>
-                      <Select
-                        value={feedbackForm.category}
-                        onChange={e => setFeedbackForm(prev => ({ ...prev, category: e.target.value }))}
-                      >
-                        <option value="GENERAL">General</option>
-                        <option value="ACADEMIC">Academic</option>
-                        <option value="INFRASTRUCTURE">Infrastructure</option>
-                        <option value="BUG_REPORT">Bug Report</option>
-                        <option value="OTHER">Other</option>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-bold text-zinc-700 block mb-1">Priority</label>
-                      <Select
-                        value={feedbackForm.priority}
-                        onChange={e => setFeedbackForm(prev => ({ ...prev, priority: e.target.value }))}
-                      >
-                        <option value="LOW">Low</option>
-                        <option value="MEDIUM">Medium</option>
-                        <option value="HIGH">High</option>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-zinc-700 block mb-1">Details <span className="text-red-500">*</span></label>
-                    <textarea
-                      rows={4}
-                      placeholder="Describe your feedback, suggestion, or issue in detail..."
-                      value={feedbackForm.description}
-                      onChange={e => setFeedbackForm(prev => ({ ...prev, description: e.target.value }))}
-                      className="w-full p-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-black text-sm bg-white text-zinc-800"
-                      required
-                    />
-                  </div>
-
-                  <label className="flex items-center gap-2 cursor-pointer font-medium text-xs text-zinc-700">
-                    <input
-                      type="checkbox"
-                      checked={feedbackForm.is_anonymous}
-                      onChange={e => setFeedbackForm(prev => ({ ...prev, is_anonymous: e.target.checked }))}
-                      className="w-4 h-4 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    Submit anonymously (hide my name from staff)
-                  </label>
-
-                  <div className="flex justify-end gap-3 pt-3 border-t border-zinc-100">
-                    <Button variant="ghost" type="button" onClick={() => setShowCreateFeedbackModal(false)}>Cancel</Button>
-                    <Button className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold" disabled={isSubmittingFeedback}>
-                      {isSubmittingFeedback ? 'Submitting...' : 'Submit Feedback'}
-                    </Button>
-                  </div>
-                </form>
-              </motion.div>
-            </div>
-          )}
-
-          {/* View & Manage Feedback Modal */}
-          {viewingFeedback && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white rounded-2xl shadow-2xl border border-zinc-200 max-w-2xl w-full p-6 space-y-4 max-h-[90vh] flex flex-col"
-              >
-                <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-                  <div>
-                    <span className={cn(
-                      "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider",
-                      viewingFeedback.status === 'RESOLVED' ? "bg-emerald-50 text-emerald-600 border border-emerald-200" :
-                        viewingFeedback.status === 'REJECTED' ? "bg-red-50 text-red-600 border border-red-200" :
-                          viewingFeedback.status === 'UNDER_REVIEW' ? "bg-amber-50 text-amber-600 border border-amber-200" :
-                            "bg-blue-50 text-blue-600 border border-blue-200"
-                    )}>
-                      {viewingFeedback.status}
-                    </span>
-                    <h3 className="text-xl font-black text-zinc-900 mt-1">{viewingFeedback.title}</h3>
-                    <p className="text-xs text-zinc-400 font-medium">Submitted by: {viewingFeedback.submitter_name || 'Anonymous'}</p>
-                  </div>
-                  <button onClick={() => setViewingFeedback(null)} className="text-zinc-400 hover:text-zinc-600">
-                    <X size={20} />
-                  </button>
-                </div>
-
-                <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl space-y-2">
-                  <p className="text-sm text-zinc-800 whitespace-pre-wrap">{viewingFeedback.description}</p>
-                  <div className="flex gap-2 pt-2 border-t border-zinc-200 text-[11px] text-zinc-500 font-semibold">
-                    <span>Category: {viewingFeedback.category}</span> • <span>Priority: {viewingFeedback.priority}</span>
-                  </div>
-                </div>
-
-                {/* Staff Actions: Change Status */}
-                {(isAdmin || isHOD || isAdvisor) && (
-                  <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl flex items-center justify-between gap-3">
-                    <span className="text-xs font-bold text-indigo-900">Update Status:</span>
-                    <div className="flex gap-2">
-                      {['PENDING', 'UNDER_REVIEW', 'RESOLVED', 'REJECTED'].map(st => (
-                        <button
-                          key={st}
-                          onClick={() => handleUpdateFeedbackStatus(viewingFeedback.id, st)}
-                          className={cn(
-                            "px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all border",
-                            viewingFeedback.status === st
-                              ? "bg-indigo-600 text-white border-indigo-600"
-                              : "bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100"
-                          )}
-                        >
-                          {st}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Message Thread */}
-                <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar min-h-[160px]">
-                  <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Conversation History</h4>
-                  {feedbackMessages.length === 0 ? (
-                    <p className="text-xs text-zinc-400 italic">No responses yet.</p>
-                  ) : (
-                    feedbackMessages.map(msg => (
-                      <div key={msg.id} className={cn("p-3 rounded-xl border text-xs space-y-1", msg.user_id === user?.id ? "bg-indigo-50 border-indigo-100 ml-6" : "bg-white border-zinc-200 mr-6")}>
-                        <div className="flex items-center justify-between font-bold text-zinc-700">
-                          <span>{msg.author_name} ({msg.author_role})</span>
-                          <span className="text-[10px] text-zinc-400">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                        </div>
-                        <p className="text-zinc-800 whitespace-pre-wrap">{msg.message}</p>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                {/* Reply Input */}
-                <div className="flex gap-2 pt-2 border-t border-zinc-100">
-                  <Input
-                    placeholder="Type a response message..."
-                    value={newFeedbackMsg}
-                    onChange={e => setNewFeedbackMsg(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleSendFeedbackMessage(); }}
-                  />
-                  <Button className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 shrink-0" onClick={handleSendFeedbackMessage}>
-                    Send
-                  </Button>
-                </div>
-              </motion.div>
-            </div>
-          )}
           {renderAssignTargetModal()}
           {renderAssignGithubTargetModal()}
           {renderHistoryDetailsModal()}
