@@ -101,7 +101,7 @@ async function startServer() {
   // Enable trust proxy so express-rate-limit correctly identifies individual client IPs behind reverse proxies (Render, Cloudflare, Nginx)
   app.set('trust proxy', 1);
 
-  // Lightweight Health Check Endpoint (for RenderPing / keep-alive pings)
+  // Lightweight Health Check Endpoint (for keep-alive pings)
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', uptime: Math.floor(process.uptime()), timestamp: new Date().toISOString() });
   });
@@ -5508,13 +5508,13 @@ async function startServer() {
         'Register No': row.registerNumber,
         'Student Name': row.fullName,
         'Section': row.className,
-        'Sun': sun,
-        'Mon': mon,
-        'Tue': tue,
-        'Wed': wed,
-        'Thu': thu,
-        'Fri': fri,
-        'Sat': sat,
+        'Day 1': sun,
+        'Day 2': mon,
+        'Day 3': tue,
+        'Day 4': wed,
+        'Day 5': thu,
+        'Day 6': fri,
+        'Day 7': sat,
         'Weekly Solved': row.solvedThisWeek,
         'Weekly Target': row.weeklyTarget,
         'Completion %': `${row.completionWeeklyPct}%`,
@@ -6465,13 +6465,13 @@ async function startServer() {
       return {
         'Register No': r.registerNumber, 'Student Name': r.fullName, 'Section': r.className,
         'GitHub': r.githubUsername,
-        'Sun Commits': getDay(id, 0).commits,
-        'Mon Commits': getDay(id, 1).commits,
-        'Tue Commits': getDay(id, 2).commits,
-        'Wed Commits': getDay(id, 3).commits,
-        'Thu Commits': getDay(id, 4).commits,
-        'Fri Commits': getDay(id, 5).commits,
-        'Sat Commits': getDay(id, 6).commits,
+        'Day 1 Commits': getDay(id, 0).commits,
+        'Day 2 Commits': getDay(id, 1).commits,
+        'Day 3 Commits': getDay(id, 2).commits,
+        'Day 4 Commits': getDay(id, 3).commits,
+        'Day 5 Commits': getDay(id, 4).commits,
+        'Day 6 Commits': getDay(id, 5).commits,
+        'Day 7 Commits': getDay(id, 6).commits,
         'Total Commits': r.commitsThisWeek, 'Commit Target': r.weeklyCommitTarget,
         'Commit %': `${r.completionWeeklyCommitPct}%`, 'Status': r.weeklyCommitStatus.replace('_', ' '),
         'New Repos This Week': r.reposThisWeek,

@@ -24,7 +24,6 @@ graph TD
         CodingEngine["Coding Progress & Target Resolver"]
         RAMCache["🚀 In-Memory RAM Directory Cache (studentDirectoryService)"]
         ExcelService["📊 Automated Excel Export Generator (XLSX)"]
-        KeepAliveService["🔄 RenderPing Keep-Alive & Health Monitor"]
     end
 
     subgraph Storage["🐘 Database & External Cloud Services"]
@@ -42,7 +41,6 @@ graph TD
     CodingEngine -->|Batch Async Progress Fetching| LeetCodeAPI
     CodingEngine -->|Batch Async Progress Fetching| GitHubAPI
     CodingEngine --> ExcelService
-    KeepAliveService <-->|Health Ping GET /api/health| Frontend
 ```
 
 ---
@@ -93,7 +91,7 @@ graph TD
 - **LeetCode Tracker**: Monitor total solved problems, daily status (`COMPLETED` / `NOT COMPLETED`), remaining problems to target, and weekly progress.
 - **GitHub Tracker**: Track daily commits, new repository creations, daily commit status, and weekly commit aggregates.
 - **Combined Progress View**: Single unified table displaying LeetCode problem solving and GitHub commit statistics side-by-side.
-- **Monday–Sunday Day Breakdown**: View detailed day-by-day problem and commit counts across the current week.
+- **Day 1–Day 7 Day Breakdown**: View detailed day-by-day problem and commit counts across the current week.
 
 ### 4. 🎯 Target Management Engine
 - Set daily and weekly target thresholds for **Individual Students**, **Classes**, **Academic Years**, or **Departments**.
@@ -104,7 +102,7 @@ graph TD
 - One-click export of beautifully formatted Excel `.xlsx` reports:
   - **Daily Progress Report**: Live daily problem/commit status.
   - **Weekly Progress Report**: Weekly progress totals & target completion percentages.
-  - **Weekly Detailed Report**: Day-by-day Monday through Sunday breakdown.
+  - **Weekly Detailed Report**: Day-by-day Day 1 through Day 7 breakdown.
   - **Defaulters / Incomplete Report**: Targeted list of students missing daily/weekly goals.
   - **Combined Progress Report**: Unified LeetCode + GitHub progress export.
 
@@ -336,16 +334,16 @@ erDiagram
 ### Excel Export Endpoints
 - `GET /api/leetcode/export/daily`: Export Daily LeetCode Excel Report.
 - `GET /api/leetcode/export/weekly`: Export Weekly LeetCode Excel Report.
-- `GET /api/leetcode/export/weekly-detailed`: Export Detailed Mon–Sun LeetCode Excel Report.
+- `GET /api/leetcode/export/weekly-detailed`: Export Detailed Day 1–7 LeetCode Excel Report.
 - `GET /api/leetcode/export/incomplete`: Export Defaulters LeetCode Excel Report.
 - `GET /api/github/export/daily`: Export Daily GitHub Excel Report.
 - `GET /api/github/export/weekly`: Export Weekly GitHub Excel Report.
-- `GET /api/github/export/weekly-detailed`: Export Detailed Mon–Sun GitHub Excel Report.
+- `GET /api/github/export/weekly-detailed`: Export Detailed Day 1–7 GitHub Excel Report.
 - `GET /api/github/export/incomplete`: Export Defaulters GitHub Excel Report.
 - `GET /api/coding/export-excel`: Export Combined Coding Progress Excel Report.
 
 ### Render Automation & Health Endpoints
-- `GET /api/health`: Ultra-fast (< 2ms) health check endpoint for RenderPing keep-alive pinging.
+- `GET /api/health`: Ultra-fast (< 2ms) health check endpoint.
 - `POST /api/cron/sync-coding-progress`: Protected cron webhook for automated daily coding sync.
 
 ---
@@ -430,5 +428,4 @@ services:
         generateValue: true
 ```
 
-- **Keep-Alive Configuration**: Register `https://<your-render-app>.onrender.com/api/health` on [RenderPing](https://renderping.amudhanmohan.in) to prevent Render free-tier instances from going to sleep.
 - **Automated Daily Sync**: Configure a cron job targeting `POST https://<your-render-app>.onrender.com/api/cron/sync-coding-progress` with header `x-cron-secret: <CRON_SECRET>` to automatically trigger daily LeetCode and GitHub progress synchronization.

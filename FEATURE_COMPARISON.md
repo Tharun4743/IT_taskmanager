@@ -15,7 +15,7 @@ This document provides a detailed, comprehensive side-by-side comparison between
 | **🚀 RAM Student Directory Accelerator** | ❌ **Not Available** (Executed raw DB joins per request) | ✅ **In-Memory RAM Directory Cache** (`studentDirectoryService.ts`): Pre-indexes 400+ student profiles in RAM, dropping lookup times from **~30ms** to **< 0.01ms**. |
 | **⚡ Tab-Scoped Parallel Request Batching** | ❌ **Not Available** (Sequential HTTP roundtrips) | ✅ **Parallel Batching**: Grouped `Promise.all` requests scoped to active platform tab (`LEETCODE` vs `GITHUB`), reducing API network roundtrips by **60–75%**. |
 | **📊 Advanced Excel Export Suite** | ⚠️ **Basic CSV Export** | ✅ **9 Specialized Excel Exporters**: Export Daily, Weekly, Mon–Sun Detailed, and Defaulters/Incomplete reports for LeetCode, GitHub, and Combined coding progress. |
-| **🔄 Cloud Keep-Alive & Cron Webhooks** | ❌ **Not Available** | ✅ **Render Automation**: Lightweight `GET /api/health` (< 2ms ping for RenderPing) + Protected `POST /api/cron/sync-coding-progress` webhook for automated daily syncs. |
+| **🔄 Cloud Keep-Alive & Cron Webhooks** | ❌ **Not Available** | ✅ **Render Automation**: Lightweight `GET /api/health` (< 2ms ping for keep-alive monitoring) + Protected `POST /api/cron/sync-coding-progress` webhook for automated daily syncs. |
 | **📢 Digital Notice Board** | ❌ **Not Available** | ✅ **Full Notice Board**: Multi-class/department scoping, priority tags (`Urgent`, `High`, `Normal`, `Low`), pinning, file attachments, and direct link sharing. |
 | **👥 Team Tasks & Group Formation** | ❌ **Not Available** (All tasks were individual) | ✅ **Team Tasks System**: Min/Max team size controls, interactive invitation banners, leader/member roles, pre-submission team editing, and disband/leave endpoints. |
 | **🛑 Student Opt-Out / Not Participating** | ❌ **Not Available** | ✅ **"Not Participating" Module**: Radio choice cards ("Yes I'll Submit" vs "Skip / Not Interested"), mandatory reason collection, reason editing, and stat cards. |
@@ -45,7 +45,7 @@ This document provides a detailed, comprehensive side-by-side comparison between
 - **Features**: Exports Daily, Weekly, Mon-Sun Detailed, and Defaulters reports for LeetCode, GitHub, and Combined coding progress with auto-formatted column widths.
 
 ### 4. Cloud Keep-Alive & Cron Automation (NEW)
-- **Features**: `GET /api/health` endpoint (< 2ms response) for RenderPing keep-alive service + `POST /api/cron/sync-coding-progress` webhook protected by `CRON_SECRET` header for external cron sync.
+- **Features**: `GET /api/health` endpoint (< 2ms response) for keep-alive monitoring + `POST /api/cron/sync-coding-progress` webhook protected by `CRON_SECRET` header for external cron sync.
 
 ### 5. Digital Notice Board (NEW)
 - **Features**: Multi-class target picker, department-level notices, global announcements, priority tags (`Urgent`, `High`, `Normal`, `Low`), pinning, file attachments, and direct link sharing.
