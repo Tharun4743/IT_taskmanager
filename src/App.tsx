@@ -5961,12 +5961,54 @@ export default function App() {
     }
   };
 
-  const handleDownloadCombinedExcel = () => {
-    const deptParam = selectedLeetcodeDeptId !== 'ALL' ? `&departmentId=${selectedLeetcodeDeptId}` : '';
-    const yearParam = selectedLeetcodeYear !== 'ALL' ? `&year=${selectedLeetcodeYear}` : '';
-    const classParam = selectedLeetcodeClassId !== 'ALL' ? `&classId=${selectedLeetcodeClassId}` : '';
-    const downloadUrl = `${API_URL}/api/coding/export-excel?date=${leetcodeDate}&view=${leetcodeViewType}${deptParam}${yearParam}${classParam}`;
-    window.open(downloadUrl, '_blank');
+  const handleDownloadCombinedExcel = async () => {
+    try {
+      const deptParam = selectedLeetcodeDeptId !== 'ALL' ? `&departmentId=${selectedLeetcodeDeptId}` : '';
+      const yearParam = selectedLeetcodeYear !== 'ALL' ? `&year=${selectedLeetcodeYear}` : '';
+      const classParam = selectedLeetcodeClassId !== 'ALL' ? `&classId=${selectedLeetcodeClassId}` : '';
+      const exportView = codingPlatformTab === 'GITHUB' ? 'GITHUB' : leetcodeViewType;
+      const downloadUrl = `${API_URL}/api/coding/export-excel?date=${leetcodeDate}&view=${exportView}${deptParam}${yearParam}${classParam}`;
+
+      const res = await fetch(downloadUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      if (!res.ok) {
+        let errMessage = 'Failed to export excel report';
+        try {
+          const data = await res.json();
+          errMessage = data.error || errMessage;
+        } catch (e) {}
+        addToast(errMessage, 'error');
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+
+      // Try to parse the filename from Content-Disposition header if available
+      const contentDisposition = res.headers.get('content-disposition');
+      let fileName = `${exportView}_Progress_Report_${leetcodeDate}.xlsx`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename=(?:"([^"]+)"|([^;]+))/);
+        if (match) {
+          fileName = (match[1] || match[2]).trim();
+        }
+      }
+
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error downloading combined excel:', err);
+      addToast('Network error exporting Excel', 'error');
+    }
   };
 
   const handleCreateTarget = async (e: React.FormEvent) => {
