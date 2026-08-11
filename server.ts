@@ -4441,17 +4441,22 @@ async function startServer() {
 
   // Utility: Get start and end of week (Sunday to Saturday) in IST format
   function getWeekRange(dateStr: string): { start: string; end: string } {
-    const date = new Date(dateStr);
-    const day = date.getDay(); // 0 is Sunday, 1 is Monday, ...
-    
+    const parts = dateStr.split('-');
+    const year = Number(parts[0]);
+    const month = Number(parts[1]) - 1;
+    const day = Number(parts[2]);
+
+    const date = new Date(Date.UTC(year, month, day));
+    const dayOfWeek = date.getUTCDay(); // 0 is Sunday, 1 is Monday, ...
+
     // Get Sunday
     const sunday = new Date(date);
-    sunday.setDate(date.getDate() - day);
-    
+    sunday.setUTCDate(date.getUTCDate() - dayOfWeek);
+
     // Get Saturday
     const saturday = new Date(sunday);
-    saturday.setDate(sunday.getDate() + 6);
-    
+    saturday.setUTCDate(sunday.getUTCDate() + 6);
+
     return {
       start: sunday.toISOString().split('T')[0],
       end: saturday.toISOString().split('T')[0]
@@ -4768,10 +4773,12 @@ async function startServer() {
         progressMap.set(`${row.user_id}_${dateKey}`, row);
       }
 
-      const start = new Date(startDateStr);
-      const end = new Date(endDateStr);
+      const startParts = startDateStr.split('-');
+      const endParts = endDateStr.split('-');
+      const start = new Date(Date.UTC(Number(startParts[0]), Number(startParts[1]) - 1, Number(startParts[2])));
+      const end = new Date(Date.UTC(Number(endParts[0]), Number(endParts[1]) - 1, Number(endParts[2])));
 
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
         const dateStr = d.toISOString().split('T')[0];
         for (const student of students.rows) {
           const key = `${student.id}_${dateStr}`;
@@ -5327,9 +5334,14 @@ async function startServer() {
     const weeklyPoints: any[] = [];
     const activeTarget = await getActiveTargetForStudent(pool, student.id, student.class_id, student.year ? Number(student.year) : null, student.department_id, dateStr);
     
+    const baseISTDateStr = getISTDateStr();
     for (let k = 0; k < 4; k++) {
-      const offsetDate = new Date();
-      offsetDate.setDate(offsetDate.getDate() - k * 7);
+      const parts = baseISTDateStr.split('-');
+      const y = Number(parts[0]);
+      const m = Number(parts[1]) - 1;
+      const d = Number(parts[2]);
+      const offsetDate = new Date(Date.UTC(y, m, d));
+      offsetDate.setUTCDate(offsetDate.getUTCDate() - k * 7);
       const week = getWeekRange(offsetDate.toISOString().split('T')[0]);
       
       const dataRes = await pool.query(`
@@ -5489,20 +5501,25 @@ async function startServer() {
       dayMap.set(`${r.user_id}_${dStr}`, Number(r.solved_today) || 0);
     }
 
+    const getUTCDayStr = (startStr: string, offsetDays: number): string => {
+      const parts = startStr.split('-');
+      const y = Number(parts[0]);
+      const m = Number(parts[1]) - 1;
+      const d = Number(parts[2]);
+      const date = new Date(Date.UTC(y, m, d));
+      date.setUTCDate(date.getUTCDate() + offsetDays);
+      return date.toISOString().split('T')[0];
+    };
+
     const detailedList = filtered.map(row => {
       const studentId = row.studentId;
-      const sun = dayMap.get(`${studentId}_${week.start}`) || 0;
-      const monDate = new Date(week.start); monDate.setDate(monDate.getDate() + 1);
-      const mon = dayMap.get(`${studentId}_${monDate.toISOString().split('T')[0]}`) || 0;
-      const tueDate = new Date(week.start); tueDate.setDate(tueDate.getDate() + 2);
-      const tue = dayMap.get(`${studentId}_${tueDate.toISOString().split('T')[0]}`) || 0;
-      const wedDate = new Date(week.start); wedDate.setDate(wedDate.getDate() + 3);
-      const wed = dayMap.get(`${studentId}_${wedDate.toISOString().split('T')[0]}`) || 0;
-      const thuDate = new Date(week.start); thuDate.setDate(thuDate.getDate() + 4);
-      const thu = dayMap.get(`${studentId}_${thuDate.toISOString().split('T')[0]}`) || 0;
-      const friDate = new Date(week.start); friDate.setDate(friDate.getDate() + 5);
-      const fri = dayMap.get(`${studentId}_${friDate.toISOString().split('T')[0]}`) || 0;
-      const sat = dayMap.get(`${studentId}_${week.end}`) || 0;
+      const sun = dayMap.get(`${studentId}_${getUTCDayStr(week.start, 0)}`) || 0;
+      const mon = dayMap.get(`${studentId}_${getUTCDayStr(week.start, 1)}`) || 0;
+      const tue = dayMap.get(`${studentId}_${getUTCDayStr(week.start, 2)}`) || 0;
+      const wed = dayMap.get(`${studentId}_${getUTCDayStr(week.start, 3)}`) || 0;
+      const thu = dayMap.get(`${studentId}_${getUTCDayStr(week.start, 4)}`) || 0;
+      const fri = dayMap.get(`${studentId}_${getUTCDayStr(week.start, 5)}`) || 0;
+      const sat = dayMap.get(`${studentId}_${getUTCDayStr(week.start, 6)}`) || 0;
 
       return {
         'Register No': row.registerNumber,
@@ -5902,8 +5919,8 @@ async function startServer() {
             const { totalRepos, commitsToday } = stats;
 
             // Calculate new repos today (baseline-aware)
-            const prevDayDate = new Date(dateStr);
-            prevDayDate.setDate(prevDayDate.getDate() - 1);
+            const prevDayDate = new Date(dateStr + 'T00:00:00Z');
+            prevDayDate.setUTCDate(prevDayDate.getUTCDate() - 1);
             const prevDateStr = prevDayDate.toISOString().split('T')[0];
 
             const prevRes = await pool.query(
@@ -6456,8 +6473,13 @@ async function startServer() {
     }
 
     const getDay = (id: string, offset: number) => {
-      const d = new Date(week.start); d.setDate(d.getDate() + offset);
-      return dayMap.get(`${id}_${d.toISOString().split('T')[0]}`) || { commits: 0, repos: 0 };
+      const parts = week.start.split('-');
+      const y = Number(parts[0]);
+      const m = Number(parts[1]) - 1;
+      const d = Number(parts[2]);
+      const date = new Date(Date.UTC(y, m, d));
+      date.setUTCDate(date.getUTCDate() + offset);
+      return dayMap.get(`${id}_${date.toISOString().split('T')[0]}`) || { commits: 0, repos: 0 };
     };
 
     const detailedList = filtered.map(r => {
@@ -6532,10 +6554,10 @@ async function startServer() {
     const week = getWeekRange(dateStr);
     
     // Calculate previous week range (subtract 7 days from start and end)
-    const prevWeekStart = new Date(week.start);
-    prevWeekStart.setDate(prevWeekStart.getDate() - 7);
-    const prevWeekEnd = new Date(week.end);
-    prevWeekEnd.setDate(prevWeekEnd.getDate() - 7);
+    const prevWeekStart = new Date(week.start + 'T00:00:00Z');
+    prevWeekStart.setUTCDate(prevWeekStart.getUTCDate() - 7);
+    const prevWeekEnd = new Date(week.end + 'T00:00:00Z');
+    prevWeekEnd.setUTCDate(prevWeekEnd.getUTCDate() - 7);
     
     const prevWeekStartStr = prevWeekStart.toISOString().split('T')[0];
     const prevWeekEndStr = prevWeekEnd.toISOString().split('T')[0];
