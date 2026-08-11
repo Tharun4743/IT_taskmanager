@@ -5966,7 +5966,9 @@ export default function App() {
       const deptParam = selectedLeetcodeDeptId !== 'ALL' ? `&departmentId=${selectedLeetcodeDeptId}` : '';
       const yearParam = selectedLeetcodeYear !== 'ALL' ? `&year=${selectedLeetcodeYear}` : '';
       const classParam = selectedLeetcodeClassId !== 'ALL' ? `&classId=${selectedLeetcodeClassId}` : '';
-      const exportView = codingPlatformTab === 'GITHUB' ? 'GITHUB' : leetcodeViewType;
+      const exportView = codingPlatformTab === 'GITHUB'
+        ? (leetcodeViewType === 'DAILY' ? 'GITHUB_DAILY' : 'GITHUB_WEEKLY')
+        : leetcodeViewType;
       const downloadUrl = `${API_URL}/api/coding/export-excel?date=${leetcodeDate}&view=${exportView}${deptParam}${yearParam}${classParam}`;
 
       const res = await fetch(downloadUrl, {

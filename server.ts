@@ -6542,7 +6542,23 @@ async function startServer() {
 
     let excelData: any[] = [];
 
-    if (view === 'GITHUB') {
+    if (view === 'GITHUB_DAILY') {
+      const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
+      let sno = 1;
+      excelData = enrichedList
+        .filter(r => !search || r.fullName.toLowerCase().includes(search) || r.registerNumber.toLowerCase().includes(search))
+        .map(gh => ({
+          'S.No': sno++,
+          'Name': gh.fullName,
+          'Reg No': gh.registerNumber,
+          'GitHub ID': gh.githubUsername || '',
+          'Daily Commit Target': gh.commitTarget,
+          'Commits Today': gh.commitsToday,
+          'Remaining': gh.remainingCommits,
+          'Completion %': `${gh.completionCommitPct}%`,
+          'Status': gh.commitStatus ? gh.commitStatus.replace('_', ' ') : 'NO_TARGET'
+        }));
+    } else if (view === 'GITHUB' || view === 'GITHUB_WEEKLY') {
       const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
       
       const prevWeeklyRes = await pool.query(`
@@ -6565,6 +6581,22 @@ async function startServer() {
           'GitHub ID': gh.githubUsername || '',
           'Previous Week Progress Count': prevWeeklyMap.get(gh.studentId) || 0,
           'This Week Progress Count': gh.commitsThisWeek || 0
+        }));
+    } else if (view === 'DAILY' || view === 'LEETCODE_DAILY') {
+      const enrichedList = await enrichStudentProgressBatch(studentRows, dateStr);
+      let sno = 1;
+      excelData = enrichedList
+        .filter(r => !search || r.fullName.toLowerCase().includes(search) || r.registerNumber.toLowerCase().includes(search))
+        .map(lc => ({
+          'S.No': sno++,
+          'Name': lc.fullName,
+          'Reg No': lc.registerNumber,
+          'LeetCode ID': lc.leetcodeUrl ? lc.leetcodeUrl.split('/').filter(Boolean).pop() : '',
+          'Daily Target': lc.dailyTarget,
+          'Solved Today': lc.solvedToday,
+          'Remaining': lc.remainingDaily,
+          'Completion %': `${lc.completionDailyPct}%`,
+          'Status': lc.dailyStatus ? lc.dailyStatus.replace('_', ' ') : 'NO_TARGET'
         }));
     } else {
       const enrichedList = await enrichStudentProgressBatch(studentRows, dateStr);
