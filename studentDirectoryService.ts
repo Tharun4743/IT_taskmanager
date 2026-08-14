@@ -1,6 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+import { exec } from 'child_process';
+import util from 'util';
 import { pool } from './db.js';
+
+const execPromise = util.promisify(exec);
 
 export interface ConstantStudent {
   id: string;
@@ -249,10 +253,52 @@ export function updateStudentCodingProfileInDirectory(userId: string, leetcodeUr
           `"${s.register_number}","${s.full_name}","${s.email}","${s.gender}","${s.class_name}","${s.department_name}","${s.year}","${s.batch}","${s.class_id}","${s.department_id}","${s.leetcode || ''}","${s.github || ''}"`
         ).join('\n');
         fs.writeFileSync(csvFilePath, csvHeaders + csvRows, 'utf-8');
+
+        // Queue automated GitHub commit and push
+        queueGitHubDirectoryPush(`${student.full_name} (${student.register_number})`);
       }
     }
   } catch (err) {
     console.error('[StudentDirectory] Failed to update coding profile on disk/cache:', err);
   }
 }
+
+let gitPushTimeout: NodeJS.Timeout | null = null;
+const pendingUpdateStudents = new Set<string>();
+
+export async function pushDirectoryChangesToGitHub() {
+  try {
+    const studentList = Array.from(pendingUpdateStudents).slice(0, 5).join(', ') || 'student profiles';
+    pendingUpdateStudents.clear();
+
+    await execPromise('git add students_directory/');
+    
+    // Check if there are staged changes
+    const statusRes = await execPromise('git status --porcelain students_directory/');
+    if (!statusRes.stdout.trim()) {
+      return; // No changes to commit
+    }
+
+    const commitMsg = `chore(directory): auto-update student directory for ${studentList}`;
+    await execPromise(`git commit -m "${commitMsg}"`);
+    
+    // Push to GitHub
+    await execPromise('git push origin main');
+    console.log(`[StudentDirectory] 🚀 Auto-pushed directory changes to GitHub: ${commitMsg}`);
+  } catch (err: any) {
+    console.warn('[StudentDirectory] Note: Auto git push status/notice:', err.message);
+  }
+}
+
+export function queueGitHubDirectoryPush(studentSummary: string) {
+  pendingUpdateStudents.add(studentSummary);
+  if (gitPushTimeout) {
+    clearTimeout(gitPushTimeout);
+  }
+  // Debounce push by 2 seconds so rapid updates are batched together cleanly
+  gitPushTimeout = setTimeout(() => {
+    pushDirectoryChangesToGitHub().catch(err => console.error('[StudentDirectory] Background push error:', err));
+  }, 2000);
+}
+
 
