@@ -127,6 +127,9 @@ interface User {
   github_url?: string;
   linkedin_url?: string;
   avatar_url?: string;
+  telegram_chat_id?: string | null;
+  telegram_username?: string | null;
+  telegram_linked_at?: string | null;
   year?: number | string;
   batch?: string;
   is_coordinator?: boolean;
@@ -2262,6 +2265,141 @@ function SettingsView({
     }
   };
 
+  const [telegramStats, setTelegramStats] = useState<any>(null);
+  const [loadingTelegram, setLoadingTelegram] = useState(false);
+  const [groupChatIdInput, setGroupChatIdInput] = useState('');
+  const [savingGroupChat, setSavingGroupChat] = useState(false);
+  const [sendingSummary, setSendingSummary] = useState(false);
+  const [sendingReminders, setSendingReminders] = useState(false);
+  const [sendingTest, setSendingTest] = useState(false);
+
+  const fetchTelegramStatus = async () => {
+    if (!token) return;
+    try {
+      setLoadingTelegram(true);
+      const res = await fetch(`${API_URL}/api/telegram/status`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTelegramStats(data);
+        if (data.groupChatId) setGroupChatIdInput(data.groupChatId);
+      }
+    } catch (err) {
+      console.error('Error fetching Telegram status:', err);
+    } finally {
+      setLoadingTelegram(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTelegramStatus();
+  }, [token]);
+
+  const handleSaveGroupChat = async () => {
+    if (!groupChatIdInput.trim()) {
+      addToast('Please enter a valid Group Chat ID', 'error');
+      return;
+    }
+    setSavingGroupChat(true);
+    try {
+      const res = await fetch(`${API_URL}/api/telegram/set-group-chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ chatId: groupChatIdInput.trim() })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast(data.message || 'Group Chat ID saved!', 'success');
+        fetchTelegramStatus();
+      } else {
+        addToast(data.error || 'Failed to save Group Chat ID', 'error');
+      }
+    } catch {
+      addToast('Error saving Group Chat ID', 'error');
+    } finally {
+      setSavingGroupChat(false);
+    }
+  };
+
+  const handleSendGroupSummaryNow = async () => {
+    setSendingSummary(true);
+    try {
+      const res = await fetch(`${API_URL}/api/telegram/send-group-summary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ targetChatId: groupChatIdInput.trim() || undefined })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        addToast(data.message || 'Group summary sent to Telegram!', 'success');
+      } else {
+        addToast(data.message || data.error || 'Failed to send group summary', 'error');
+      }
+    } catch {
+      addToast('Error sending group summary', 'error');
+    } finally {
+      setSendingSummary(false);
+    }
+  };
+
+  const handleSendRemindersNow = async () => {
+    setSendingReminders(true);
+    try {
+      const res = await fetch(`${API_URL}/api/telegram/send-reminders`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        addToast(data.details || `Reminders sent to ${data.notifiedCount} student(s)!`, 'success');
+      } else {
+        addToast(data.details || data.error || 'Failed to send reminders', 'error');
+      }
+    } catch {
+      addToast('Error triggering reminders', 'error');
+    } finally {
+      setSendingReminders(false);
+    }
+  };
+
+  const handleSendTestMessage = async (targetId?: string) => {
+    setSendingTest(true);
+    try {
+      const res = await fetch(`${API_URL}/api/telegram/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ targetChatId: targetId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast('Test notification sent successfully to Telegram!', 'success');
+      } else {
+        addToast(data.error || 'Failed to send test message', 'error');
+      }
+    } catch {
+      addToast('Error sending test message', 'error');
+    } finally {
+      setSendingTest(false);
+    }
+  };
+
+  const handleUnlinkTelegram = async () => {
+    if (!confirm('Are you sure you want to disconnect your Telegram account from IT TaskManager?')) return;
+    try {
+      const res = await fetch(`${API_URL}/api/student/unlink-telegram`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        addToast('Telegram disconnected successfully.', 'info');
+        fetchTelegramStatus();
+      }
+    } catch {
+      addToast('Error disconnecting Telegram', 'error');
+    }
+  };
+
   return (
     <PageLayout>
       <div className="space-y-6 max-w-4xl mx-auto pb-12">
@@ -2297,6 +2435,177 @@ function SettingsView({
               <p className="text-sm font-bold text-zinc-900 truncate">{user?.email || 'N/A'}</p>
             </div>
           </div>
+        </Card>
+
+        {/* ── Telegram Notifications Section ── */}
+        <Card className="p-6 bg-white border-zinc-200 shadow-sm relative overflow-hidden">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-zinc-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-sky-500 flex items-center justify-center text-white shadow-md shadow-sky-500/20">
+                <Send size={20} className="-rotate-12 translate-x-0.5" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-zinc-900 flex items-center gap-2">
+                  Telegram Automated Notifications
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    100% Free & Auto
+                  </span>
+                </h3>
+                <p className="text-xs text-zinc-500">Instant 1-to-1 deadline reminders and department group summaries</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Student Specific Telegram Connection */}
+          {user?.role === 'STUDENT' && (
+            <div className="space-y-4">
+              {telegramStats?.currentUserLinked ? (
+                <div className="p-4 bg-emerald-50/80 rounded-2xl border border-emerald-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                      <CheckCircle2 size={22} />
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-emerald-950 text-sm flex items-center gap-2">
+                        Connected to @{telegramStats.botUsername}
+                      </h4>
+                      <p className="text-xs text-emerald-800">
+                        {telegramStats.currentUserTelegram ? `@${telegramStats.currentUserTelegram} • ` : ''}
+                        You are set up to receive 1-to-1 deadline reminders on Telegram!
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <Button
+                      variant="outline"
+                      className="text-xs py-2 px-3 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+                      disabled={sendingTest}
+                      onClick={() => handleSendTestMessage()}
+                    >
+                      {sendingTest ? <Loader2 size={14} className="animate-spin" /> : <Bell size={14} />}
+                      <span>Send Test Alert</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="text-xs py-2 px-3 text-red-600 hover:bg-red-50 hover:text-red-700"
+                      onClick={handleUnlinkTelegram}
+                    >
+                      Disconnect
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-5 bg-gradient-to-br from-sky-50 to-indigo-50/50 rounded-2xl border border-sky-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <h4 className="font-extrabold text-zinc-900 text-sm flex items-center gap-2">
+                      <Bell size={16} className="text-sky-600" /> Never Miss a Task Deadline!
+                    </h4>
+                    <p className="text-xs text-zinc-600 max-w-md">
+                      Connect your Telegram in 1 click to get private alerts directly on your phone 24 hours before assignment deadlines.
+                    </p>
+                  </div>
+                  <a
+                    href={`https://t.me/${telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot'}?start=${user?.register_number || user?.username}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-extrabold text-xs text-white bg-sky-500 hover:bg-sky-600 shadow-md shadow-sky-500/25 transition-all whitespace-nowrap"
+                  >
+                    <Send size={14} className="-rotate-12" />
+                    <span>Connect Telegram in 1-Click</span>
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Admin / Faculty Management Section */}
+          {user?.role !== 'STUDENT' && (
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Telegram Bot</p>
+                  <p className="text-xs font-bold text-zinc-900 flex items-center gap-1.5 mt-0.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    @{telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot'}
+                  </p>
+                </div>
+                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Students Connected</p>
+                  <p className="text-sm font-black text-indigo-600 mt-0.5">
+                    {telegramStats?.linkedStudents || 0} <span className="text-zinc-400 text-xs font-normal">/ {telegramStats?.totalStudents || 0} students</span>
+                  </p>
+                </div>
+                <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Auto Schedule</p>
+                  <p className="text-xs font-bold text-zinc-700 mt-0.5">
+                    ⏰ 8 PM (Reminders) • 9 PM (Summary)
+                  </p>
+                </div>
+              </div>
+
+              {/* Group Chat Configuration */}
+              <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-200/80 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="text-xs font-extrabold text-zinc-800 block">Department / Class Telegram Group Chat ID</label>
+                    <p className="text-[11px] text-zinc-500">Group summaries will automatically be posted to this group ID every evening.</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    value={groupChatIdInput}
+                    onChange={e => setGroupChatIdInput(e.target.value)}
+                    placeholder="e.g. -1001234567890 (or group username)"
+                    className="text-xs bg-white"
+                  />
+                  <Button
+                    onClick={handleSaveGroupChat}
+                    disabled={savingGroupChat}
+                    className="bg-black hover:bg-zinc-800 text-white text-xs font-bold shrink-0"
+                  >
+                    {savingGroupChat ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                    <span>Save</span>
+                  </Button>
+                </div>
+              </div>
+
+              {/* Instant Broadcast Actions */}
+              <div className="pt-2 border-t border-zinc-100">
+                <p className="text-xs font-bold text-zinc-700 uppercase tracking-wider mb-2.5">Manual Notification Triggers</p>
+                <div className="flex flex-wrap gap-2.5">
+                  <Button
+                    variant="primary"
+                    disabled={sendingSummary}
+                    onClick={handleSendGroupSummaryNow}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-2"
+                  >
+                    {sendingSummary ? <Loader2 size={14} className="animate-spin" /> : <Megaphone size={14} />}
+                    <span>Broadcast Group Summary Now</span>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    disabled={sendingReminders}
+                    onClick={handleSendRemindersNow}
+                    className="text-xs font-bold border-zinc-300 text-zinc-800 hover:bg-zinc-100 flex items-center gap-2"
+                  >
+                    {sendingReminders ? <Loader2 size={14} className="animate-spin" /> : <Bell size={14} />}
+                    <span>Send Reminders to Pending Students Now</span>
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    disabled={sendingTest}
+                    onClick={() => handleSendTestMessage(groupChatIdInput.trim() || undefined)}
+                    className="text-xs font-bold text-zinc-600 hover:text-zinc-900 flex items-center gap-1.5"
+                  >
+                    {sendingTest ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                    <span>Test Notification</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </Card>
 
         {/* Change Password Card */}
@@ -2413,7 +2722,6 @@ function SettingsView({
             {[
               { key: 'task_reminders', title: 'Task Deadline Reminders', desc: 'Get automated in-app alerts 24 hours before deadlines and when tasks are overdue' },
               { key: 'notice_reminders', title: 'Digital Notice Board Alerts', desc: 'Receive notifications when new announcements or urgent notices are published' },
-              
               { key: 'event_reminders', title: 'Event & Calendar Notifications', desc: 'Receive reminders for scheduled academic department events' }
             ].map(({ key, title, desc }) => (
               <label key={key} className="flex items-start justify-between gap-4 p-3 hover:bg-zinc-50 rounded-xl transition-colors cursor-pointer border border-zinc-100">

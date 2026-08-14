@@ -20,6 +20,15 @@ import { syncAndGenerateStudentDirectory, constantStudentByIdMap, constantStuden
 import { cleanupOnlyTaskScreenshots } from './imageCleanupService.js';
 import { generateDatabaseSnapshot } from './dbBackupService.js';
 import { initSentry, captureException } from './sentryService.js';
+import {
+  startTelegramPoller,
+  sendGroupSummary,
+  triggerPendingTaskReminders,
+  getTelegramStats,
+  setGroupChatId,
+  sendTelegramMessage,
+  linkStudentTelegram
+} from './telegramService.js';
 import * as XLSX from 'xlsx';
 
 function addExcelWatermark(ws: XLSX.WorkSheet) {
@@ -103,6 +112,46 @@ async function startServer() {
   setInterval(() => {
     generateDatabaseSnapshot().catch(err => console.error('[DBBackup] Scheduled snapshot warning:', err));
   }, 24 * 60 * 60 * 1000);
+
+  // Initialize Telegram Bot update poller for automated student 1-click account linking
+  try {
+    startTelegramPoller();
+  } catch (tgErr) {
+    console.error('[Telegram] Failed to start poller:', tgErr);
+  }
+
+  // Schedule automated daily Telegram notifications:
+  // 1. 8:00 PM IST -> 1-to-1 Private Reminders to students with pending deadlines
+  // 2. 9:00 PM IST -> Formatted Group Summary to the Department Telegram Group
+  let lastRemindersDate = '';
+  let lastGroupSummaryDate = '';
+
+  setInterval(() => {
+    try {
+      const now = new Date();
+      const istString = now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' });
+      const istDate = new Date(istString);
+      const todayStr = istDate.toISOString().slice(0, 10);
+      const hours = istDate.getHours();
+      const minutes = istDate.getMinutes();
+
+      // 8:00 PM IST (20:00) -> Private Reminders (once per day)
+      if (hours === 20 && minutes >= 0 && minutes <= 5 && lastRemindersDate !== todayStr) {
+        lastRemindersDate = todayStr;
+        console.log('[Telegram Scheduler] 📢 Running automated 8:00 PM IST student deadline reminders...');
+        triggerPendingTaskReminders().catch(err => console.error('[Telegram Scheduler] Error sending reminders:', err));
+      }
+
+      // 9:00 PM IST (21:00) -> Group Summary (once per day)
+      if (hours === 21 && minutes >= 0 && minutes <= 5 && lastGroupSummaryDate !== todayStr) {
+        lastGroupSummaryDate = todayStr;
+        console.log('[Telegram Scheduler] 📊 Running automated 9:00 PM IST daily group summary...');
+        sendGroupSummary().catch(err => console.error('[Telegram Scheduler] Error sending group summary:', err));
+      }
+    } catch (schedErr) {
+      console.error('[Telegram Scheduler] Check error:', schedErr);
+    }
+  }, 60 * 1000);
 
   const app = express();
 
@@ -210,6 +259,75 @@ async function startServer() {
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', `attachment; filename="${path.basename(snapshot.filePath)}"`);
     res.send(JSON.stringify(snapshot.backupPayload, null, 2));
+  }));
+
+  // ── Telegram Bot Notification Endpoints ─────────────────────────────────────
+  // 1. Get Telegram Bot Status & Stats
+  app.get('/api/telegram/status', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const stats = await getTelegramStats();
+    
+    // Check if the current requesting user has telegram linked
+    const userRes = await pool.query('SELECT telegram_chat_id, telegram_username, telegram_linked_at FROM users WHERE id = $1', [req.user.id]);
+    const user = userRes.rows[0];
+    
+    res.json({
+      ...stats,
+      currentUserLinked: Boolean(user?.telegram_chat_id),
+      currentUserTelegram: user?.telegram_username || null,
+      currentUserLinkedAt: user?.telegram_linked_at || null
+    });
+  }));
+
+  // 2. Set Department/Class Group Chat ID
+  app.post('/api/telegram/set-group-chat', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), asyncHandler(async (req: any, res: Response) => {
+    const { chatId } = req.body;
+    if (!chatId || typeof chatId !== 'string') {
+      return res.status(400).json({ error: 'Valid Telegram Chat ID is required' });
+    }
+    await setGroupChatId(chatId.trim());
+    res.json({ success: true, message: `Group Chat ID updated to ${chatId.trim()}` });
+  }));
+
+  // 3. Trigger Instant Group Summary Notification
+  app.post('/api/telegram/send-group-summary', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), asyncHandler(async (req: any, res: Response) => {
+    const { targetChatId } = req.body;
+    const result = await sendGroupSummary(targetChatId);
+    res.json(result);
+  }));
+
+  // 4. Trigger Instant 1-to-1 Private Reminders to Pending Students
+  app.post('/api/telegram/send-reminders', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), asyncHandler(async (req: any, res: Response) => {
+    const result = await triggerPendingTaskReminders();
+    res.json(result);
+  }));
+
+  // 5. Send Test Notification to User or Group
+  app.post('/api/telegram/test', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const { targetChatId } = req.body;
+    let chatId = targetChatId;
+    if (!chatId) {
+      const userRes = await pool.query('SELECT telegram_chat_id FROM users WHERE id = $1', [req.user.id]);
+      chatId = userRes.rows[0]?.telegram_chat_id;
+    }
+
+    if (!chatId) {
+      return res.status(400).json({ error: 'No Telegram Chat ID found. Please connect your Telegram account first or provide a target Chat ID.' });
+    }
+
+    const testMsg = `🔔 *IT TaskManager — Test Notification*\n\n✅ Your connection to the IT TaskManager Telegram Bot is working perfectly!\n📅 Time: ${new Date().toLocaleString('en-IN')}`;
+    const result = await sendTelegramMessage(chatId, testMsg, { parse_mode: 'Markdown' });
+    
+    if (result.ok) {
+      res.json({ success: true, message: 'Test message sent successfully!' });
+    } else {
+      res.status(500).json({ error: result.description || 'Failed to send test message via Telegram API' });
+    }
+  }));
+
+  // 6. Unlink Telegram from Student Profile
+  app.delete('/api/student/unlink-telegram', authenticate, asyncHandler(async (req: any, res: Response) => {
+    await pool.query('UPDATE users SET telegram_chat_id = NULL, telegram_username = NULL, telegram_linked_at = NULL WHERE id = $1', [req.user.id]);
+    res.json({ success: true, message: 'Telegram account unlinked successfully.' });
   }));
 
   // ── Auth ──────────────────────────────────────────────────────────────────
@@ -338,6 +456,8 @@ async function startServer() {
         is_coordinator: Boolean(user.is_coordinator),
         is_year_coordinator: Boolean(user.is_year_coordinator),
         year_scope: user.year_scope,
+        telegram_chat_id: user.telegram_chat_id || null,
+        telegram_username: user.telegram_username || null,
       }
     });
   }));
@@ -347,6 +467,7 @@ async function startServer() {
       SELECT 
         u.id, u.username, u.role, u.full_name, u.email, u.register_number, u.gender,
         u.phone, u.bio, u.github_url, u.linkedin_url, u.avatar_url,
+        u.telegram_chat_id, u.telegram_username, u.telegram_linked_at,
         u.department_id, u.class_id, u.is_coordinator, u.is_year_coordinator, u.year_scope,
         d.name as department_name, c.name as class_name, c.year, c.batch
       FROM users u
@@ -369,6 +490,9 @@ async function startServer() {
       github_url: user.github_url || '',
       linkedin_url: user.linkedin_url || '',
       avatar_url: user.avatar_url || '',
+      telegram_chat_id: user.telegram_chat_id || null,
+      telegram_username: user.telegram_username || null,
+      telegram_linked_at: user.telegram_linked_at || null,
       department_id: user.department_id,
       department_name: user.department_name,
       class_id: user.class_id,
