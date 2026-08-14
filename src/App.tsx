@@ -675,7 +675,7 @@ const FeatureComparisonView = () => {
   const comparisonData = useMemo(() => [
     {
       category: "Live LeetCode Progress Tracking",
-      oldRepo: "Not Available (No LeetCode integration)",
+      oldRepo: "❌ Not Available (No LeetCode integration)",
       newRepo: "Full LeetCode Tracker: Daily & Weekly progress views, total solved problems, daily status (COMPLETED / NOT COMPLETED), remaining target counters, and active target resolution.",
       tag: "Core Tracking",
       isNew: true,
@@ -683,7 +683,7 @@ const FeatureComparisonView = () => {
     },
     {
       category: "Live GitHub Activity Tracking",
-      oldRepo: "Not Available (No GitHub integration)",
+      oldRepo: "❌ Not Available (No GitHub integration)",
       newRepo: "Full GitHub Tracker: Daily commit tracking, new repository creations, daily commit status, weekly commit aggregates, and Monday–Sunday day breakdown.",
       tag: "Core Tracking",
       isNew: true,
@@ -691,7 +691,7 @@ const FeatureComparisonView = () => {
     },
     {
       category: "Combined Coding Progress View",
-      oldRepo: "Not Available",
+      oldRepo: "❌ Not Available",
       newRepo: "Combined Coding Monitor: Single unified progress table displaying LeetCode problem solving and GitHub commit statistics side-by-side for all students.",
       tag: "Core Tracking",
       isNew: true,
@@ -699,23 +699,23 @@ const FeatureComparisonView = () => {
     },
     {
       category: "4-Level Target Management Engine",
-      oldRepo: "Not Available",
+      oldRepo: "❌ Not Available",
       newRepo: "4-Level Target Engine: Set daily/weekly targets at Student, Class, Year, or Department level with automatic inheritance priority resolution.",
       tag: "Core Tracking",
       isNew: true,
       hasOptimized: false,
     },
     {
-      category: "RAM Student Directory Accelerator",
-      oldRepo: "Not Available (Executed raw DB joins per request)",
-      newRepo: "In-Memory RAM Directory Cache (studentDirectoryService.ts): Pre-indexes 400+ student profiles in RAM, dropping lookup times from ~30ms to < 0.01ms.",
+      category: "RAM Student Directory & Git Sync",
+      oldRepo: "❌ Not Available (Executed raw DB joins per request)",
+      newRepo: "RAM Cache with Dual-Mode Git/API Sync (studentDirectoryService.ts): Pre-indexes 400+ student profiles in RAM (lookup < 0.01ms), debounces writes, and auto-commits changes to GitHub using Contents REST API (for Render containers) & Git CLI dynamically.",
       tag: "Performance",
       isNew: true,
       hasOptimized: true,
     },
     {
       category: "Tab-Scoped Parallel Request Batching",
-      oldRepo: "Not Available (Sequential HTTP roundtrips)",
+      oldRepo: "❌ Not Available (Sequential HTTP roundtrips)",
       newRepo: "Parallel Batching: Grouped Promise.all requests scoped to active platform tab (LEETCODE vs GITHUB), reducing API network roundtrips by 60–75%.",
       tag: "Performance",
       isNew: true,
@@ -723,7 +723,7 @@ const FeatureComparisonView = () => {
     },
     {
       category: "Advanced Excel Export Suite",
-      oldRepo: "Basic CSV Export",
+      oldRepo: "⚠️ Basic CSV Export",
       newRepo: "9 Specialized Excel Exporters: Export Daily, Weekly, Mon–Sun Detailed, and Defaulters/Incomplete reports for LeetCode, GitHub, and Combined coding progress.",
       tag: "Analytics",
       isNew: false,
@@ -731,7 +731,7 @@ const FeatureComparisonView = () => {
     },
     {
       category: "Cloud Keep-Alive & Cron Webhooks",
-      oldRepo: "Not Available",
+      oldRepo: "❌ Not Available",
       newRepo: "Render Automation: Lightweight GET /api/health (< 2ms ping for keep-alive monitoring) + Protected POST /api/cron/sync-coding-progress webhook for automated daily syncs.",
       tag: "System Services",
       isNew: true,
@@ -739,7 +739,7 @@ const FeatureComparisonView = () => {
     },
     {
       category: "Digital Notice Board",
-      oldRepo: "Not Available",
+      oldRepo: "❌ Not Available",
       newRepo: "Full Notice Board: Multi-class/department scoping, priority tags (Urgent, High, Normal, Low), pinning, file attachments, and direct link sharing.",
       tag: "Collaborative",
       isNew: true,
@@ -747,7 +747,7 @@ const FeatureComparisonView = () => {
     },
     {
       category: "Team Tasks & Group Formation",
-      oldRepo: "Not Available (All tasks were individual)",
+      oldRepo: "❌ Not Available (All tasks were individual)",
       newRepo: "Team Tasks System: Min/Max team size controls, interactive invitation banners, leader/member roles, pre-submission team editing, and disband/leave endpoints.",
       tag: "Collaborative",
       isNew: true,
@@ -755,7 +755,7 @@ const FeatureComparisonView = () => {
     },
     {
       category: "Student Opt-Out / Not Participating",
-      oldRepo: "Not Available",
+      oldRepo: "❌ Not Available",
       newRepo: "\"Not Participating\" Module: Radio choice cards (\"Yes I'll Submit\" vs \"Skip / Not Interested\"), mandatory reason collection, reason editing, and HOD dashboard analytics cards.",
       tag: "Collaborative",
       isNew: true,
@@ -763,7 +763,7 @@ const FeatureComparisonView = () => {
     },
     {
       category: "Peer Discussions & Mentions",
-      oldRepo: "Not Available",
+      oldRepo: "❌ Not Available",
       newRepo: "Task Q&A Thread: Threaded discussion box under each task, @mentions to tag faculty/peers, and real-time notification alerts.",
       tag: "Collaborative",
       isNew: true,
@@ -771,7 +771,7 @@ const FeatureComparisonView = () => {
     },
     {
       category: "Task Rejection & Resubmission",
-      oldRepo: "Basic (Only simple verify/delete)",
+      oldRepo: "❌ Basic (Only simple verify/delete)",
       newRepo: "Rejection Pipeline: Staff reject submissions with detailed feedback notes; students receive Red Alert banners and 1-click Re-upload Proof.",
       tag: "Collaborative",
       isNew: false,
@@ -779,7 +779,7 @@ const FeatureComparisonView = () => {
     },
     {
       category: "Task Expiry & Reopening",
-      oldRepo: "Fixed Expiry (Expired tasks locked permanently)",
+      oldRepo: "❌ Fixed Expiry (Expired tasks locked permanently)",
       newRepo: "HOD Task Control: HODs can reopen expired tasks, extend deadline dates, and automatically send notification alerts to assigned students.",
       tag: "System Services",
       isNew: true,
@@ -787,7 +787,7 @@ const FeatureComparisonView = () => {
     },
     {
       category: "Student Auth & Login",
-      oldRepo: "Basic Login",
+      oldRepo: "⚠️ Basic Login",
       newRepo: "Strict Login Policy: Official College Email ID login support, Register Number default password enforcement, whitespace trimming, and case-insensitive matching.",
       tag: "System Services",
       isNew: false,
@@ -795,7 +795,7 @@ const FeatureComparisonView = () => {
     },
     {
       category: "Automated Database Snapshot Backup",
-      oldRepo: "Not Available",
+      oldRepo: "❌ Not Available",
       newRepo: "Auto Database Snapshot Backup (dbBackupService.ts): Generates JSON snapshots of all core Postgres tables upon startup and every 24 hours, keeping the 7 most recent backups to control disk footprint.",
       tag: "System Services",
       isNew: true,
@@ -803,23 +803,23 @@ const FeatureComparisonView = () => {
     },
     {
       category: "Media Storage & Cleanup",
-      oldRepo: "Manual Storage",
+      oldRepo: "⚠️ Manual Storage",
       newRepo: "Auto-Cleanup Worker (imageCleanupService.ts): Purges Cloudinary screenshot uploads older than 7 days to keep media storage light.",
       tag: "System Services",
       isNew: true,
       hasOptimized: true,
     },
     {
-      category: "Database Performance",
-      oldRepo: "Un-indexed Queries",
-      newRepo: "Optimized Database: Compound PostgreSQL indexes on leetcode_daily_progress and github_daily_progress for high-frequency queries.",
+      category: "High-Concurrency & Cache Accelerator",
+      oldRepo: "❌ Un-indexed Queries & Raw DB Checks",
+      newRepo: "Tuned High-Speed Cache Engine: In-memory Auth cache (45s TTL), task/notice list caching (5–15s TTL), database connection pool timeout tuning, socket keep-alive limits (65s), and 11 compound indexes (e.g., tasks, submissions, profiles) to handle high parallel loads.",
       tag: "Performance",
-      isNew: false,
+      isNew: true,
       hasOptimized: true,
     },
     {
       category: "Error Monitoring",
-      oldRepo: "Not Available",
+      oldRepo: "❌ Not Available",
       newRepo: "Sentry Integration (sentryService.ts): Captures unhandled backend errors and reports them to Sentry dashboard.",
       tag: "System Services",
       isNew: true,
@@ -827,7 +827,7 @@ const FeatureComparisonView = () => {
     },
     {
       category: "Telegram Bot & Notification Engine",
-      oldRepo: "Not Available (No Telegram integration)",
+      oldRepo: "❌ Not Available (No Telegram integration)",
       newRepo: "Full Telegram Bot Engine (telegramService.ts): Dedicated Telegram Bot with interactive quick-action menus, account linking by Register Number, scorecards, real-time task lifecycle alerts, daily private reminders (8:00 PM IST), and group summary reports (9:00 PM IST).",
       tag: "Collaborative",
       isNew: true,
@@ -835,7 +835,7 @@ const FeatureComparisonView = () => {
     },
     {
       category: "Student Profile & Resume Builder Suite",
-      oldRepo: "Not Available",
+      oldRepo: "❌ Not Available",
       newRepo: "Professional Portfolio Builder: Full-featured student profile editor and resume builder with 10 database tables, letting students compile biographies, academic metrics (CGPA/arrears), skills, projects, internships, certifications, coding platform handles (LeetCode, GitHub, HackerRank, GFG, CodeChef, Codeforces), and career preferences.",
       tag: "Collaborative",
       isNew: true,
@@ -843,7 +843,7 @@ const FeatureComparisonView = () => {
     },
     {
       category: "Database Tables",
-      oldRepo: "Basic Tables Only",
+      oldRepo: "⚠️ Basic Tables Only",
       newRepo: "23 New Database Tables: leetcode_targets, leetcode_daily_progress, github_targets, github_daily_progress, notices, task_discussions, teams, team_members, team_invitations, team_submissions, system_settings, scheduled_notifications, user_notification_settings, student_profiles, student_skills, student_projects, student_internships, student_certifications, student_coding_profiles, student_resumes, student_achievements, student_languages, student_career_preferences.",
       tag: "System Services",
       isNew: true,
@@ -869,8 +869,8 @@ const FeatureComparisonView = () => {
       endpoints: ["GET/POST/DELETE /api/leetcode/targets", "GET/POST/DELETE /api/github/targets", "GET /api/leetcode/progress/daily", "GET /api/github/progress/daily", "GET /api/coding/progress/combined"]
     },
     {
-      title: "2. High-Speed RAM Student Directory",
-      features: "Pre-indexes student handles, register numbers, classes, and emails in Node.js RAM (studentDirectoryService.ts). Drops student lookup latency from ~30ms to < 0.01ms.",
+      title: "2. High-Speed RAM Student Directory & Git Auto-Sync",
+      features: "Pre-indexes student handles, register numbers, classes, and emails in Node.js RAM (studentDirectoryService.ts). Drops student lookup latency from ~30ms to < 0.01ms. Debounces and queues updates to auto-commit and push student coding profile changes to GitHub using either the GitHub Contents REST API (for Render cloud environments without local credentials) or local Git CLI dynamically.",
       files: ["studentDirectoryService.ts"]
     },
     {
@@ -922,6 +922,11 @@ const FeatureComparisonView = () => {
         "POST/DELETE /api/student/profile/languages",
         "PUT /api/student/profile/career-preferences"
       ]
+    },
+    {
+      title: "11. High-Concurrency Server Cache & Connection Engine",
+      features: "Caches authenticated user objects in memory (45s TTL) to bypass redundant database SQL queries per request. Scoped in-memory caching for read-heavy /api/tasks (5s TTL) and /api/notices (15s TTL) with smart invalidation upon database mutations. Implements 11 compound database indexes, configured connection pooling timeouts, and Node.js keep-alive tuning (65s) to avoid socket hangups behind cloud proxies.",
+      files: ["db.ts (Connection Pool & Indexes)", "server.ts (In-memory Caching & Server Listener)"]
     }
   ], []);
 
