@@ -15,10 +15,10 @@ if (!databaseUrl) {
 export const pool = new Pool({
   connectionString: databaseUrl,
   max: 10,
-  min: 1,
-  idleTimeoutMillis: 15000,
+  min: 2,
+  idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
-  statement_timeout: 10000,
+  statement_timeout: 6000,
   keepAlive: true,
   ssl: databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1')
     ? false
@@ -493,9 +493,17 @@ export async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_scheduled_notifs_user ON scheduled_notifications(user_id, status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_scheduled_notifs_time ON scheduled_notifications(scheduled_time, status);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_status_deadline ON tasks(status, deadline);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_status_deadline_dept ON tasks(status, deadline, department_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_submissions_submitted_at ON task_submissions(submitted_at);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_submissions_verified_at ON task_submissions(verified_at);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_submissions_cloudinary ON task_submissions(cloudinary_public_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_task_submissions_user_status ON task_submissions(user_id, status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_task_submissions_task_status ON task_submissions(task_id, status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_users_telegram_chat_id ON users(telegram_chat_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email));`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_student_coding_user ON student_coding_profiles(user_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_student_profiles_user ON student_profiles(user_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, is_read) WHERE is_read = false;`);
 
     // ─── Module 5: LeetCode Targets & Progress Tracking ───────────────────────
     await client.query(`

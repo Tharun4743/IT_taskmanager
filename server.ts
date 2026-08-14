@@ -210,7 +210,55 @@ async function startServer() {
   app.get('/health', healthCheckHandler);
   app.get('/api/health', healthCheckHandler);
 
-  // Auth Middleware - Fetches dynamic permissions directly from DB
+  // ── High-Speed In-Memory User Auth Cache (TTL: 45s) ──────────────────────
+  interface CachedAuthUser {
+    user: any;
+    cachedAt: number;
+  }
+  const userAuthCache = new Map<string, CachedAuthUser>();
+
+  const invalidateUserAuthCache = (userId?: string) => {
+    if (userId) {
+      userAuthCache.delete(String(userId));
+    } else {
+      userAuthCache.clear();
+    }
+  };
+
+  // ── High-Speed In-Memory Cache for Read-Heavy Static/Semi-Static Data ─────
+  interface CachedApiEntry {
+    data: any;
+    expiresAt: number;
+  }
+  const apiMemoryCache = new Map<string, CachedApiEntry>();
+
+  const getApiCache = <T = any>(key: string): T | null => {
+    const item = apiMemoryCache.get(key);
+    if (!item) return null;
+    if (Date.now() > item.expiresAt) {
+      apiMemoryCache.delete(key);
+      return null;
+    }
+    return item.data as T;
+  };
+
+  const setApiCache = (key: string, data: any, ttlSeconds = 30): void => {
+    apiMemoryCache.set(key, { data, expiresAt: Date.now() + ttlSeconds * 1000 });
+  };
+
+  const invalidateApiCache = (prefix?: string): void => {
+    if (!prefix) {
+      apiMemoryCache.clear();
+      return;
+    }
+    for (const key of apiMemoryCache.keys()) {
+      if (key.startsWith(prefix)) {
+        apiMemoryCache.delete(key);
+      }
+    }
+  };
+
+  // Auth Middleware - Fetches dynamic permissions with 45s in-memory caching
   const authenticate = async (req: any, res: any, next: any) => {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
@@ -218,11 +266,21 @@ async function startServer() {
       const decoded: any = jwt.verify(token, JWT_SECRET);
       const userId = decoded.id;
 
-      const dbUserRes = await pool.query(
-        'SELECT id, username, role, department_id, class_id, is_coordinator, is_year_coordinator, year_scope, register_number FROM users WHERE id = $1 LIMIT 1',
-        [userId]
-      );
-      const user = dbUserRes.rows[0];
+      let user: any = null;
+      const cached = userAuthCache.get(userId);
+      const now = Date.now();
+      if (cached && (now - cached.cachedAt) < 45000) {
+        user = cached.user;
+      } else {
+        const dbUserRes = await pool.query(
+          'SELECT id, username, role, department_id, class_id, is_coordinator, is_year_coordinator, year_scope, register_number FROM users WHERE id = $1 LIMIT 1',
+          [userId]
+        );
+        user = dbUserRes.rows[0];
+        if (user) {
+          userAuthCache.set(userId, { user, cachedAt: now });
+        }
+      }
 
       if (!user) {
         return res.status(401).json({ error: 'Unauthorized: User not found' });
@@ -515,8 +573,13 @@ async function startServer() {
 
   // ── Departments ───────────────────────────────────────────────────────────
   app.get('/api/departments', authenticate, async (req, res) => {
+    const cached = getApiCache('departments_all');
+    if (cached) return res.json(cached);
+
     const deptsRes = await pool.query('SELECT * FROM departments ORDER BY created_at ASC');
-    res.json(deptsRes.rows.map(d => ({ id: d.id, name: d.name, created_at: d.created_at })));
+    const data = deptsRes.rows.map(d => ({ id: d.id, name: d.name, created_at: d.created_at }));
+    setApiCache('departments_all', data, 60);
+    res.json(data);
   });
 
   app.post('/api/departments', authenticate, authorize(['SUPREME_ADMIN']), async (req, res) => {
@@ -527,6 +590,7 @@ async function startServer() {
     try {
       const resDept = await pool.query('INSERT INTO departments (name) VALUES ($1) RETURNING *', [name]);
       const d = resDept.rows[0];
+      invalidateApiCache('departments');
       res.json({ id: d.id, name: d.name });
     } catch (e) {
       res.status(400).json({ error: 'Department already exists' });
@@ -577,6 +641,9 @@ async function startServer() {
       await client.query('DELETE FROM classes WHERE department_id = $1', [deptId]);
       await client.query('DELETE FROM departments WHERE id = $1', [deptId]);
       await client.query('COMMIT');
+      invalidateApiCache('departments');
+      invalidateApiCache('classes');
+      invalidateUserAuthCache();
     } catch (err) {
       await client.query('ROLLBACK');
       console.error('Failed to delete department:', err);
@@ -594,6 +661,10 @@ async function startServer() {
 
   // ── Classes ───────────────────────────────────────────────────────────────
   app.get('/api/classes', authenticate, async (req: any, res) => {
+    const cacheKey = `classes_${req.user.role}_${req.user.department_id || 'all'}_${req.user.class_id || 'all'}_${req.user.year_scope || 'all'}`;
+    const cached = getApiCache(cacheKey);
+    if (cached) return res.json(cached);
+
     let classesRes;
     if (req.user.role === 'SUPREME_ADMIN') {
       classesRes = await pool.query(`
@@ -602,32 +673,40 @@ async function startServer() {
         LEFT JOIN departments d ON c.department_id = d.id
         ORDER BY c.year ASC, c.name ASC
       `);
-      return res.json(classesRes.rows.map((c: any) => ({
+      const data = classesRes.rows.map((c: any) => ({
         id: c.id, name: c.name, year: c.year, batch: c.batch,
         department_id: c.department_id,
         department_name: c.department_name,
-      })));
+      }));
+      setApiCache(cacheKey, data, 30);
+      return res.json(data);
     } else if (req.user.role === 'HOD') {
       classesRes = await pool.query('SELECT * FROM classes WHERE department_id = $1 ORDER BY year ASC, name ASC', [req.user.department_id]);
-      return res.json(classesRes.rows.map((c: any) => ({
+      const data = classesRes.rows.map((c: any) => ({
         id: c.id, name: c.name, year: c.year, batch: c.batch,
         department_id: c.department_id,
-      })));
+      }));
+      setApiCache(cacheKey, data, 30);
+      return res.json(data);
     } else if (req.user.role === 'CLASS_ADVISOR' && req.user.is_year_coordinator) {
       classesRes = await pool.query('SELECT * FROM classes WHERE department_id = $1 AND year = $2 ORDER BY year ASC, name ASC', [req.user.department_id, req.user.year_scope]);
-      return res.json(classesRes.rows.map((c: any) => ({
+      const data = classesRes.rows.map((c: any) => ({
         id: c.id, name: c.name, year: c.year, batch: c.batch,
         department_id: c.department_id,
-      })));
+      }));
+      setApiCache(cacheKey, data, 30);
+      return res.json(data);
     } else {
       if (!req.user.class_id) {
         return res.json([]);
       }
       classesRes = await pool.query('SELECT * FROM classes WHERE id = $1', [req.user.class_id]);
-      return res.json(classesRes.rows.map((c: any) => ({
+      const data = classesRes.rows.map((c: any) => ({
         id: c.id, name: c.name, year: c.year, batch: c.batch,
         department_id: c.department_id,
-      })));
+      }));
+      setApiCache(cacheKey, data, 30);
+      return res.json(data);
     }
   });
 
@@ -650,6 +729,7 @@ async function startServer() {
       [name, deptId, year, batch]
     );
     const c = newClassRes.rows[0];
+    invalidateApiCache('classes');
     res.json({ id: c.id, name: c.name, department_id: deptId, year, batch });
   });
 
@@ -690,6 +770,8 @@ async function startServer() {
       await client.query('DELETE FROM task_classes WHERE class_id = $1', [classId]);
       await client.query('DELETE FROM classes WHERE id = $1', [classId]);
       await client.query('COMMIT');
+      invalidateApiCache('classes');
+      invalidateUserAuthCache();
     } catch (err) {
       await client.query('ROLLBACK');
       console.error('Failed to delete class:', err);
@@ -977,6 +1059,7 @@ async function startServer() {
     }
 
     await pool.query('UPDATE users SET is_coordinator = $1, updated_at = NOW() WHERE id = $2', [is_coordinator, req.params.id]);
+    invalidateUserAuthCache(req.params.id);
 
     const cached = constantStudentByIdMap.get(req.params.id.toString());
     if (cached) {
@@ -1004,6 +1087,7 @@ async function startServer() {
       'UPDATE users SET is_year_coordinator = $1, year_scope = $2, updated_at = NOW() WHERE id = $3',
       [is_year_coordinator, is_year_coordinator ? year_scope : null, req.params.id]
     );
+    invalidateUserAuthCache(req.params.id);
     res.json({ success: true });
   });
 
@@ -1021,6 +1105,7 @@ async function startServer() {
     const newPass = targetUser.register_number || targetUser.username;
     const hashed = await bcrypt.hash(newPass, 10);
     await pool.query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [hashed, req.params.id]);
+    invalidateUserAuthCache(req.params.id);
     res.json({ success: true, message: `Password reset to ${newPass}` });
   });
 
@@ -1057,6 +1142,7 @@ async function startServer() {
     await pool.query('DELETE FROM task_submissions WHERE user_id = $1', [req.params.id]);
     await pool.query('DELETE FROM notifications WHERE user_id = $1', [req.params.id]);
     await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+    invalidateUserAuthCache(req.params.id);
     await syncAndGenerateStudentDirectory().catch(err => console.error('[StudentDirectory] Sync on delete warning:', err));
     res.json({ success: true });
   });
@@ -1076,6 +1162,10 @@ async function startServer() {
   app.get('/api/tasks', authenticate, async (req: any, res) => {
     const dbUser = req.user;
     if (!dbUser) return res.status(401).json({ error: 'User not found' });
+
+    const cacheKey = `tasks_${dbUser.role}_${dbUser.id}_${dbUser.class_id || 'all'}_${dbUser.department_id || 'all'}_${dbUser.year_scope || 'all'}`;
+    const cached = getApiCache(cacheKey);
+    if (cached) return res.json(cached);
 
     let tasksRes;
     if (dbUser.role === 'SUPREME_ADMIN') {
@@ -1218,7 +1308,7 @@ async function startServer() {
       }
     }
 
-    res.json(tasks.map((t: any) => ({
+    const responseData = tasks.map((t: any) => ({
       id: t.id,
       title: t.title,
       description: t.description,
@@ -1239,7 +1329,10 @@ async function startServer() {
       poster_url: t.poster_url || null,
       poster_cloudinary_public_id: t.poster_cloudinary_public_id || null,
       submission_count: countsMap[t.id] || 0
-    })));
+    }));
+
+    setApiCache(cacheKey, responseData, 5);
+    res.json(responseData);
   });
 
   // Dedicated Poster Image Upload Endpoint
@@ -1421,6 +1514,7 @@ async function startServer() {
       }
 
       await client.query('COMMIT');
+      invalidateApiCache('tasks_');
 
       // Dispatch real-time Telegram notification to assigned classes & group
       notifyNewTaskCreated({
@@ -1489,6 +1583,7 @@ async function startServer() {
     if (!isAuthorized) return res.status(403).json({ error: 'Forbidden' });
 
     await pool.query('UPDATE tasks SET status = $1, updated_at = NOW() WHERE id = $2', [status, req.params.id]);
+    invalidateApiCache('tasks_');
     res.json({ success: true });
   });
 
@@ -1544,6 +1639,7 @@ async function startServer() {
       );
     }
 
+    invalidateApiCache('tasks_');
     res.json({ success: true, deadline: newDeadline.toISOString(), status: 'OPEN' });
   });
 
@@ -1597,6 +1693,7 @@ async function startServer() {
 
     await pool.query('DELETE FROM task_submissions WHERE task_id = $1', [req.params.id]);
     await pool.query('DELETE FROM tasks WHERE id = $1', [req.params.id]);
+    invalidateApiCache('tasks_');
     res.json({ success: true });
   });
 
@@ -2852,6 +2949,7 @@ async function startServer() {
         `, [screenshot_url, cloudinary_public_id, custom_field_value, newCount, existing.id]);
 
         notifyTaskSubmissionReceived(req.user.id, task_id).catch(err => console.error('[Telegram Notify Submission Error]:', err));
+        invalidateApiCache('tasks_');
         return res.json({ success: true, id: existing.id });
       }
 
@@ -2862,6 +2960,7 @@ async function startServer() {
       `, [task_id, req.user.id, screenshot_url, cloudinary_public_id, custom_field_value]);
 
       notifyTaskSubmissionReceived(req.user.id, task_id).catch(err => console.error('[Telegram Notify Submission Error]:', err));
+      invalidateApiCache('tasks_');
       res.json({ success: true, id: subRes.rows[0].id });
     } catch (err: any) {
       // Bug 3: Handle race condition — two simultaneous requests both passed the SELECT check
@@ -2946,6 +3045,7 @@ async function startServer() {
     `, [note, submission_ids]);
 
     notifySubmissionBatchVerified(submission_ids).catch(err => console.error('[Telegram Batch Verify Error]:', err));
+    invalidateApiCache('tasks_');
     res.json({ success: true, count: submission_ids.length });
   });
 
@@ -3047,6 +3147,7 @@ async function startServer() {
     await pool.query('INSERT INTO notifications (user_id, message, type) VALUES ($1, $2, $3)', [sub.user_id, message, status]);
 
     notifySubmissionVerifiedOrRejected(req.params.id, status, status === 'VERIFIED' ? verification_note : rejection_reason).catch(err => console.error('[Telegram Notify Verify Error]:', err));
+    invalidateApiCache('tasks_');
 
     res.json({ success: true });
   });
@@ -4065,10 +4166,15 @@ async function startServer() {
   // MODULE 2 â€” DIGITAL NOTICE BOARD
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-  // GET /api/notices â€” fetch notices visible to the current user
+  // GET /api/notices — fetch notices visible to the current user
   app.get('/api/notices', authenticate, asyncHandler(async (req: any, res: Response) => {
     const u = req.user;
     const { search, priority, scope: scopeFilter } = req.query as any;
+
+    const cacheKey = `notices_${u.role}_${u.department_id || 'all'}_${u.class_id || 'all'}_${search || ''}_${priority || ''}_${scopeFilter || ''}`;
+    const cached = getApiCache(cacheKey);
+    if (cached) return res.json(cached);
+
     const params: any[] = [];
     const conditions: string[] = [
       `(n.expire_at IS NULL OR n.expire_at > NOW())`,
@@ -4111,6 +4217,7 @@ async function startServer() {
         n.created_at DESC
     `, params);
 
+    setApiCache(cacheKey, result.rows, 15);
     res.json(result.rows);
   }));
 
@@ -4165,6 +4272,7 @@ async function startServer() {
         ]);
         insertedNotices.push(result.rows[0]);
       }
+      invalidateApiCache('notices_');
       return res.status(201).json(insertedNotices[0] || { success: true });
     }
 
@@ -4182,6 +4290,7 @@ async function startServer() {
       u.id, publish_at || new Date().toISOString(), expire_at || null,
     ]);
 
+    invalidateApiCache('notices_');
     res.status(201).json(result.rows[0]);
   }));
 
@@ -4207,6 +4316,7 @@ async function startServer() {
     `, [title, description, scope, department_id || null, class_id || null, year || null, priority,
       attachment_url || null, attachment_cloudinary_public_id || null, publish_at, expire_at || null, req.params.id]);
 
+    invalidateApiCache('notices_');
     res.json(result.rows[0]);
   }));
 
@@ -4220,6 +4330,7 @@ async function startServer() {
     if (!isCreator && !isAdmin) return res.status(403).json({ error: 'Forbidden' });
 
     await pool.query('DELETE FROM notices WHERE id = $1', [req.params.id]);
+    invalidateApiCache('notices_');
     res.json({ success: true });
   }));
 
@@ -4237,6 +4348,7 @@ async function startServer() {
       'UPDATE notices SET is_pinned=$1, updated_at=NOW() WHERE id=$2 RETURNING *',
       [!nr.rows[0].is_pinned, req.params.id]
     );
+    invalidateApiCache('notices_');
     res.json(result.rows[0]);
   }));
 
@@ -6749,6 +6861,10 @@ async function startServer() {
     const server = app.listen(port, '0.0.0.0', () => {
       console.log(`Server running on http://localhost:${port}`);
     });
+    // High-concurrency reverse-proxy keepalive settings (prevent socket hangup behind Render / Cloudflare / Nginx)
+    server.keepAliveTimeout = 65000;
+    server.headersTimeout = 66000;
+
     server.on('error', (err: any) => {
       if (err.code === 'EADDRINUSE') {
         if (process.env.NODE_ENV === 'production') {
