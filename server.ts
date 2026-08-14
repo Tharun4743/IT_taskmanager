@@ -27,7 +27,11 @@ import {
   getTelegramStats,
   setGroupChatId,
   sendTelegramMessage,
-  linkStudentTelegram
+  linkStudentTelegram,
+  notifyNewTaskCreated,
+  notifyTaskSubmissionReceived,
+  notifySubmissionVerifiedOrRejected,
+  notifySubmissionBatchVerified
 } from './telegramService.js';
 import * as XLSX from 'xlsx';
 
@@ -1417,6 +1421,16 @@ async function startServer() {
       }
 
       await client.query('COMMIT');
+
+      // Dispatch real-time Telegram notification to assigned classes & group
+      notifyNewTaskCreated({
+        id: t.id,
+        title: t.title,
+        category: t.category,
+        deadline: t.deadline,
+        creator_name: dbUser.full_name
+      }, clsIds).catch(err => console.error('[Telegram Notify Task Error]:', err));
+
       res.json({
         id: t.id,
         title: t.title,
@@ -2836,6 +2850,8 @@ async function startServer() {
           SET status = 'SUBMITTED', screenshot_url = $1, cloudinary_public_id = $2, custom_field_value = $3, submitted_at = NOW(), resubmission_count = $4, updated_at = NOW()
           WHERE id = $5
         `, [screenshot_url, cloudinary_public_id, custom_field_value, newCount, existing.id]);
+
+        notifyTaskSubmissionReceived(req.user.id, task_id).catch(err => console.error('[Telegram Notify Submission Error]:', err));
         return res.json({ success: true, id: existing.id });
       }
 
@@ -2844,6 +2860,8 @@ async function startServer() {
         VALUES ($1, $2, 'SUBMITTED', $3, $4, $5, NOW())
         RETURNING id
       `, [task_id, req.user.id, screenshot_url, cloudinary_public_id, custom_field_value]);
+
+      notifyTaskSubmissionReceived(req.user.id, task_id).catch(err => console.error('[Telegram Notify Submission Error]:', err));
       res.json({ success: true, id: subRes.rows[0].id });
     } catch (err: any) {
       // Bug 3: Handle race condition — two simultaneous requests both passed the SELECT check
@@ -2927,6 +2945,7 @@ async function startServer() {
       WHERE id = ANY($2) AND status != 'VERIFIED'
     `, [note, submission_ids]);
 
+    notifySubmissionBatchVerified(submission_ids).catch(err => console.error('[Telegram Batch Verify Error]:', err));
     res.json({ success: true, count: submission_ids.length });
   });
 
@@ -3026,6 +3045,9 @@ async function startServer() {
       : `Your submission for "${taskTitle}" has been rejected. Reason: ${rejection_reason}`;
 
     await pool.query('INSERT INTO notifications (user_id, message, type) VALUES ($1, $2, $3)', [sub.user_id, message, status]);
+
+    notifySubmissionVerifiedOrRejected(req.params.id, status, status === 'VERIFIED' ? verification_note : rejection_reason).catch(err => console.error('[Telegram Notify Verify Error]:', err));
+
     res.json({ success: true });
   });
 

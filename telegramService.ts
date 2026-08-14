@@ -95,7 +95,6 @@ export async function sendTelegramMessage(
 ): Promise<{ ok: boolean; description?: string; result?: any }> {
   const token = getBotToken();
   if (!token) {
-    console.warn('[Telegram] Cannot send message: No bot token configured.');
     return { ok: false, description: 'No bot token configured in environment variables.' };
   }
 
@@ -124,7 +123,7 @@ export async function sendTelegramMessage(
 }
 
 /**
- * Answer inline callback queries from button clicks
+ * Answer inline callback queries immediately from button clicks
  */
 export async function answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
   const token = getBotToken();
@@ -168,7 +167,7 @@ export async function registerBotCommandsMenu(): Promise<void> {
     });
     const resData = await response.json();
     if (resData.ok) {
-      console.log('[Telegram Bot] Successfully registered native command menu.');
+      console.log('[Telegram Bot] Registered native command menu with Telegram API.');
     }
   } catch (err: any) {
     console.warn('[Telegram Bot] Could not register command menu:', err.message);
@@ -195,7 +194,7 @@ export function getInteractiveMenuKeyboard(role?: string) {
     ]
   ];
 
-  if (role && (role === 'SUPREME_ADMIN' || role === 'STAFF' || role === 'COORDINATOR')) {
+  if (role && (role === 'SUPREME_ADMIN' || role === 'STAFF' || role === 'COORDINATOR' || role === 'HOD' || role === 'CLASS_ADVISOR')) {
     rows.push([
       { text: '⚠️ Today\'s Defaulters', callback_data: 'cb_defaulters' },
       { text: '📢 Group Summary', callback_data: 'cb_summary' }
@@ -212,32 +211,19 @@ export async function getStudentLeetCodeCard(user: any): Promise<{ html: string;
   const dateStr = getISTDateStr();
   const week = getWeekRange(dateStr);
 
-  // 1. Fetch Daily Progress
-  const dailyRes = await pool.query(`
-    SELECT solved_today, solved_yesterday, total_solved, status
-    FROM leetcode_daily_progress
-    WHERE user_id = $1 AND date = $2
-    LIMIT 1
-  `, [user.id, dateStr]);
+  const [dailyRes, weeklyRes, targetRes] = await Promise.all([
+    pool.query(`SELECT solved_today, solved_yesterday, total_solved, status FROM leetcode_daily_progress WHERE user_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
+    pool.query(`SELECT SUM(solved_today) as solved_week FROM leetcode_daily_progress WHERE user_id = $1 AND date >= $2 AND date <= $3`, [user.id, week.start, week.end]),
+    pool.query(`
+      SELECT daily_target, weekly_target FROM leetcode_targets
+      WHERE start_date <= $1 AND end_date >= $1 AND (user_id = $2 OR class_id = $3 OR class_id IS NULL)
+      ORDER BY CASE WHEN user_id IS NOT NULL THEN 1 WHEN class_id IS NOT NULL THEN 2 ELSE 3 END ASC
+      LIMIT 1
+    `, [dateStr, user.id, user.class_id])
+  ]);
+
   const daily = dailyRes.rows[0];
-
-  // 2. Fetch Weekly Progress
-  const weeklyRes = await pool.query(`
-    SELECT SUM(solved_today) as solved_week
-    FROM leetcode_daily_progress
-    WHERE user_id = $1 AND date >= $2 AND date <= $3
-  `, [user.id, week.start, week.end]);
   const solvedWeek = Number(weeklyRes.rows[0]?.solved_week) || 0;
-
-  // 3. Fetch Target
-  const targetRes = await pool.query(`
-    SELECT daily_target, weekly_target
-    FROM leetcode_targets
-    WHERE start_date <= $1 AND end_date >= $1
-      AND (user_id = $2 OR class_id = $3 OR class_id IS NULL)
-    ORDER BY CASE WHEN user_id IS NOT NULL THEN 1 WHEN class_id IS NOT NULL THEN 2 ELSE 3 END ASC
-    LIMIT 1
-  `, [dateStr, user.id, user.class_id]);
   const target = targetRes.rows[0] || { daily_target: 0, weekly_target: 0 };
 
   const solvedToday = daily?.total_solved !== null && daily?.total_solved !== undefined ? Number(daily.solved_today) : 0;
@@ -298,32 +284,19 @@ export async function getStudentGitHubCard(user: any): Promise<{ html: string; k
   const dateStr = getISTDateStr();
   const week = getWeekRange(dateStr);
 
-  // 1. Fetch Daily Progress
-  const dailyRes = await pool.query(`
-    SELECT commits_today, new_repos_today, total_repos, commit_status, repo_status, sync_status
-    FROM github_daily_progress
-    WHERE user_id = $1 AND date = $2
-    LIMIT 1
-  `, [user.id, dateStr]);
+  const [dailyRes, weeklyRes, targetRes] = await Promise.all([
+    pool.query(`SELECT commits_today, new_repos_today, total_repos, sync_status FROM github_daily_progress WHERE user_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
+    pool.query(`SELECT SUM(commits_today) as commits_week, SUM(new_repos_today) as repos_week FROM github_daily_progress WHERE user_id = $1 AND date >= $2 AND date <= $3`, [user.id, week.start, week.end]),
+    pool.query(`
+      SELECT daily_commit_target, weekly_commit_target, daily_repo_target, weekly_repo_target FROM github_targets
+      WHERE start_date <= $1 AND end_date >= $1 AND (user_id = $2 OR class_id = $3 OR class_id IS NULL)
+      ORDER BY CASE WHEN user_id IS NOT NULL THEN 1 WHEN class_id IS NOT NULL THEN 2 ELSE 3 END ASC
+      LIMIT 1
+    `, [dateStr, user.id, user.class_id])
+  ]);
+
   const daily = dailyRes.rows[0];
-
-  // 2. Fetch Weekly Commits
-  const weeklyRes = await pool.query(`
-    SELECT SUM(commits_today) as commits_week, SUM(new_repos_today) as repos_week
-    FROM github_daily_progress
-    WHERE user_id = $1 AND date >= $2 AND date <= $3
-  `, [user.id, week.start, week.end]);
   const commitsWeek = Number(weeklyRes.rows[0]?.commits_week) || 0;
-
-  // 3. Fetch Target
-  const targetRes = await pool.query(`
-    SELECT daily_commit_target, weekly_commit_target, daily_repo_target, weekly_repo_target
-    FROM github_targets
-    WHERE start_date <= $1 AND end_date >= $1
-      AND (user_id = $2 OR class_id = $3 OR class_id IS NULL)
-    ORDER BY CASE WHEN user_id IS NOT NULL THEN 1 WHEN class_id IS NOT NULL THEN 2 ELSE 3 END ASC
-    LIMIT 1
-  `, [dateStr, user.id, user.class_id]);
   const target = targetRes.rows[0] || { daily_commit_target: 0, weekly_commit_target: 0, daily_repo_target: 0, weekly_repo_target: 0 };
 
   const commitsToday = daily?.sync_status === 'SUCCESS' ? Number(daily.commits_today) : 0;
@@ -385,26 +358,24 @@ export async function getStudentGitHubCard(user: any): Promise<{ html: string; k
 export async function getStudentStatsCard(user: any): Promise<{ html: string; keyboard: any }> {
   const dateStr = getISTDateStr();
 
-  // LeetCode stats
-  const lcRes = await pool.query(`SELECT solved_today, total_solved FROM leetcode_daily_progress WHERE user_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]);
+  const [lcRes, ghRes, tasksRes] = await Promise.all([
+    pool.query(`SELECT solved_today, total_solved FROM leetcode_daily_progress WHERE user_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
+    pool.query(`SELECT commits_today, total_repos FROM github_daily_progress WHERE user_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
+    pool.query(`
+      SELECT 
+        COUNT(t.id) as total_assigned,
+        COUNT(ts.id) FILTER (WHERE ts.status IN ('SUBMITTED', 'VERIFIED')) as completed_tasks
+      FROM task_classes tc
+      JOIN tasks t ON t.id = tc.task_id
+      LEFT JOIN task_submissions ts ON ts.task_id = t.id AND ts.user_id = $1
+      WHERE tc.class_id = $2 AND t.status = 'OPEN'
+    `, [user.id, user.class_id])
+  ]);
+
   const lcSolved = lcRes.rows[0]?.total_solved ? Number(lcRes.rows[0].solved_today) : 0;
   const lcTotal = lcRes.rows[0]?.total_solved ? Number(lcRes.rows[0].total_solved) : 0;
-
-  // GitHub stats
-  const ghRes = await pool.query(`SELECT commits_today, total_repos FROM github_daily_progress WHERE user_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]);
   const ghCommits = Number(ghRes.rows[0]?.commits_today) || 0;
   const ghRepos = Number(ghRes.rows[0]?.total_repos) || 0;
-
-  // Tasks stats
-  const tasksRes = await pool.query(`
-    SELECT 
-      COUNT(t.id) as total_assigned,
-      COUNT(ts.id) FILTER (WHERE ts.status IN ('SUBMITTED', 'VERIFIED')) as completed_tasks
-    FROM task_classes tc
-    JOIN tasks t ON t.id = tc.task_id
-    LEFT JOIN task_submissions ts ON ts.task_id = t.id AND ts.user_id = $1
-    WHERE tc.class_id = $2 AND t.status = 'OPEN'
-  `, [user.id, user.class_id]);
   const totalTasks = Number(tasksRes.rows[0]?.total_assigned) || 0;
   const completedTasks = Number(tasksRes.rows[0]?.completed_tasks) || 0;
   const pendingTasks = Math.max(0, totalTasks - completedTasks);
@@ -457,7 +428,6 @@ export async function getStudentStatsCard(user: any): Promise<{ html: string; ke
 export async function getLeaderboardCard(classId?: string, className?: string): Promise<{ html: string; keyboard: any }> {
   const dateStr = getISTDateStr();
 
-  // Top 5 LeetCode solvers today
   let lcQuery = `
     SELECT u.full_name, u.register_number, lp.solved_today
     FROM leetcode_daily_progress lp
@@ -470,9 +440,7 @@ export async function getLeaderboardCard(classId?: string, className?: string): 
     lcQuery += ` AND u.class_id = $${lcParams.length}`;
   }
   lcQuery += ` ORDER BY lp.solved_today DESC, u.full_name ASC LIMIT 5`;
-  const topLcRes = await pool.query(lcQuery, lcParams);
 
-  // Top 5 GitHub committers today
   let ghQuery = `
     SELECT u.full_name, u.register_number, gp.commits_today
     FROM github_daily_progress gp
@@ -485,7 +453,11 @@ export async function getLeaderboardCard(classId?: string, className?: string): 
     ghQuery += ` AND u.class_id = $${ghParams.length}`;
   }
   ghQuery += ` ORDER BY gp.commits_today DESC, u.full_name ASC LIMIT 5`;
-  const topGhRes = await pool.query(ghQuery, ghParams);
+
+  const [topLcRes, topGhRes] = await Promise.all([
+    pool.query(lcQuery, lcParams),
+    pool.query(ghQuery, ghParams)
+  ]);
 
   const scopeTitle = className ? `Section ${className}` : 'Department of Information Technology';
   const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
@@ -667,6 +639,182 @@ export async function getTasksCard(user: any): Promise<{ html: string; keyboard:
   return { html, keyboard };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔔 REAL-TIME TASK LIFECYCLE NOTIFIERS (Instant Asynchronous Alerts)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 📢 Notify target students & group when a NEW TASK is posted
+ */
+export async function notifyNewTaskCreated(task: {
+  id: string;
+  title: string;
+  category?: string;
+  deadline?: any;
+  creator_name?: string;
+}, classIds: string[]): Promise<void> {
+  const portalUrl = getPortalUrl();
+  const deadlineStr = task.deadline
+    ? new Date(task.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : 'No deadline set';
+
+  let html = `📢 <b>NEW ASSIGNMENT POSTED!</b>\n\n`;
+  html += `📌 <b>Task:</b> ${escapeHtml(task.title)}\n`;
+  if (task.category) html += `📂 <b>Category:</b> <code>${escapeHtml(task.category)}</code>\n`;
+  if (task.creator_name) html += `👤 <b>Assigned By:</b> ${escapeHtml(task.creator_name)}\n`;
+  html += `⏰ <b>Deadline:</b> <i>${deadlineStr}</i>\n\n`;
+  html += `👉 <i>Log in to the portal now to review the requirements and submit your proof!</i>\n`;
+  html += getWatermarkHtml();
+
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: '🌐 View & Submit Task', url: `${portalUrl}` }]
+    ]
+  };
+
+  // 1. Dispatch to Telegram Group Chat if configured
+  const groupChatId = await getGroupChatId();
+  if (groupChatId) {
+    sendTelegramMessage(groupChatId, html, { reply_markup: keyboard }).catch(() => {});
+  }
+
+  // 2. Dispatch in parallel to all students in the assigned classes with linked Telegram
+  if (classIds && classIds.length > 0) {
+    const studentsRes = await pool.query(`
+      SELECT telegram_chat_id
+      FROM users
+      WHERE class_id = ANY($1::uuid[]) AND telegram_chat_id IS NOT NULL AND role = 'STUDENT'
+    `, [classIds]);
+
+    const chatIds = studentsRes.rows.map(r => r.telegram_chat_id).filter(Boolean);
+    console.log(`[Telegram Notifications] Sending new task alert to ${chatIds.length} student(s)...`);
+
+    // Send in chunks with Promise.allSettled to avoid blocking
+    const BATCH_SIZE = 15;
+    for (let i = 0; i < chatIds.length; i += BATCH_SIZE) {
+      const batch = chatIds.slice(i, i + BATCH_SIZE);
+      await Promise.allSettled(batch.map(cid => sendTelegramMessage(cid, html, { reply_markup: keyboard })));
+      await new Promise(r => setTimeout(r, 40));
+    }
+  }
+}
+
+/**
+ * 📥 Notify student when their submission is RECEIVED (PENDING REVIEW)
+ */
+export async function notifyTaskSubmissionReceived(studentId: string, taskId: string): Promise<void> {
+  try {
+    const userRes = await pool.query(`SELECT full_name, register_number, telegram_chat_id FROM users WHERE id = $1 LIMIT 1`, [studentId]);
+    const user = userRes.rows[0];
+    if (!user || !user.telegram_chat_id) return;
+
+    const taskRes = await pool.query(`SELECT title, category FROM tasks WHERE id = $1 LIMIT 1`, [taskId]);
+    const task = taskRes.rows[0];
+    if (!task) return;
+
+    let html = `📥 <b>SUBMISSION RECEIVED — PENDING REVIEW</b>\n\n`;
+    html += `Hello <b>${escapeHtml(user.full_name)}</b>,\n`;
+    html += `Your submission proof for <b>"${escapeHtml(task.title)}"</b> has been uploaded successfully!\n\n`;
+    html += `📌 <b>Current Status:</b> ⏳ <code>PENDING REVIEW</code>\n`;
+    html += `<i>Your Class Advisor / Coordinator will verify your submission soon. You will receive an instant notification here once reviewed.</i>\n`;
+    html += getWatermarkHtml();
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          { text: '📋 View All Tasks', callback_data: 'cb_tasks' },
+          { text: '🌐 Open Portal', url: getPortalUrl() }
+        ]
+      ]
+    };
+
+    sendTelegramMessage(user.telegram_chat_id, html, { reply_markup: keyboard }).catch(() => {});
+  } catch (err) {
+    console.error('[Telegram] notifyTaskSubmissionReceived error:', err);
+  }
+}
+
+/**
+ * 🎉 / ⚠️ Notify student when submission is VERIFIED (APPROVED) or REJECTED
+ */
+export async function notifySubmissionVerifiedOrRejected(
+  submissionId: string,
+  status: 'VERIFIED' | 'REJECTED',
+  noteOrReason?: string
+): Promise<void> {
+  try {
+    const subRes = await pool.query(`
+      SELECT ts.id, ts.status, ts.rejection_reason, ts.verification_note,
+             u.full_name, u.register_number, u.telegram_chat_id,
+             t.title as task_title
+      FROM task_submissions ts
+      JOIN users u ON ts.user_id = u.id
+      JOIN tasks t ON ts.task_id = t.id
+      WHERE ts.id = $1 LIMIT 1
+    `, [submissionId]);
+
+    const sub = subRes.rows[0];
+    if (!sub || !sub.telegram_chat_id) return;
+
+    let html = '';
+    let keyboard: any;
+
+    if (status === 'VERIFIED') {
+      html = `🎉 <b>SUBMISSION APPROVED & VERIFIED!</b>\n\n`;
+      html += `Hello <b>${escapeHtml(sub.full_name)}</b>,\n`;
+      html += `Your submission for <b>"${escapeHtml(sub.task_title)}"</b> has been verified and approved!\n\n`;
+      html += `✅ <b>Status:</b> <code>VERIFIED</code>\n`;
+      if (noteOrReason) {
+        html += `📝 <b>Reviewer Note:</b> <i>${escapeHtml(noteOrReason)}</i>\n`;
+      }
+      html += `\nKeep up the excellent work! 🚀\n`;
+      html += getWatermarkHtml();
+
+      keyboard = {
+        inline_keyboard: [
+          [
+            { text: '📊 View My Scorecard', callback_data: 'cb_stats' },
+            { text: '🌐 Open Portal', url: getPortalUrl() }
+          ]
+        ]
+      };
+    } else {
+      html = `⚠️ <b>SUBMISSION REQUIRES CORRECTION</b>\n\n`;
+      html += `Hello <b>${escapeHtml(sub.full_name)}</b>,\n`;
+      html += `Your submission for <b>"${escapeHtml(sub.task_title)}"</b> was not approved.\n\n`;
+      html += `❌ <b>Status:</b> <code>REJECTED</code>\n`;
+      if (noteOrReason) {
+        html += `📌 <b>Reason for Rejection:</b>\n<code>${escapeHtml(noteOrReason)}</code>\n\n`;
+      }
+      html += `👉 <i>Please review the remarks and upload your corrected proof on the portal!</i>\n`;
+      html += getWatermarkHtml();
+
+      keyboard = {
+        inline_keyboard: [
+          [
+            { text: '🔄 Resubmit on Portal', url: getPortalUrl() },
+            { text: '📋 My Pending Tasks', callback_data: 'cb_tasks' }
+          ]
+        ]
+      };
+    }
+
+    sendTelegramMessage(sub.telegram_chat_id, html, { reply_markup: keyboard }).catch(() => {});
+  } catch (err) {
+    console.error('[Telegram] notifySubmissionVerifiedOrRejected error:', err);
+  }
+}
+
+/**
+ * 📦 Batch notify multiple verified submissions
+ */
+export async function notifySubmissionBatchVerified(submissionIds: string[]): Promise<void> {
+  if (!submissionIds || submissionIds.length === 0) return;
+  for (const sid of submissionIds) {
+    notifySubmissionVerifiedOrRejected(sid, 'VERIFIED').catch(() => {});
+  }
+}
+
 /**
  * 📢 Enhanced Daily Group Summary (Tasks + LeetCode + GitHub)
  */
@@ -679,67 +827,32 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
   try {
     const dateStr = getISTDateStr();
 
-    // 1. Fetch active tasks
-    const tasksRes = await pool.query(`
-      SELECT t.id, t.title, t.category, t.deadline, t.status,
-             COUNT(DISTINCT tc.class_id) as class_count,
-             COUNT(DISTINCT ts.id) FILTER (WHERE ts.status IN ('SUBMITTED', 'VERIFIED')) as completed_count
-      FROM tasks t
-      LEFT JOIN task_classes tc ON tc.task_id = t.id
-      LEFT JOIN task_submissions ts ON ts.task_id = t.id
-      WHERE t.status = 'OPEN' OR t.deadline >= CURRENT_TIMESTAMP - INTERVAL '1 day'
-      GROUP BY t.id, t.title, t.category, t.deadline, t.status
-      ORDER BY t.deadline ASC
-      LIMIT 5
-    `);
+    const [tasksRes, studentsRes, lcRes, ghRes, topLc, topGh] = await Promise.all([
+      pool.query(`
+        SELECT t.id, t.title, t.category, t.deadline, t.status,
+               COUNT(DISTINCT tc.class_id) as class_count,
+               COUNT(DISTINCT ts.id) FILTER (WHERE ts.status IN ('SUBMITTED', 'VERIFIED')) as completed_count
+        FROM tasks t
+        LEFT JOIN task_classes tc ON tc.task_id = t.id
+        LEFT JOIN task_submissions ts ON ts.task_id = t.id
+        WHERE t.status = 'OPEN' OR t.deadline >= CURRENT_TIMESTAMP - INTERVAL '1 day'
+        GROUP BY t.id, t.title, t.category, t.deadline, t.status
+        ORDER BY t.deadline ASC
+        LIMIT 5
+      `),
+      pool.query(`SELECT COUNT(*) as total_students, COUNT(telegram_chat_id) as linked_telegram_count FROM users WHERE role = 'STUDENT'`),
+      pool.query(`SELECT COUNT(DISTINCT user_id) as active_solvers, SUM(solved_today) as total_problems_solved FROM leetcode_daily_progress WHERE date = $1 AND solved_today > 0`, [dateStr]),
+      pool.query(`SELECT COUNT(DISTINCT user_id) as active_committers, SUM(commits_today) as total_commits FROM github_daily_progress WHERE date = $1 AND commits_today > 0 AND sync_status = 'SUCCESS'`, [dateStr]),
+      pool.query(`SELECT u.full_name, lp.solved_today FROM leetcode_daily_progress lp JOIN users u ON u.id = lp.user_id WHERE lp.date = $1 AND lp.solved_today > 0 ORDER BY lp.solved_today DESC LIMIT 1`, [dateStr]),
+      pool.query(`SELECT u.full_name, gp.commits_today FROM github_daily_progress gp JOIN users u ON u.id = gp.user_id WHERE gp.date = $1 AND gp.commits_today > 0 AND gp.sync_status = 'SUCCESS' ORDER BY gp.commits_today DESC LIMIT 1`, [dateStr])
+    ]);
 
-    // 2. Fetch total students & linked stats
-    const studentsRes = await pool.query(`
-      SELECT COUNT(*) as total_students,
-             COUNT(telegram_chat_id) as linked_telegram_count
-      FROM users
-      WHERE role = 'STUDENT'
-    `);
     const totalStudents = parseInt(studentsRes.rows[0]?.total_students || '0', 10);
     const linkedTelegram = parseInt(studentsRes.rows[0]?.linked_telegram_count || '0', 10);
-
-    // 3. Fetch today's LeetCode & GitHub overall progress
-    const lcRes = await pool.query(`
-      SELECT 
-        COUNT(DISTINCT user_id) as active_solvers,
-        SUM(solved_today) as total_problems_solved
-      FROM leetcode_daily_progress
-      WHERE date = $1 AND solved_today > 0
-    `, [dateStr]);
     const lcSolvers = Number(lcRes.rows[0]?.active_solvers) || 0;
     const lcTotalSolved = Number(lcRes.rows[0]?.total_problems_solved) || 0;
-
-    const ghRes = await pool.query(`
-      SELECT 
-        COUNT(DISTINCT user_id) as active_committers,
-        SUM(commits_today) as total_commits
-      FROM github_daily_progress
-      WHERE date = $1 AND commits_today > 0 AND sync_status = 'SUCCESS'
-    `, [dateStr]);
     const ghCommitters = Number(ghRes.rows[0]?.active_committers) || 0;
     const ghTotalCommits = Number(ghRes.rows[0]?.total_commits) || 0;
-
-    // 4. Top solver & top committer today
-    const topLc = await pool.query(`
-      SELECT u.full_name, lp.solved_today
-      FROM leetcode_daily_progress lp
-      JOIN users u ON u.id = lp.user_id
-      WHERE lp.date = $1 AND lp.solved_today > 0
-      ORDER BY lp.solved_today DESC LIMIT 1
-    `, [dateStr]);
-
-    const topGh = await pool.query(`
-      SELECT u.full_name, gp.commits_today
-      FROM github_daily_progress gp
-      JOIN users u ON u.id = gp.user_id
-      WHERE gp.date = $1 AND gp.commits_today > 0 AND gp.sync_status = 'SUCCESS'
-      ORDER BY gp.commits_today DESC LIMIT 1
-    `, [dateStr]);
 
     let html = `📊 <b>IT TASK MANAGER — DAILY DEPARTMENT BRIEF</b>\n`;
     html += `📅 <i>${dateStr} (IST)</i>\n`;
@@ -982,7 +1095,7 @@ export async function linkStudentTelegram(
 }
 
 /**
- * 🤖 Background Poller for Interactive Telegram Commands & Inline Callbacks
+ * 🤖 Ultra-Fast Concurrent Poller for Interactive Telegram Commands & Callbacks
  */
 let isPolling = false;
 let lastUpdateId = 0;
@@ -992,21 +1105,25 @@ export function startTelegramPoller(): void {
   if (!token || isPolling) return;
 
   isPolling = true;
-  console.log('[Telegram Bot] Resilient update poller started for interactive commands...');
+  console.log('[Telegram Bot] Ultra-fast concurrent poller started for interactive commands...');
 
   // Automatically register native Telegram command menu
   registerBotCommandsMenu().catch(err => console.warn('[Telegram Bot] Menu registration warning:', err));
 
   const poll = async () => {
     try {
-      const url = `https://api.telegram.org/bot${token}/getUpdates?offset=${lastUpdateId + 1}&timeout=25`;
+      // Use 10-second long polling for lightning-fast responsiveness
+      const url = `https://api.telegram.org/bot${token}/getUpdates?offset=${lastUpdateId + 1}&timeout=10`;
       const response = await fetch(url);
       const data = await response.json();
 
-      if (data.ok && Array.isArray(data.result)) {
+      if (data.ok && Array.isArray(data.result) && data.result.length > 0) {
         for (const update of data.result) {
           lastUpdateId = Math.max(lastUpdateId, update.update_id);
+        }
 
+        // Process all updates concurrently in parallel with Promise.allSettled!
+        await Promise.allSettled(data.result.map(async (update: any) => {
           // ── Handle Inline Button Callbacks ──────────────────────────────
           if (update.callback_query) {
             const cb = update.callback_query;
@@ -1014,11 +1131,12 @@ export function startTelegramPoller(): void {
             const cbChatId = cb.message?.chat?.id;
             const cbUserId = cb.from?.id;
 
+            // Fire answerCallbackQuery immediately to dismiss loading spinner
             if (cb.id) {
-              await answerCallbackQuery(cb.id);
+              answerCallbackQuery(cb.id).catch(() => {});
             }
 
-            if (!cbChatId || !cbUserId) continue;
+            if (!cbChatId || !cbUserId) return;
 
             const userRes = await pool.query(`
               SELECT u.id, u.full_name, u.register_number, u.role, u.class_id, u.leetcode_url, u.github_url, c.name as class_name
@@ -1035,7 +1153,7 @@ export function startTelegramPoller(): void {
                 cbChatId,
                 `ℹ️ Your Telegram is not yet connected to a student profile.\n\nReply with <code>/link YOUR_REGISTER_NUMBER</code> to connect!\n${getWatermarkHtml()}`
               );
-              continue;
+              return;
             }
 
             if (cbData === 'cb_tasks' || cbData === 'view_tasks') {
@@ -1066,12 +1184,12 @@ export function startTelegramPoller(): void {
                 { reply_markup: keyboard }
               );
             }
-            continue;
+            return;
           }
 
           // ── Handle Text Messages & Commands ──────────────────────────────
           const msg = update.message;
-          if (!msg) continue;
+          if (!msg) return;
 
           const chatId = msg.chat?.id;
           const isGroup = msg.chat?.type === 'group' || msg.chat?.type === 'supergroup';
@@ -1080,15 +1198,13 @@ export function startTelegramPoller(): void {
           const senderName = msg.from?.first_name || 'there';
           const text = (msg.text || '').trim();
 
-          if (!text && !isGroup) continue;
+          if (!text && !isGroup) return;
 
           // Auto-register group chat ID when active in a group
           if (isGroup && chatId) {
-            const currentSavedGroup = await getGroupChatId();
-            if (!currentSavedGroup) {
-              await setGroupChatId(String(chatId));
-              console.log(`[Telegram] Auto-registered group chat ID: ${chatId}`);
-            }
+            getGroupChatId().then(currentSavedGroup => {
+              if (!currentSavedGroup) setGroupChatId(String(chatId));
+            }).catch(() => {});
           }
 
           // Command: /id
@@ -1097,7 +1213,7 @@ export function startTelegramPoller(): void {
               chatId,
               `ℹ️ <b>Chat Details:</b>\n• Chat ID: <code>${chatId}</code>\n• Chat Type: <code>${msg.chat?.type}</code>\n• Your User ID: <code>${senderUserId}</code>\n${getWatermarkHtml()}`
             );
-            continue;
+            return;
           }
 
           // Command: /start <param> or /link <param>
@@ -1134,7 +1250,7 @@ export function startTelegramPoller(): void {
                 );
               }
             }
-            continue;
+            return;
           }
 
           // Fetch sender's student account for authenticated commands
@@ -1163,7 +1279,7 @@ export function startTelegramPoller(): void {
             helpHtml += `• <code>/status</code> - Connected profile info\n`;
             helpHtml += `• <code>/unlink</code> - Disconnect account\n`;
 
-            if (user?.role === 'SUPREME_ADMIN' || user?.role === 'STAFF' || user?.role === 'COORDINATOR') {
+            if (user?.role === 'SUPREME_ADMIN' || user?.role === 'STAFF' || user?.role === 'COORDINATOR' || user?.role === 'HOD' || user?.role === 'CLASS_ADVISOR') {
               helpHtml += `\n<b>Staff / Coordinator Commands:</b>\n`;
               helpHtml += `• <code>/defaulters [class]</code> - Target defaulters report\n`;
               helpHtml += `• <code>/broadcast &lt;msg&gt;</code> - Send announcement to all students\n`;
@@ -1172,7 +1288,7 @@ export function startTelegramPoller(): void {
 
             helpHtml += getWatermarkHtml();
             await sendTelegramMessage(chatId, helpHtml, { reply_markup: keyboard });
-            continue;
+            return;
           }
 
           // Command: /leetcode or /lc
@@ -1183,7 +1299,7 @@ export function startTelegramPoller(): void {
               const card = await getStudentLeetCodeCard(user);
               await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
             }
-            continue;
+            return;
           }
 
           // Command: /github or /gh
@@ -1194,7 +1310,7 @@ export function startTelegramPoller(): void {
               const card = await getStudentGitHubCard(user);
               await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
             }
-            continue;
+            return;
           }
 
           // Command: /stats or /myprogress or /progress
@@ -1205,14 +1321,14 @@ export function startTelegramPoller(): void {
               const card = await getStudentStatsCard(user);
               await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
             }
-            continue;
+            return;
           }
 
           // Command: /leaderboard or /top or /rankings
           if (text.startsWith('/leaderboard') || text.startsWith('/top') || text.startsWith('/rankings')) {
             const card = await getLeaderboardCard(user?.class_id, user?.class_name);
             await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
-            continue;
+            return;
           }
 
           // Command: /defaulters or /pendingtargets
@@ -1221,20 +1337,20 @@ export function startTelegramPoller(): void {
             const scopeFilter = parts.slice(1).join(' ');
             const card = await getDefaultersCard(scopeFilter);
             await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
-            continue;
+            return;
           }
 
           // Command: /broadcast <message> (Admin/Staff only)
           if (text.startsWith('/broadcast')) {
-            if (!user || (user.role !== 'SUPREME_ADMIN' && user.role !== 'STAFF' && user.role !== 'COORDINATOR')) {
+            if (!user || (user.role !== 'SUPREME_ADMIN' && user.role !== 'STAFF' && user.role !== 'COORDINATOR' && user.role !== 'HOD' && user.role !== 'CLASS_ADVISOR')) {
               await sendTelegramMessage(chatId, `⚠️ You do not have permission to send broadcasts.\n${getWatermarkHtml()}`);
-              continue;
+              return;
             }
 
             const broadcastText = text.replace(/^\/broadcast\s*/i, '').trim();
             if (!broadcastText) {
               await sendTelegramMessage(chatId, `⚠️ Usage: <code>/broadcast Your message here</code>\n${getWatermarkHtml()}`);
-              continue;
+              return;
             }
 
             const studentsRes = await pool.query(`SELECT telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL AND role = 'STUDENT'`);
@@ -1250,7 +1366,7 @@ export function startTelegramPoller(): void {
             }
 
             await sendTelegramMessage(chatId, `✅ <b>Broadcast sent to ${count} student(s) successfully!</b>\n${getWatermarkHtml()}`);
-            continue;
+            return;
           }
 
           // Command: /tasks or /pending or /mytasks
@@ -1261,7 +1377,7 @@ export function startTelegramPoller(): void {
               const card = await getTasksCard(user);
               await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
             }
-            continue;
+            return;
           }
 
           // Command: /unlink
@@ -1272,7 +1388,7 @@ export function startTelegramPoller(): void {
               WHERE telegram_chat_id = $1
             `, [String(senderUserId)]);
             await sendTelegramMessage(chatId, `✅ Your Telegram has been disconnected from your IT TaskManager student account.\n${getWatermarkHtml()}`);
-            continue;
+            return;
           }
 
           // Command: /status
@@ -1286,7 +1402,7 @@ export function startTelegramPoller(): void {
             } else {
               await sendTelegramMessage(chatId, `ℹ️ This chat is not yet linked to any student profile. Send <code>/link &lt;Your_Register_Number&gt;</code> to link.\n${getWatermarkHtml()}`);
             }
-            continue;
+            return;
           }
 
           // Command: /summary or /report
@@ -1295,7 +1411,7 @@ export function startTelegramPoller(): void {
             if (!res.success) {
               await sendTelegramMessage(chatId, `⚠️ ${escapeHtml(res.message)}\n${getWatermarkHtml()}`);
             }
-            continue;
+            return;
           }
 
           // Friendly Chat Handler for Private DMs
@@ -1314,13 +1430,14 @@ export function startTelegramPoller(): void {
               );
             }
           }
-        }
+        }));
       }
     } catch (err: any) {
       // Graceful poll loop recovery
     } finally {
       if (isPolling) {
-        setTimeout(poll, 1500);
+        // Zero delay if busy, short 500ms delay when idle
+        setTimeout(poll, 500);
       }
     }
   };
