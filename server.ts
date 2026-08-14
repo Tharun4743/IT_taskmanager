@@ -4615,11 +4615,13 @@ async function startServer() {
             synced++;
             const fetchedCount = details.totalSolved;
 
+            // Filter today's submissions
+            const todaySubmissions = details.recentSubmissions
+                .filter(s => s.timestamp >= todayStartSec && s.timestamp <= todayEndSec);
+
             // Calculate count of unique accepted problems solved ON current date
             const recentTodayCount = new Set(
-              details.recentSubmissions
-                .filter(s => s.timestamp >= todayStartSec && s.timestamp <= todayEndSec)
-                .map(s => s.titleSlug)
+              todaySubmissions.map(s => s.titleSlug)
             ).size;
 
             // 1. Fetch strictly previous date record (yesterday or earlier)
@@ -4648,7 +4650,14 @@ async function startServer() {
             let solvedToday = 0;
             if (prevTotal !== null && prevTotal !== undefined) {
               const diffSolved = Math.max(0, fetchedCount - prevTotal);
-              solvedToday = Math.max(diffSolved, recentTodayCount);
+              if (todaySubmissions.length < 50) {
+                // If today's submissions are less than the 50 limit returned by LeetCode,
+                // then recentTodayCount is exactly correct. Ignore diffSolved to avoid anomalies.
+                solvedToday = recentTodayCount;
+              } else {
+                // If they hit the 50 limit today, diffSolved might be higher and more accurate.
+                solvedToday = Math.max(diffSolved, recentTodayCount);
+              }
             } else {
               solvedToday = recentTodayCount;
             }
