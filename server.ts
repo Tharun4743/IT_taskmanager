@@ -5620,6 +5620,14 @@ async function startServer() {
       return date.toISOString().split('T')[0];
     };
 
+    const dateSun = `${getUTCDayStr(week.start, 0)} (Sun)`;
+    const dateMon = `${getUTCDayStr(week.start, 1)} (Mon)`;
+    const dateTue = `${getUTCDayStr(week.start, 2)} (Tue)`;
+    const dateWed = `${getUTCDayStr(week.start, 3)} (Wed)`;
+    const dateThu = `${getUTCDayStr(week.start, 4)} (Thu)`;
+    const dateFri = `${getUTCDayStr(week.start, 5)} (Fri)`;
+    const dateSat = `${getUTCDayStr(week.start, 6)} (Sat)`;
+
     const detailedList = filtered.map(row => {
       const studentId = row.studentId;
       const sun = dayMap.get(`${studentId}_${getUTCDayStr(week.start, 0)}`) || 0;
@@ -5634,13 +5642,13 @@ async function startServer() {
         'Register No': row.registerNumber,
         'Student Name': row.fullName,
         'Section': row.className,
-        'Day 1': sun,
-        'Day 2': mon,
-        'Day 3': tue,
-        'Day 4': wed,
-        'Day 5': thu,
-        'Day 6': fri,
-        'Day 7': sat,
+        [dateSun]: sun,
+        [dateMon]: mon,
+        [dateTue]: tue,
+        [dateWed]: wed,
+        [dateThu]: thu,
+        [dateFri]: fri,
+        [dateSat]: sat,
         'Weekly Solved': row.solvedThisWeek,
         'Weekly Target': row.weeklyTarget,
         'Completion %': `${row.completionWeeklyPct}%`,
@@ -6595,18 +6603,36 @@ async function startServer() {
       return dayMap.get(`${id}_${date.toISOString().split('T')[0]}`) || { commits: 0, repos: 0 };
     };
 
+    const getUTCDayStr = (startStr: string, offsetDays: number): string => {
+      const parts = startStr.split('-');
+      const y = Number(parts[0]);
+      const m = Number(parts[1]) - 1;
+      const d = Number(parts[2]);
+      const date = new Date(Date.UTC(y, m, d));
+      date.setUTCDate(date.getUTCDate() + offsetDays);
+      return date.toISOString().split('T')[0];
+    };
+
+    const dateSun = `${getUTCDayStr(week.start, 0)} (Sun)`;
+    const dateMon = `${getUTCDayStr(week.start, 1)} (Mon)`;
+    const dateTue = `${getUTCDayStr(week.start, 2)} (Tue)`;
+    const dateWed = `${getUTCDayStr(week.start, 3)} (Wed)`;
+    const dateThu = `${getUTCDayStr(week.start, 4)} (Thu)`;
+    const dateFri = `${getUTCDayStr(week.start, 5)} (Fri)`;
+    const dateSat = `${getUTCDayStr(week.start, 6)} (Sat)`;
+
     const detailedList = filtered.map(r => {
       const id = r.studentId;
       return {
         'Register No': r.registerNumber, 'Student Name': r.fullName, 'Section': r.className,
         'GitHub': r.githubUsername,
-        'Day 1 Commits': getDay(id, 0).commits,
-        'Day 2 Commits': getDay(id, 1).commits,
-        'Day 3 Commits': getDay(id, 2).commits,
-        'Day 4 Commits': getDay(id, 3).commits,
-        'Day 5 Commits': getDay(id, 4).commits,
-        'Day 6 Commits': getDay(id, 5).commits,
-        'Day 7 Commits': getDay(id, 6).commits,
+        [`${dateSun} Commits`]: getDay(id, 0).commits,
+        [`${dateMon} Commits`]: getDay(id, 1).commits,
+        [`${dateTue} Commits`]: getDay(id, 2).commits,
+        [`${dateWed} Commits`]: getDay(id, 3).commits,
+        [`${dateThu} Commits`]: getDay(id, 4).commits,
+        [`${dateFri} Commits`]: getDay(id, 5).commits,
+        [`${dateSat} Commits`]: getDay(id, 6).commits,
         'Total Commits': r.commitsThisWeek, 'Commit Target': r.weeklyCommitTarget,
         'Commit %': `${r.completionWeeklyCommitPct}%`, 'Status': r.weeklyCommitStatus.replace('_', ' '),
         'New Repos This Week': r.reposThisWeek,
