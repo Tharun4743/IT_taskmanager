@@ -5884,54 +5884,101 @@ export default function App() {
     const detailedRows: any[] = [];
     let sno = 1;
 
-    targetStudents.forEach(student => {
-      targetTasks.forEach(task => {
-        if (Array.isArray(task.class_ids) && task.class_ids.length > 0 && !task.class_ids.some((cid: any) => cid.toString() === student.class_id?.toString())) {
-          return;
-        }
-        const sub = getSub(student.id, student.register_number, task.id);
-        const teamInfo = teamStudentMap.get(`${student.id}_${task.id}`);
+    if (!filters?.taskId) {
+      // Matrix Mode (Multiple Tasks): One row per student
+      targetStudents.forEach(student => {
+        const studentRow: any = {
+          'S.No': sno,
+          'Reg No': student.register_number || '—',
+          'Name': student.full_name || '—',
+          'Mail ID': student.email || '—'
+        };
 
-        let rawStatus = sub ? sub.status : 'NOT_SUBMITTED';
-        let customFieldValue = sub?.custom_field_value || '—';
+        let hasMatchingStatus = (selectedStatus === 'ALL');
 
-        if (teamInfo && rawStatus === 'NOT_SUBMITTED') {
-          rawStatus = teamInfo.status;
-          customFieldValue = `Team: ${teamInfo.teamName}${teamInfo.remarks ? ` (${teamInfo.remarks})` : ''}`;
-        }
+        targetTasks.forEach((task, idx) => {
+          if (Array.isArray(task.class_ids) && task.class_ids.length > 0 && !task.class_ids.some((cid: any) => cid.toString() === student.class_id?.toString())) {
+            studentRow[`Task ${idx + 1}: ${task.title}`] = 'N/A';
+            return;
+          }
 
-        const isNotParticipating = rawStatus === 'NOT_PARTICIPATING';
-        const isParticipating = rawStatus === 'SUBMITTED' || rawStatus === 'VERIFIED' || rawStatus === 'REJECTED';
+          const sub = getSub(student.id, student.register_number, task.id);
+          const teamInfo = teamStudentMap.get(`${student.id}_${task.id}`);
 
-        const statusLabel =
-          rawStatus === 'VERIFIED' ? 'Verified' :
-            rawStatus === 'SUBMITTED' ? 'Submitted' :
-              rawStatus === 'REJECTED' ? 'Rejected' :
-                rawStatus === 'NOT_PARTICIPATING' ? 'Not Interested' : 'Not Submitted';
+          let rawStatus = sub ? sub.status : 'NOT_SUBMITTED';
+          if (teamInfo && rawStatus === 'NOT_SUBMITTED') {
+            rawStatus = teamInfo.status;
+          }
 
-        let include = false;
-        if (selectedStatus === 'ALL') include = true;
-        else if (selectedStatus === 'VERIFIED') include = rawStatus === 'VERIFIED';
-        else if (selectedStatus === 'SUBMITTED') include = rawStatus === 'SUBMITTED';
-        else if (selectedStatus === 'REJECTED') include = rawStatus === 'REJECTED';
-        else if (selectedStatus === 'NOT_SUBMITTED') include = rawStatus === 'NOT_SUBMITTED';
-        else if (selectedStatus === 'NOT_PARTICIPATING') include = rawStatus === 'NOT_PARTICIPATING';
+          const statusLabel =
+            rawStatus === 'VERIFIED' ? 'Verified' :
+              rawStatus === 'SUBMITTED' ? 'Submitted' :
+                rawStatus === 'REJECTED' ? 'Rejected' :
+                  rawStatus === 'NOT_PARTICIPATING' ? 'Not Interested' : 'Not Submitted';
 
-        if (include) {
-          detailedRows.push({
-            'S.No': sno++,
-            'Name': student.full_name || '—',
-            'Reg No': student.register_number || '—',
-            'Mail ID': student.email || '—',
-            'Task Name': task.title,
-            'Participating / Interested': isParticipating ? 'Yes' : isNotParticipating ? 'No' : '—',
-            'Task Status': statusLabel,
-            'Custom Field': customFieldValue,
-            'Reason (If Not Participating)': isNotParticipating ? (sub?.not_participating_reason || '—') : '—',
-          });
+          studentRow[`Task ${idx + 1}: ${task.title}`] = statusLabel;
+
+          if (selectedStatus !== 'ALL' && rawStatus === selectedStatus) {
+            hasMatchingStatus = true;
+          }
+        });
+
+        if (hasMatchingStatus) {
+          studentRow['S.No'] = sno++;
+          detailedRows.push(studentRow);
         }
       });
-    });
+    } else {
+      // Original Mode (Single Task): One row per student-task pair
+      targetStudents.forEach(student => {
+        targetTasks.forEach(task => {
+          if (Array.isArray(task.class_ids) && task.class_ids.length > 0 && !task.class_ids.some((cid: any) => cid.toString() === student.class_id?.toString())) {
+            return;
+          }
+          const sub = getSub(student.id, student.register_number, task.id);
+          const teamInfo = teamStudentMap.get(`${student.id}_${task.id}`);
+
+          let rawStatus = sub ? sub.status : 'NOT_SUBMITTED';
+          let customFieldValue = sub?.custom_field_value || '—';
+
+          if (teamInfo && rawStatus === 'NOT_SUBMITTED') {
+            rawStatus = teamInfo.status;
+            customFieldValue = `Team: ${teamInfo.teamName}${teamInfo.remarks ? ` (${teamInfo.remarks})` : ''}`;
+          }
+
+          const isNotParticipating = rawStatus === 'NOT_PARTICIPATING';
+          const isParticipating = rawStatus === 'SUBMITTED' || rawStatus === 'VERIFIED' || rawStatus === 'REJECTED';
+
+          const statusLabel =
+            rawStatus === 'VERIFIED' ? 'Verified' :
+              rawStatus === 'SUBMITTED' ? 'Submitted' :
+                rawStatus === 'REJECTED' ? 'Rejected' :
+                  rawStatus === 'NOT_PARTICIPATING' ? 'Not Interested' : 'Not Submitted';
+
+          let include = false;
+          if (selectedStatus === 'ALL') include = true;
+          else if (selectedStatus === 'VERIFIED') include = rawStatus === 'VERIFIED';
+          else if (selectedStatus === 'SUBMITTED') include = rawStatus === 'SUBMITTED';
+          else if (selectedStatus === 'REJECTED') include = rawStatus === 'REJECTED';
+          else if (selectedStatus === 'NOT_SUBMITTED') include = rawStatus === 'NOT_SUBMITTED';
+          else if (selectedStatus === 'NOT_PARTICIPATING') include = rawStatus === 'NOT_PARTICIPATING';
+
+          if (include) {
+            detailedRows.push({
+              'S.No': sno++,
+              'Name': student.full_name || '—',
+              'Reg No': student.register_number || '—',
+              'Mail ID': student.email || '—',
+              'Task Name': task.title,
+              'Participating / Interested': isParticipating ? 'Yes' : isNotParticipating ? 'No' : '—',
+              'Task Status': statusLabel,
+              'Custom Field': customFieldValue,
+              'Reason (If Not Participating)': isNotParticipating ? (sub?.not_participating_reason || '—') : '—',
+            });
+          }
+        });
+      });
+    }
 
     if (detailedRows.length === 0) {
       addToast('No records matched the selected filters.', 'error');
@@ -6000,17 +6047,25 @@ export default function App() {
     });
 
     // ── Build Workbook ─────────────────────────────────────────────────────────
-    const sheet1Cols = [
-      'S.No',
-      'Name',
-      'Reg No',
-      'Mail ID',
-      'Task Name',
-      'Participating / Interested',
-      'Task Status',
-      'Custom Field',
-      'Reason (If Not Participating)'
-    ];
+    let sheet1Cols: string[] = [];
+    if (!filters?.taskId) {
+      sheet1Cols = ['S.No', 'Reg No', 'Name', 'Mail ID'];
+      targetTasks.forEach((task, idx) => {
+        sheet1Cols.push(`Task ${idx + 1}: ${task.title}`);
+      });
+    } else {
+      sheet1Cols = [
+        'S.No',
+        'Name',
+        'Reg No',
+        'Mail ID',
+        'Task Name',
+        'Participating / Interested',
+        'Task Status',
+        'Custom Field',
+        'Reason (If Not Participating)'
+      ];
+    }
     const sheet2Cols = ['Task Name', 'Class', 'Total Students', 'Verified', 'Submitted', 'Rejected', 'Not Participating', 'Not Submitted'];
     const sheet3Cols = [
       'S.No',
