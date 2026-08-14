@@ -254,8 +254,8 @@ export function updateStudentCodingProfileInDirectory(userId: string, leetcodeUr
         ).join('\n');
         fs.writeFileSync(csvFilePath, csvHeaders + csvRows, 'utf-8');
 
-        // Queue automated GitHub commit and push
-        queueGitHubDirectoryPush(`${student.full_name} (${student.register_number})`);
+        // Queue automated GitHub commit and push (via GitHub Contents API and Git CLI)
+        queueGitHubDirectoryPush(`${student.full_name} (${student.register_number})`, jsonFilePath, csvFilePath);
       }
     }
   } catch (err) {
@@ -265,33 +265,108 @@ export function updateStudentCodingProfileInDirectory(userId: string, leetcodeUr
 
 let gitPushTimeout: NodeJS.Timeout | null = null;
 const pendingUpdateStudents = new Set<string>();
+const pendingUpdatedFiles = new Set<string>();
+
+/**
+ * Updates a file directly on GitHub repository using GitHub Contents API.
+ * Works seamlessly in cloud containers (e.g. Render) without needing local git credentials.
+ */
+async function updateGitHubFileViaAPI(filePath: string, commitMsg: string): Promise<boolean> {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token || !fs.existsSync(filePath)) return false;
+
+  const repo = 'Tharun4743/IT_taskmanager';
+  const relativePath = path.relative(process.cwd(), filePath).replace(/\\/g, '/');
+  const url = `https://api.github.com/repos/${repo}/contents/${relativePath}`;
+
+  try {
+    const fileContentUtf8 = fs.readFileSync(filePath, 'utf-8');
+
+    // 1. Get existing file SHA
+    const getRes = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github.v3+json',
+        'User-Agent': 'IT-TaskManager-App'
+      }
+    });
+
+    let sha: string | undefined;
+    if (getRes.ok) {
+      const json = await getRes.json() as { sha: string };
+      sha = json.sha;
+    }
+
+    // 2. Put updated content (base64)
+    const base64Content = Buffer.from(fileContentUtf8, 'utf-8').toString('base64');
+    const putRes = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'IT-TaskManager-App'
+      },
+      body: JSON.stringify({
+        message: commitMsg,
+        content: base64Content,
+        sha: sha,
+        branch: 'main'
+      })
+    });
+
+    if (putRes.ok) {
+      console.log(`[StudentDirectory] 🚀 Auto-updated ${relativePath} on GitHub via Contents API.`);
+      return true;
+    } else {
+      const errText = await putRes.text();
+      console.warn(`[StudentDirectory] GitHub API content update warning (${putRes.status}):`, errText);
+      return false;
+    }
+  } catch (err: any) {
+    console.warn('[StudentDirectory] GitHub API upload error:', err.message);
+    return false;
+  }
+}
 
 export async function pushDirectoryChangesToGitHub() {
   try {
     const studentList = Array.from(pendingUpdateStudents).slice(0, 5).join(', ') || 'student profiles';
+    const filesToSync = Array.from(pendingUpdatedFiles);
     pendingUpdateStudents.clear();
-
-    await execPromise('git add students_directory/');
-    
-    // Check if there are staged changes
-    const statusRes = await execPromise('git status --porcelain students_directory/');
-    if (!statusRes.stdout.trim()) {
-      return; // No changes to commit
-    }
+    pendingUpdatedFiles.clear();
 
     const commitMsg = `chore(directory): auto-update student directory for ${studentList}`;
-    await execPromise(`git commit -m "${commitMsg}"`);
-    
-    // Push to GitHub
-    await execPromise('git push origin main');
-    console.log(`[StudentDirectory] 🚀 Auto-pushed directory changes to GitHub: ${commitMsg}`);
+
+    // 1. Try GitHub REST API if GITHUB_TOKEN is available (best for Render / cloud containers)
+    if (process.env.GITHUB_TOKEN && filesToSync.length > 0) {
+      for (const fPath of filesToSync) {
+        await updateGitHubFileViaAPI(fPath, commitMsg);
+      }
+    }
+
+    // 2. Also execute local git push if running in an environment with git CLI
+    try {
+      await execPromise('git add students_directory/');
+      const statusRes = await execPromise('git status --porcelain students_directory/');
+      if (statusRes.stdout.trim()) {
+        await execPromise(`git commit -m "${commitMsg}"`);
+        await execPromise('git push origin main');
+        console.log(`[StudentDirectory] 🚀 Auto-pushed directory changes to GitHub via Git CLI: ${commitMsg}`);
+      }
+    } catch {
+      // Ignored if local git CLI is not authenticated (GitHub API handled it above)
+    }
   } catch (err: any) {
     console.warn('[StudentDirectory] Note: Auto git push status/notice:', err.message);
   }
 }
 
-export function queueGitHubDirectoryPush(studentSummary: string) {
+export function queueGitHubDirectoryPush(studentSummary: string, jsonFilePath?: string, csvFilePath?: string) {
   pendingUpdateStudents.add(studentSummary);
+  if (jsonFilePath) pendingUpdatedFiles.add(jsonFilePath);
+  if (csvFilePath) pendingUpdatedFiles.add(csvFilePath);
+
   if (gitPushTimeout) {
     clearTimeout(gitPushTimeout);
   }
