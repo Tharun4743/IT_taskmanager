@@ -16,7 +16,7 @@ import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { pool, initDB } from './db.js';
-import { syncAndGenerateStudentDirectory, constantStudentByIdMap, constantStudentByRegNoMap, constantStudentByEmailMap, constantStudentsByClassMap } from './studentDirectoryService.js';
+import { syncAndGenerateStudentDirectory, updateStudentCodingProfileInDirectory, constantStudentByIdMap, constantStudentByRegNoMap, constantStudentByEmailMap, constantStudentsByClassMap } from './studentDirectoryService.js';
 import { cleanupOnlyTaskScreenshots } from './imageCleanupService.js';
 import { generateDatabaseSnapshot } from './dbBackupService.js';
 import { initSentry, captureException } from './sentryService.js';
@@ -507,176 +507,7 @@ async function startServer() {
 
 
 
-  // 1. Personal Info Update
-  app.put('/api/student/profile/personal', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    const userId = req.user.id;
-    const { mobile_number, date_of_birth, semester, cgpa, current_arrears, history_of_arrears, about_me } = req.body;
 
-    const result = await pool.query(`
-      INSERT INTO student_profiles (user_id, mobile_number, date_of_birth, semester, cgpa, current_arrears, history_of_arrears, about_me, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-      ON CONFLICT (user_id) DO UPDATE SET
-        mobile_number = EXCLUDED.mobile_number,
-        date_of_birth = EXCLUDED.date_of_birth,
-        semester = EXCLUDED.semester,
-        cgpa = EXCLUDED.cgpa,
-        current_arrears = EXCLUDED.current_arrears,
-        history_of_arrears = EXCLUDED.history_of_arrears,
-        about_me = EXCLUDED.about_me,
-        updated_at = NOW()
-      RETURNING *
-    `, [userId, mobile_number || null, date_of_birth || null, semester || 1, cgpa || 0, current_arrears || 0, history_of_arrears || 0, about_me || null]);
-
-    res.json({ message: 'Personal details updated', personal: result.rows[0] });
-  });
-
-  // 2. Skills
-  app.post('/api/student/profile/skills', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    const userId = req.user.id;
-    const { skill_name, category, level } = req.body;
-    if (!skill_name || !skill_name.trim()) return res.status(400).json({ error: 'Skill name required' });
-
-    const result = await pool.query(`
-      INSERT INTO student_skills (user_id, skill_name, category, level)
-      VALUES ($1, $2, $3, $4) RETURNING *
-    `, [userId, skill_name.trim(), category || 'Technical', level || 'Intermediate']);
-    res.json(result.rows[0]);
-  });
-
-  app.delete('/api/student/profile/skills/:id', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    await pool.query('DELETE FROM student_skills WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
-    res.json({ success: true });
-  });
-
-  // 3. Projects
-  app.post('/api/student/profile/projects', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    const userId = req.user.id;
-    const { project_name, description, tech_stack, github_url, live_demo_url } = req.body;
-    if (!project_name || !project_name.trim()) return res.status(400).json({ error: 'Project name required' });
-
-    const result = await pool.query(`
-      INSERT INTO student_projects (user_id, project_name, description, tech_stack, github_url, live_demo_url)
-      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
-    `, [userId, project_name.trim(), description || '', tech_stack || '', github_url || '', live_demo_url || '']);
-    res.json(result.rows[0]);
-  });
-
-  app.delete('/api/student/profile/projects/:id', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    await pool.query('DELETE FROM student_projects WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
-    res.json({ success: true });
-  });
-
-  // 4. Internships
-  app.post('/api/student/profile/internships', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    const userId = req.user.id;
-    const { company, role, duration, mode, certificate_url } = req.body;
-    if (!company || !company.trim()) return res.status(400).json({ error: 'Company name required' });
-
-    const result = await pool.query(`
-      INSERT INTO student_internships (user_id, company, role, duration, mode, certificate_url)
-      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
-    `, [userId, company.trim(), role || '', duration || '', mode || 'Offline', certificate_url || '']);
-    res.json(result.rows[0]);
-  });
-
-  app.delete('/api/student/profile/internships/:id', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    await pool.query('DELETE FROM student_internships WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
-    res.json({ success: true });
-  });
-
-  // 5. Certifications
-  app.post('/api/student/profile/certifications', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    const userId = req.user.id;
-    const { certificate_name, provider, issue_date, credential_id, certificate_url } = req.body;
-    if (!certificate_name || !certificate_name.trim()) return res.status(400).json({ error: 'Certificate name required' });
-
-    const result = await pool.query(`
-      INSERT INTO student_certifications (user_id, certificate_name, provider, issue_date, credential_id, certificate_url)
-      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
-    `, [userId, certificate_name.trim(), provider || '', issue_date || '', credential_id || '', certificate_url || '']);
-    res.json(result.rows[0]);
-  });
-
-  app.delete('/api/student/profile/certifications/:id', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    await pool.query('DELETE FROM student_certifications WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
-    res.json({ success: true });
-  });
-
-  // 6. Coding Profiles
-  app.put('/api/student/profile/coding-profiles', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    const userId = req.user.id;
-    const { github, leetcode, hackerrank, codechef, geeksforgeeks, linkedin, portfolio } = req.body;
-
-    const result = await pool.query(`
-      INSERT INTO student_coding_profiles (user_id, github, leetcode, hackerrank, codechef, geeksforgeeks, linkedin, portfolio, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-      ON CONFLICT (user_id) DO UPDATE SET
-        github = EXCLUDED.github,
-        leetcode = EXCLUDED.leetcode,
-        hackerrank = EXCLUDED.hackerrank,
-        codechef = EXCLUDED.codechef,
-        geeksforgeeks = EXCLUDED.geeksforgeeks,
-        linkedin = EXCLUDED.linkedin,
-        portfolio = EXCLUDED.portfolio,
-        updated_at = NOW()
-      RETURNING *
-    `, [userId, github || '', leetcode || '', hackerrank || '', codechef || '', geeksforgeeks || '', linkedin || '', portfolio || '']);
-    res.json(result.rows[0]);
-  });
-
-  // 7. Resume
-  app.post('/api/student/profile/resume', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    const userId = req.user.id;
-    const { resume_url, file_name } = req.body;
-    if (!resume_url) return res.status(400).json({ error: 'Resume URL / link required' });
-
-    const result = await pool.query(`
-      INSERT INTO student_resumes (user_id, resume_url, file_name, last_updated)
-      VALUES ($1, $2, $3, NOW())
-      ON CONFLICT (user_id) DO UPDATE SET
-        resume_url = EXCLUDED.resume_url,
-        file_name = EXCLUDED.file_name,
-        last_updated = NOW()
-      RETURNING *
-    `, [userId, resume_url, file_name || 'Resume.pdf']);
-    res.json(result.rows[0]);
-  });
-
-  // 8. Achievements
-  app.post('/api/student/profile/achievements', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    const userId = req.user.id;
-    const { title, category, description, event_date } = req.body;
-    if (!title || !title.trim()) return res.status(400).json({ error: 'Title required' });
-
-    const result = await pool.query(`
-      INSERT INTO student_achievements (user_id, title, category, description, event_date)
-      VALUES ($1, $2, $3, $4, $5) RETURNING *
-    `, [userId, title.trim(), category || 'Hackathons', description || '', event_date || '']);
-    res.json(result.rows[0]);
-  });
-
-  app.delete('/api/student/profile/achievements/:id', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    await pool.query('DELETE FROM student_achievements WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
-    res.json({ success: true });
-  });
-
-  // 9. Languages
-  app.post('/api/student/profile/languages', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    const userId = req.user.id;
-    const { language, proficiency } = req.body;
-    if (!language || !language.trim()) return res.status(400).json({ error: 'Language name required' });
-
-    const result = await pool.query(`
-      INSERT INTO student_languages (user_id, language, proficiency)
-      VALUES ($1, $2, $3) RETURNING *
-    `, [userId, language.trim(), proficiency || 'Fluent']);
-    res.json(result.rows[0]);
-  });
-
-  app.delete('/api/student/profile/languages/:id', authenticate, authorize(['STUDENT']), async (req: any, res) => {
-    await pool.query('DELETE FROM student_languages WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
-    res.json({ success: true });
-  });
 
   // ── Departments ───────────────────────────────────────────────────────────
   app.get('/api/departments', authenticate, async (req, res) => {
@@ -3937,9 +3768,10 @@ async function startServer() {
     const userId = req.user.id;
     const { github, leetcode, hackerrank, codechef, geeksforgeeks, linkedin, portfolio } = req.body;
 
+    // 1. Update student_coding_profiles table
     const result = await pool.query(`
-      INSERT INTO student_coding_profiles (user_id, github, leetcode, hackerrank, codechef, geeksforgeeks, linkedin, portfolio)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO student_coding_profiles (user_id, github, leetcode, hackerrank, codechef, geeksforgeeks, linkedin, portfolio, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
       ON CONFLICT (user_id) DO UPDATE SET
         github = EXCLUDED.github,
         leetcode = EXCLUDED.leetcode,
@@ -3950,7 +3782,21 @@ async function startServer() {
         portfolio = EXCLUDED.portfolio,
         updated_at = NOW()
       RETURNING *
-    `, [userId, github, leetcode, hackerrank, codechef, geeksforgeeks, linkedin, portfolio]);
+    `, [userId, github || '', leetcode || '', hackerrank || '', codechef || '', geeksforgeeks || '', linkedin || '', portfolio || '']);
+
+    // 2. Update users table with leetcode_url & github_url
+    await pool.query(`
+      UPDATE users 
+      SET leetcode_url = $1, github_url = $2, updated_at = NOW()
+      WHERE id = $3
+    `, [leetcode || '', github || '', userId]);
+
+    // 3. Update in-memory caches and write to studentDirectory JSON/CSV on disk
+    updateStudentCodingProfileInDirectory(userId, leetcode || '', github || '');
+
+    // 4. Trigger immediate background sync for LeetCode & GitHub for this student
+    syncLeetcodeProgressForScope({ userId }).catch(err => console.error('[LeetCode Sync] Immediate sync error on profile update:', err));
+    syncGitHubProgressForScope({ userId }).catch(err => console.error('[GitHub Sync] Immediate sync error on profile update:', err));
 
     res.json({ message: 'Coding profiles updated', profiles: result.rows[0] });
   }));
@@ -4667,7 +4513,7 @@ async function startServer() {
   async function syncLeetcodeProgressForScope(scopeFilter?: { departmentId?: string; classId?: string; year?: number; userId?: string }) {
     try {
       let query = `
-        SELECT u.id, u.register_number, u.full_name, u.class_id, u.department_id, c.year, c.batch 
+        SELECT u.id, u.register_number, u.full_name, u.class_id, u.department_id, u.leetcode_url, u.github_url, c.year, c.batch 
         FROM users u
         LEFT JOIN classes c ON u.class_id = c.id
         WHERE u.role = 'STUDENT'
@@ -4713,7 +4559,7 @@ async function startServer() {
           const departmentId = student.department_id;
           
           const studentDir = constantStudentByIdMap.get(userId);
-          const leetcodeProfile = studentDir?.leetcode || '';
+          const leetcodeProfile = studentDir?.leetcode || student.leetcode_url || '';
 
           const activeTarget = await getActiveTargetForStudent(pool, userId, classId, year, departmentId, todayStr);
 
@@ -5985,7 +5831,7 @@ async function startServer() {
 
     try {
       let query = `
-        SELECT u.id, u.register_number, u.full_name, u.class_id, u.department_id, c.year, c.name as class_name
+        SELECT u.id, u.register_number, u.full_name, u.class_id, u.department_id, u.leetcode_url, u.github_url, c.year, c.name as class_name
         FROM users u
         LEFT JOIN classes c ON u.class_id = c.id
         WHERE u.role = 'STUDENT'
@@ -6016,7 +5862,7 @@ async function startServer() {
 
         await Promise.all(batch.map(async (student) => {
           const studentDir = constantStudentByIdMap.get(student.id);
-          const githubProfile = studentDir?.github || '';
+          const githubProfile = studentDir?.github || student.github_url || '';
 
           if (!githubProfile) {
             // No GitHub username — record as DATA_UNAVAILABLE

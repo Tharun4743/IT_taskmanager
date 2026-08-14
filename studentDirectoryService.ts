@@ -209,3 +209,50 @@ export async function syncAndGenerateStudentDirectory() {
     throw error;
   }
 }
+
+/**
+ * Updates a single student's coding profile (LeetCode & GitHub URLs) in memory
+ * and immediately persists the update to the corresponding Section JSON and CSV on disk.
+ */
+export function updateStudentCodingProfileInDirectory(userId: string, leetcodeUrl: string, githubUrl: string) {
+  try {
+    const student = constantStudentByIdMap.get(String(userId));
+    if (student) {
+      student.leetcode = leetcodeUrl || '';
+      student.github = githubUrl || '';
+
+      if (student.register_number) {
+        constantStudentByRegNoMap.set(student.register_number.toLowerCase().trim(), student);
+      }
+      if (student.email) {
+        constantStudentByEmailMap.set(student.email.toLowerCase().trim(), student);
+      }
+
+      // Update in Section files on disk
+      const baseDir = path.join(process.cwd(), 'students_directory');
+      const yearFolder = `Year_${student.year || 'Unassigned'}`;
+      const sectionName = student.class_name ? student.class_name.replace(/[^a-zA-Z0-9_-]/g, '_') : 'Unassigned_Section';
+      const yearDirPath = path.join(baseDir, yearFolder);
+      const jsonFilePath = path.join(yearDirPath, `Section_${sectionName}.json`);
+      const csvFilePath = path.join(yearDirPath, `Section_${sectionName}.csv`);
+
+      const classKey = student.class_id ? student.class_id.toString() : 'unassigned';
+      const list = constantStudentsByClassMap.get(classKey);
+
+      if (list && fs.existsSync(jsonFilePath)) {
+        // Rewrite the JSON file for this section
+        fs.writeFileSync(jsonFilePath, JSON.stringify(list, null, 2), 'utf-8');
+
+        // Rewrite the CSV file for this section
+        const csvHeaders = 'Register_Number,Full_Name,Email,Gender,Class_Name,Department_Name,Year,Batch,Class_ID,Department_ID,Leetcode,Github\n';
+        const csvRows = list.map(s => 
+          `"${s.register_number}","${s.full_name}","${s.email}","${s.gender}","${s.class_name}","${s.department_name}","${s.year}","${s.batch}","${s.class_id}","${s.department_id}","${s.leetcode || ''}","${s.github || ''}"`
+        ).join('\n');
+        fs.writeFileSync(csvFilePath, csvHeaders + csvRows, 'utf-8');
+      }
+    }
+  } catch (err) {
+    console.error('[StudentDirectory] Failed to update coding profile on disk/cache:', err);
+  }
+}
+
