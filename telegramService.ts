@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import { pool } from './db.js';
 
 export function getBotToken(): string {
@@ -11,7 +14,7 @@ export function getAdminChatId(): string {
 export async function getGroupChatId(): Promise<string | null> {
   try {
     const res = await pool.query(`SELECT value FROM system_settings WHERE key = 'telegram_group_chat_id' LIMIT 1`);
-    if (res.rows.length > 0 && res.rows[0].value.trim()) {
+    if (res.rows.length > 0 && res.rows[0].value && res.rows[0].value.trim()) {
       return res.rows[0].value.trim();
     }
   } catch (err) {
@@ -39,7 +42,7 @@ export async function sendTelegramMessage(
   const token = getBotToken();
   if (!token) {
     console.warn('[Telegram] Cannot send message: No bot token configured.');
-    return { ok: false, description: 'No bot token configured' };
+    return { ok: false, description: 'No bot token configured in environment variables.' };
   }
 
   try {
@@ -148,7 +151,6 @@ export async function triggerPendingTaskReminders(): Promise<{
   details: string;
 }> {
   try {
-    // Find all open tasks with upcoming or pending deadlines
     const query = `
       SELECT DISTINCT 
         u.id as user_id, 
@@ -180,7 +182,6 @@ export async function triggerPendingTaskReminders(): Promise<{
       };
     }
 
-    // Group pending tasks by student
     const studentTasksMap = new Map<string, {
       fullName: string;
       registerNumber: string;
@@ -206,7 +207,7 @@ export async function triggerPendingTaskReminders(): Promise<{
     let notifiedCount = 0;
     let unlinkedCount = 0;
 
-    for (const [userId, info] of studentTasksMap.entries()) {
+    for (const [, info] of studentTasksMap.entries()) {
       if (!info.telegramChatId) {
         unlinkedCount++;
         continue;
@@ -255,28 +256,33 @@ export async function triggerPendingTaskReminders(): Promise<{
 }
 
 /**
- * 🔗 Link Student Telegram Account by Register Number or Username
+ * 🔗 Link Student Telegram Account by Register Number, Username, or Email
  */
 export async function linkStudentTelegram(
   identifier: string,
-  chatId: string | number,
+  personalChatId: string | number,
   telegramUsername?: string
 ): Promise<{ success: boolean; studentName?: string; message: string }> {
   try {
-    const cleanId = identifier.trim().toLowerCase();
+    const rawClean = identifier.trim();
+    const cleanNoSpaces = rawClean.replace(/\s+/g, '').toLowerCase();
     
-    // Find student by register_number, username, or email prefix
+    // Find student by register_number, username, or email
     const res = await pool.query(`
       SELECT id, full_name, register_number, username, role
       FROM users
-      WHERE (LOWER(register_number) = $1 OR LOWER(username) = $1 OR LOWER(email) = $1)
+      WHERE REPLACE(LOWER(register_number), ' ', '') = $1
+         OR REPLACE(LOWER(username), ' ', '') = $1
+         OR REPLACE(LOWER(email), ' ', '') = $1
+         OR LOWER(register_number) = LOWER($2)
+         OR LOWER(username) = LOWER($2)
       LIMIT 1
-    `, [cleanId]);
+    `, [cleanNoSpaces, rawClean]);
 
     if (res.rows.length === 0) {
       return {
         success: false,
-        message: `Student with Register Number or Username "${identifier}" was not found.`
+        message: `Student with Register Number or Username "${identifier}" was not found in the database. Please verify your Register Number.`
       };
     }
 
@@ -287,7 +293,7 @@ export async function linkStudentTelegram(
           telegram_username = $2,
           telegram_linked_at = CURRENT_TIMESTAMP
       WHERE id = $3
-    `, [String(chatId), telegramUsername || null, user.id]);
+    `, [String(personalChatId), telegramUsername || null, user.id]);
 
     return {
       success: true,
@@ -302,7 +308,6 @@ export async function linkStudentTelegram(
 
 /**
  * 🤖 Background Poller for Telegram Bot Updates
- * Listens for students clicking deep links (e.g. /start 7376222IT101) or texting /link <reg_no>
  */
 let isPolling = false;
 let lastUpdateId = 0;
@@ -312,11 +317,11 @@ export function startTelegramPoller(): void {
   if (!token || isPolling) return;
 
   isPolling = true;
-  console.log('[Telegram Bot] Starting update poller for automated linking...');
+  console.log('[Telegram Bot] Update poller running actively for automated student linking & group commands...');
 
   const poll = async () => {
     try {
-      const url = `https://api.telegram.org/bot${token}/getUpdates?offset=${lastUpdateId + 1}&timeout=30`;
+      const url = `https://api.telegram.org/bot${token}/getUpdates?offset=${lastUpdateId + 1}&timeout=25`;
       const response = await fetch(url);
       const data = await response.json();
 
@@ -324,20 +329,45 @@ export function startTelegramPoller(): void {
         for (const update of data.result) {
           lastUpdateId = Math.max(lastUpdateId, update.update_id);
           const msg = update.message;
-          if (!msg || !msg.text) continue;
+          if (!msg) continue;
 
-          const text = msg.text.trim();
-          const chatId = msg.chat.id;
+          const chatId = msg.chat?.id;
+          const isGroup = msg.chat?.type === 'group' || msg.chat?.type === 'supergroup';
+          const senderUserId = msg.from?.id || chatId;
           const fromUsername = msg.from?.username || '';
           const senderName = msg.from?.first_name || 'there';
+          const text = (msg.text || '').trim();
 
-          // Check if message is /start <param> or /link <param>
+          if (!text && !isGroup) continue;
+
+          // Auto-save group chat ID if group message detected
+          if (isGroup && chatId) {
+            const currentSavedGroup = await getGroupChatId();
+            if (!currentSavedGroup) {
+              await setGroupChatId(String(chatId));
+              console.log(`[Telegram] Auto-registered group chat ID: ${chatId}`);
+            }
+          }
+
+          // Command: /id
+          if (text.startsWith('/id')) {
+            await sendTelegramMessage(
+              chatId,
+              `ℹ️ *Chat Info*\n• Chat ID: \`${chatId}\`\n• Type: \`${msg.chat?.type}\`\n• Your User ID: \`${senderUserId}\``
+            );
+            continue;
+          }
+
+          // Command: /start <param> or /link <param>
           if (text.startsWith('/start') || text.startsWith('/link')) {
-            const parts = text.split(/\s+/);
+            // Remove bot username suffix if present e.g. /start@IT_TaskManager_Alerts_bot
+            const cleanText = text.replace(/@\w+/g, '');
+            const parts = cleanText.split(/\s+/);
             const param = parts[1]?.trim();
 
             if (param) {
-              const linkResult = await linkStudentTelegram(param, chatId, fromUsername);
+              // Always link to sender's personal Telegram ID (senderUserId), never group ID!
+              const linkResult = await linkStudentTelegram(param, senderUserId, fromUsername);
               if (linkResult.success) {
                 await sendTelegramMessage(
                   chatId,
@@ -346,31 +376,56 @@ export function startTelegramPoller(): void {
               } else {
                 await sendTelegramMessage(
                   chatId,
-                  `⚠️ *Could Not Link Account*\n\n${linkResult.message}\n\nPlease verify your Register Number or click the "Connect Telegram" button in your IT TaskManager portal.`
+                  `⚠️ *Could Not Link Account*\n\n${linkResult.message}\n\nPlease check your Register Number or connect via the IT TaskManager portal.`
                 );
               }
             } else {
               // Plain /start command
-              await sendTelegramMessage(
-                chatId,
-                `👋 *Hello ${senderName}!* Welcome to the *IT TaskManager Bot*.\n\nTo link your account and receive private task reminders, reply with:\n\`/link YOUR_REGISTER_NUMBER\`\n\n_Example:_ \`/link 7376222IT101\``
-              );
+              if (isGroup) {
+                await sendTelegramMessage(
+                  chatId,
+                  `👋 *Hello Everyone!* I am the *IT TaskManager Bot*.\n\n📌 *Group ID:* \`${chatId}\`\n\nThis group is registered to receive automated daily reports and department summaries.\n\n💡 _Students: To receive private deadline reminders on your personal phone, send \`/link YOUR_REGISTER_NUMBER\` directly to @IT_TaskManager_Alerts_bot._`
+                );
+              } else {
+                await sendTelegramMessage(
+                  chatId,
+                  `👋 *Hello ${senderName}!* Welcome to the *IT TaskManager Bot*.\n\nTo link your student account and receive private task reminders, reply with:\n\`/link YOUR_REGISTER_NUMBER\`\n\n_Example:_ \`/link 7376222IT101\``
+                );
+              }
             }
-          } else if (text === '/status') {
-            const userRes = await pool.query(`SELECT full_name, register_number FROM users WHERE telegram_chat_id = $1`, [String(chatId)]);
+          } else if (text.startsWith('/status')) {
+            const userRes = await pool.query(`SELECT full_name, register_number FROM users WHERE telegram_chat_id = $1`, [String(senderUserId)]);
             if (userRes.rows.length > 0) {
               await sendTelegramMessage(chatId, `✅ *Connected Account:* ${userRes.rows[0].full_name} (${userRes.rows[0].register_number})`);
             } else {
-              await sendTelegramMessage(chatId, `ℹ️ This Telegram chat is not yet linked to any student account. Send \`/link <Your_Register_Number>\` to link.`);
+              await sendTelegramMessage(chatId, `ℹ️ Your Telegram is not yet linked to a student account. Send \`/link <Your_Register_Number>\` to link.`);
+            }
+          } else if (text.startsWith('/summary') || text.startsWith('/report')) {
+            const res = await sendGroupSummary(String(chatId));
+            if (!res.success) {
+              await sendTelegramMessage(chatId, `⚠️ ${res.message}`);
+            }
+          } else if (!isGroup && (text.toLowerCase() === 'hi' || text.toLowerCase() === 'hello' || text.toLowerCase() === 'help')) {
+            const userRes = await pool.query(`SELECT full_name, register_number FROM users WHERE telegram_chat_id = $1`, [String(senderUserId)]);
+            if (userRes.rows.length > 0) {
+              await sendTelegramMessage(
+                chatId,
+                `👋 Hello *${userRes.rows[0].full_name}*!\n\nYour account is linked (${userRes.rows[0].register_number}). You are all set to receive deadline reminders.\n\nCommands:\n• \`/status\` - Check connected profile\n• \`/summary\` - View active tasks`
+              );
+            } else {
+              await sendTelegramMessage(
+                chatId,
+                `🤖 *IT TaskManager Bot*\n\nHello! To receive private task deadline reminders, reply with:\n\`/link YOUR_REGISTER_NUMBER\`\n\n_Example:_ \`/link 7376222IT101\``
+              );
             }
           }
         }
       }
     } catch (err: any) {
-      // Ignore network aborts/timeouts
+      // Network timeout/abort handled gracefully
     } finally {
       if (isPolling) {
-        setTimeout(poll, 2500);
+        setTimeout(poll, 1500);
       }
     }
   };
