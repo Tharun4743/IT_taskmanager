@@ -4910,11 +4910,17 @@ export default function App() {
         Array(numCols).fill(null),           // blank separator
         [...cols],                           // column header row (index 6)
         ...dataRows.map(r => cols.map(c => r[c] ?? '')),
+        Array(numCols).fill(null),           // blank separator
+        ['Developed and maintained by Tharunkumar K (https://tharunkumark4743.netlify.app/)', ...Array(numCols - 1).fill(null)],
+        ['Department of Information Technology, VSB Engineering College', ...Array(numCols - 1).fill(null)]
       ];
 
       const ws: XLSX.WorkSheet = XLSX.utils.aoa_to_sheet(aoaRows);
       // Merge the 5 info rows across all columns
       ws['!merges'] = [0, 1, 2, 3, 4].map(r => ({ s: { r, c: 0 }, e: { r, c: numCols - 1 } }));
+      const lastRow = aoaRows.length - 1;
+      ws['!merges'].push({ s: { r: lastRow - 1, c: 0 }, e: { r: lastRow - 1, c: numCols - 1 } });
+      ws['!merges'].push({ s: { r: lastRow, c: 0 }, e: { r: lastRow, c: numCols - 1 } });
       return ws;
     };
 
@@ -6698,12 +6704,13 @@ export default function App() {
                         <th className="px-6 py-4 text-center">Weekly Target</th>
                         <th className="px-6 py-4">Duration</th>
                         <th className="px-6 py-4">Created By</th>
+                        {user?.role !== 'STUDENT' && <th className="px-6 py-4 text-center">Actions</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-200 text-sm">
                       {leetcodeTargets.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="px-6 py-12 text-center text-zinc-400 font-semibold">
+                          <td colSpan={user?.role !== 'STUDENT' ? 7 : 6} className="px-6 py-12 text-center text-zinc-400 font-semibold">
                             No active LeetCode target configurations found. Click "LeetCode Target" to add one.
                           </td>
                         </tr>
@@ -6716,6 +6723,13 @@ export default function App() {
                             <td className="px-6 py-4 text-center font-bold text-indigo-600">{target.weekly_target} / week</td>
                             <td className="px-6 py-4 text-xs font-medium text-zinc-500">{target.start_date} to {target.end_date}</td>
                             <td className="px-6 py-4 text-xs text-zinc-600">{target.creator_name || 'Staff'}</td>
+                            {user?.role !== 'STUDENT' && (
+                              <td className="px-6 py-4 text-center">
+                                <button type="button" onClick={() => handleDeleteLeetcodeTarget(target.id)} className="text-zinc-400 hover:text-red-600 p-1" title="Delete Target">
+                                  <Trash2 size={16} />
+                                </button>
+                              </td>
+                            )}
                           </tr>
                         ))
                       )}
@@ -7014,12 +7028,13 @@ export default function App() {
                         <th className="px-6 py-4 text-center">Weekly Target</th>
                         <th className="px-6 py-4">Duration</th>
                         <th className="px-6 py-4">Created By</th>
+                        {user?.role !== 'STUDENT' && <th className="px-6 py-4 text-center">Actions</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-200 text-sm">
                       {githubTargets.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="px-6 py-12 text-center text-zinc-400 font-semibold">
+                          <td colSpan={user?.role !== 'STUDENT' ? 7 : 6} className="px-6 py-12 text-center text-zinc-400 font-semibold">
                             No active GitHub target configurations found. Click "GitHub Target" to add one.
                           </td>
                         </tr>
@@ -7032,6 +7047,13 @@ export default function App() {
                             <td className="px-6 py-4 text-center font-bold text-indigo-600">{target.weekly_target} / week</td>
                             <td className="px-6 py-4 text-xs font-medium text-zinc-500">{target.start_date} to {target.end_date}</td>
                             <td className="px-6 py-4 text-xs text-zinc-600">{target.creator_name || 'Staff'}</td>
+                            {user?.role !== 'STUDENT' && (
+                              <td className="px-6 py-4 text-center">
+                                <button type="button" onClick={() => handleDeleteGithubTarget(target.id)} className="text-zinc-400 hover:text-red-600 p-1" title="Delete Target">
+                                  <Trash2 size={16} />
+                                </button>
+                              </td>
+                            )}
                           </tr>
                         ))
                       )}

@@ -22,6 +22,14 @@ import { generateDatabaseSnapshot } from './dbBackupService.js';
 import { initSentry, captureException } from './sentryService.js';
 import * as XLSX from 'xlsx';
 
+function addExcelWatermark(ws: XLSX.WorkSheet) {
+  XLSX.utils.sheet_add_aoa(ws, [
+    [],
+    ['Developed and maintained by Tharunkumar K (https://tharunkumark4743.netlify.app/)'],
+    ['Department of Information Technology, VSB Engineering College']
+  ], { origin: -1 });
+}
+
 // ─── Async Route Error Wrapper ────────────────────────────────────────────────
 // Express 4 does not catch async errors automatically.
 // This wrapper forwards unhandled promise rejections to the error middleware.
@@ -149,32 +157,19 @@ async function startServer() {
   app.get('/health', healthCheckHandler);
   app.get('/api/health', healthCheckHandler);
 
-  // ─── In-Memory User Auth Cache (2-minute TTL) to protect DB pool ─────────────
-  const userAuthCache = new Map<string, { user: any; expiresAt: number }>();
-
-  // Auth Middleware - Fetches dynamic permissions with 2-minute caching
+  // Auth Middleware - Fetches dynamic permissions directly from DB
   const authenticate = async (req: any, res: any, next: any) => {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
     try {
       const decoded: any = jwt.verify(token, JWT_SECRET);
       const userId = decoded.id;
-      const now = Date.now();
 
-      let user: any = null;
-      const cached = userAuthCache.get(userId);
-      if (cached && cached.expiresAt > now) {
-        user = cached.user;
-      } else {
-        const dbUserRes = await pool.query(
-          'SELECT id, username, role, department_id, class_id, is_coordinator, is_year_coordinator, year_scope, register_number FROM users WHERE id = $1 LIMIT 1',
-          [userId]
-        );
-        user = dbUserRes.rows[0];
-        if (user) {
-          userAuthCache.set(userId, { user, expiresAt: now + 120000 });
-        }
-      }
+      const dbUserRes = await pool.query(
+        'SELECT id, username, role, department_id, class_id, is_coordinator, is_year_coordinator, year_scope, register_number FROM users WHERE id = $1 LIMIT 1',
+        [userId]
+      );
+      const user = dbUserRes.rows[0];
 
       if (!user) {
         return res.status(401).json({ error: 'Unauthorized: User not found' });
@@ -791,44 +786,13 @@ async function startServer() {
           ORDER BY c.name ASC, u.register_number ASC, u.full_name ASC
         `, [req.user.department_id, req.user.year_scope]);
       } else {
-        const classIdStr = (req.user.class_id || '').toString();
-        const cachedStudents = constantStudentsByClassMap.get(classIdStr);
-
-        if (cachedStudents && cachedStudents.length > 0) {
-          const liveStatusRes = await pool.query('SELECT id, is_coordinator, is_active FROM users WHERE class_id = $1 AND role = \'STUDENT\'', [req.user.class_id]);
-          const liveCoordsMap = new Map<string, boolean>();
-          const liveActiveMap = new Map<string, boolean>();
-          liveStatusRes.rows.forEach(r => {
-            liveCoordsMap.set(r.id.toString(), Boolean(r.is_coordinator));
-            liveActiveMap.set(r.id.toString(), r.is_active !== false);
-          });
-
-          return res.json(cachedStudents.map(st => ({
-            id: st.id,
-            username: st.register_number,
-            role: 'STUDENT',
-            full_name: st.full_name,
-            email: st.email,
-            register_number: st.register_number,
-            gender: st.gender,
-            is_coordinator: liveCoordsMap.get(st.id.toString()) || false,
-            is_active: liveActiveMap.get(st.id.toString()) !== false,
-            department_id: st.department_id,
-            department_name: st.department_name,
-            class_id: st.class_id,
-            class_name: st.class_name,
-            is_year_coordinator: false,
-            year_scope: null,
-          })));
-        } else {
-          usersRes = await pool.query(`
-            SELECT u.*, c.name as class_name
-            FROM users u
-            LEFT JOIN classes c ON u.class_id = c.id
-            WHERE u.class_id = $1 AND u.role = 'STUDENT'
-            ORDER BY u.register_number ASC, u.full_name ASC
-          `, [req.user.class_id]);
-        }
+        usersRes = await pool.query(`
+          SELECT u.*, c.name as class_name
+          FROM users u
+          LEFT JOIN classes c ON u.class_id = c.id
+          WHERE u.class_id = $1 AND u.role = 'STUDENT'
+          ORDER BY u.register_number ASC, u.full_name ASC
+        `, [req.user.class_id]);
       }
     } else {
       return res.status(403).json({ error: 'Forbidden' });
@@ -5413,6 +5377,7 @@ async function startServer() {
     });
     ws['!cols'] = colWidths;
 
+    addExcelWatermark(ws);
     XLSX.utils.book_append_sheet(wb, ws, 'Daily LeetCode Report');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
@@ -5469,6 +5434,7 @@ async function startServer() {
     });
     ws['!cols'] = colWidths;
 
+    addExcelWatermark(ws);
     XLSX.utils.book_append_sheet(wb, ws, 'Weekly LeetCode Report');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
@@ -5554,6 +5520,7 @@ async function startServer() {
     });
     ws['!cols'] = colWidths;
 
+    addExcelWatermark(ws);
     XLSX.utils.book_append_sheet(wb, ws, 'Detailed Weekly Report');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
@@ -5604,6 +5571,7 @@ async function startServer() {
     });
     ws['!cols'] = colWidths;
 
+    addExcelWatermark(ws);
     XLSX.utils.book_append_sheet(wb, ws, 'Defaulters Report');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
@@ -6414,6 +6382,7 @@ async function startServer() {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(excelData);
     ws['!cols'] = Object.keys(excelData[0] || {}).map(k => { let m = k.length; for (const r of excelData) { const v = (r as any)[k]; if (v) m = Math.max(m, String(v).length); } return { wch: m + 3 }; });
+    addExcelWatermark(ws);
     XLSX.utils.book_append_sheet(wb, ws, 'GitHub Daily Report');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -6444,6 +6413,7 @@ async function startServer() {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(excelData);
     ws['!cols'] = Object.keys(excelData[0] || {}).map(k => { let m = k.length; for (const r of excelData) { const v = (r as any)[k]; if (v) m = Math.max(m, String(v).length); } return { wch: m + 3 }; });
+    addExcelWatermark(ws);
     XLSX.utils.book_append_sheet(wb, ws, 'GitHub Weekly Report');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -6503,6 +6473,7 @@ async function startServer() {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(detailedList);
     ws['!cols'] = Object.keys(detailedList[0] || {}).map(k => { let m = k.length; for (const r of detailedList) { const v = (r as any)[k]; if (v) m = Math.max(m, String(v).length); } return { wch: m + 3 }; });
+    addExcelWatermark(ws);
     XLSX.utils.book_append_sheet(wb, ws, 'GitHub Detailed Weekly');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -6535,6 +6506,7 @@ async function startServer() {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(excelData);
     ws['!cols'] = Object.keys(excelData[0] || {}).map(k => { let m = k.length; for (const r of excelData) { const v = (r as any)[k]; if (v) m = Math.max(m, String(v).length); } return { wch: m + 3 }; });
+    addExcelWatermark(ws);
     XLSX.utils.book_append_sheet(wb, ws, 'GitHub Defaulters');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
