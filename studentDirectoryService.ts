@@ -271,7 +271,7 @@ const pendingUpdatedFiles = new Set<string>();
  * Updates a file directly on GitHub repository using GitHub Contents API.
  * Works seamlessly in cloud containers (e.g. Render) without needing local git credentials.
  */
-async function updateGitHubFileViaAPI(filePath: string, commitMsg: string): Promise<boolean> {
+export async function updateGitHubFileViaAPI(filePath: string, commitMsg: string): Promise<boolean> {
   const token = process.env.GITHUB_TOKEN;
   if (!token || !fs.existsSync(filePath)) return false;
 

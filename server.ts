@@ -1,6 +1,10 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+import { exec } from 'child_process';
+import util from 'util';
+const execPromise = util.promisify(exec);
+
 import fs from 'fs';
 import express, { Request, Response, NextFunction } from 'express';
 import compression from 'compression';
@@ -16,7 +20,7 @@ import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { pool, initDB } from './db.js';
-import { syncAndGenerateStudentDirectory, updateStudentCodingProfileInDirectory, constantStudentByIdMap, constantStudentByRegNoMap, constantStudentByEmailMap, constantStudentsByClassMap } from './studentDirectoryService.js';
+import { syncAndGenerateStudentDirectory, updateStudentCodingProfileInDirectory, constantStudentByIdMap, constantStudentByRegNoMap, constantStudentByEmailMap, constantStudentsByClassMap, updateGitHubFileViaAPI } from './studentDirectoryService.js';
 import { cleanupOnlyTaskScreenshots } from './imageCleanupService.js';
 import { generateDatabaseSnapshot } from './dbBackupService.js';
 import { initSentry, captureException } from './sentryService.js';
@@ -5212,6 +5216,7 @@ async function startServer() {
         dailyTarget: activeTarget.daily_target,
         solvedToday,
         solvedYesterday,
+        totalSolved: dailyRow?.total_solved || null,
         remainingDaily,
         completionDailyPct,
         dailyStatus,
@@ -6817,8 +6822,108 @@ async function startServer() {
       } catch (err) {
         console.error('[GitHub Sync Daemon] Error:', err);
       }
+
+      try {
+        const todayStr = getISTDateStr();
+        await syncLeetcodeProgressForScope();
+        await exportAndPushLeetcodeDailyProgress(todayStr);
+      } catch (err) {
+        console.error('[GitHub Sync Daemon LeetCode Export Error]:', err);
+      }
+
       scheduleGitHubDailySync();
     }, timeUntilSync);
+  }
+
+  // Auto-generate date-wise and year-wise LeetCode progress JSON files and push to GitHub
+  async function exportAndPushLeetcodeDailyProgress(dateStr: string) {
+    try {
+      console.log(`[LeetCode AutoSync] Generating date-wise year-wise exports for date: ${dateStr}...`);
+      const leetcodeBaseDir = path.join(process.cwd(), 'leetcode');
+      const dateDir = path.join(leetcodeBaseDir, dateStr);
+      
+      if (!fs.existsSync(leetcodeBaseDir)) {
+        fs.mkdirSync(leetcodeBaseDir, { recursive: true });
+      }
+      if (!fs.existsSync(dateDir)) {
+        fs.mkdirSync(dateDir, { recursive: true });
+      }
+
+      const studentRes = await pool.query(`
+        SELECT u.id, COALESCE(u.register_number, u.username) AS register_number, u.full_name, u.class_id, u.email, c.year, c.name as class_name
+        FROM users u
+        LEFT JOIN classes c ON u.class_id = c.id
+        WHERE u.role = 'STUDENT'
+      `);
+      const allStudents = studentRes.rows;
+
+      const yearGroups: Record<string, any[]> = {};
+      for (const student of allStudents) {
+        const yearKey = String(student.year || 0);
+        if (!yearGroups[yearKey]) {
+          yearGroups[yearKey] = [];
+        }
+        yearGroups[yearKey].push(student);
+      }
+
+      const filesToSync: string[] = [];
+
+      for (const [yearKey, studentsInYear] of Object.entries(yearGroups)) {
+        if (yearKey === '0') continue;
+
+        const enrichedList = await enrichStudentProgressBatch(studentsInYear, dateStr);
+        
+        const progressData = enrichedList.map(item => {
+          const studentInfo = studentsInYear.find(s => String(s.id) === String(item.studentId));
+          return {
+            'Register No': item.registerNumber,
+            'Student Name': item.fullName,
+            'Class': item.className || '—',
+            'Email ID': studentInfo?.email || '—',
+            'LeetCode ID': item.leetcodeUrl ? item.leetcodeUrl.split('/').filter(Boolean).pop() : '',
+            'LeetCode URL': item.leetcodeUrl || '',
+            'Daily Target': item.dailyTarget,
+            'Solved Today': item.solvedToday,
+            'Daily Status': item.dailyStatus ? item.dailyStatus.replace('_', ' ') : 'NO_TARGET',
+            'Total Solved': item.totalSolved || 0,
+            'Solved This Week': item.solvedThisWeek,
+            'Weekly Target': item.weeklyTarget,
+            'Weekly Status': item.weeklyStatus ? item.weeklyStatus.replace('_', ' ') : 'NO_TARGET'
+          };
+        });
+
+        const fileName = `Year_${yearKey}.json`;
+        const filePath = path.join(dateDir, fileName);
+        
+        fs.writeFileSync(filePath, JSON.stringify(progressData, null, 2), 'utf-8');
+        filesToSync.push(filePath);
+        console.log(`[LeetCode AutoSync] Wrote local file: ${filePath}`);
+      }
+
+      const commitMsg = `chore(leetcode): auto-sync daily progress for date ${dateStr}`;
+
+      if (process.env.GITHUB_TOKEN && filesToSync.length > 0) {
+        console.log('[LeetCode AutoSync] Syncing files to GitHub via Content API...');
+        for (const fPath of filesToSync) {
+          await updateGitHubFileViaAPI(fPath, commitMsg);
+        }
+      }
+
+      try {
+        await execPromise('git add leetcode/');
+        const statusRes = await execPromise('git status --porcelain leetcode/');
+        if (statusRes.stdout.trim()) {
+          await execPromise(`git commit -m "${commitMsg}"`);
+          await execPromise('git push origin main');
+          console.log(`[LeetCode AutoSync] 🚀 Auto-pushed leetcode progress to GitHub via Git CLI: ${commitMsg}`);
+        }
+      } catch (err: any) {
+        console.warn('[LeetCode AutoSync] Local Git CLI push warning (ignored if Content API worked):', err.message);
+      }
+
+    } catch (err: any) {
+      console.error('[LeetCode AutoSync] Error executing daily sync & export:', err);
+    }
   }
 
   // GitHub startup sync + schedule daemon
@@ -6843,6 +6948,10 @@ async function startServer() {
     if (process.env.GITHUB_TOKEN) {
       githubRes = await syncGitHubProgressForScope();
     }
+
+    const todayStr = getISTDateStr();
+    await exportAndPushLeetcodeDailyProgress(todayStr).catch(err => console.error('[Cron Webhook LeetCode Export Error]:', err));
+
     return res.json({
       success: true,
       timestamp: new Date().toISOString(),
