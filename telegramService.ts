@@ -15,6 +15,10 @@ export function getPortalUrl(): string {
   return process.env.FRONTEND_URL || 'https://it-taskmanager.onrender.com';
 }
 
+export function getWatermarkHtml(): string {
+  return `\n─────────────────────────\n👨‍💻 Developed and maintained by <a href="https://tharunkumark4743.netlify.app/">Tharunkumar K</a>\n🏛️ <i>Department of Information Technology, VSB Engineering College</i>`;
+}
+
 export async function getGroupChatId(): Promise<string | null> {
   try {
     const res = await pool.query(`SELECT value FROM system_settings WHERE key = 'telegram_group_chat_id' LIMIT 1`);
@@ -135,7 +139,7 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 
-    let html = `📊 <b>IT TASKMANAGER — DAILY SUMMARY</b>\n`;
+    let html = `📊 <b>IT TASK MANAGER — DAILY SUMMARY</b>\n`;
     html += `📅 <i>${dateStr}</i>\n`;
     html += `👥 <b>Total Students:</b> ${totalStudents} | 📱 <b>Telegram Linked:</b> ${linkedTelegram}\n`;
     html += `─────────────────────────\n\n`;
@@ -157,8 +161,9 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
         html += `   ⏰ <i>Due:</i> ${deadlineStr}\n`;
         html += `   ✅ <i>Progress:</i> <b>${completed}</b> submissions ${progressBar}\n\n`;
       });
-      html += `─────────────────────────\n`;
     }
+
+    html += getWatermarkHtml();
 
     const portalUrl = getPortalUrl();
     const inlineKeyboard = {
@@ -259,7 +264,7 @@ export async function triggerPendingTaskReminders(): Promise<{
         continue;
       }
 
-      let html = `🔔 <b>IT TASKMANAGER — PENDING TASK REMINDER</b>\n\n`;
+      let html = `🔔 <b>IT TASK MANAGER — PENDING TASK REMINDER</b>\n\n`;
       html += `Hello <b>${escapeHtml(info.fullName)}</b>,\n`;
       html += `You have <b>${info.tasks.length}</b> pending assignment(s) awaiting submission:\n\n`;
 
@@ -276,7 +281,8 @@ export async function triggerPendingTaskReminders(): Promise<{
         html += `<i>...and ${info.tasks.length - 5} more pending task(s).</i>\n\n`;
       }
 
-      html += `👉 <i>Please complete and upload your submission proof before the deadline!</i>`;
+      html += `👉 <i>Please complete and upload your submission proof before the deadline!</i>\n`;
+      html += getWatermarkHtml();
 
       const inlineKeyboard = {
         inline_keyboard: [
@@ -411,7 +417,7 @@ export function startTelegramPoller(): void {
           if (text.startsWith('/id')) {
             await sendTelegramMessage(
               chatId,
-              `ℹ️ <b>Chat Details:</b>\n• Chat ID: <code>${chatId}</code>\n• Chat Type: <code>${msg.chat?.type}</code>\n• Your User ID: <code>${senderUserId}</code>`
+              `ℹ️ <b>Chat Details:</b>\n• Chat ID: <code>${chatId}</code>\n• Chat Type: <code>${msg.chat?.type}</code>\n• Your User ID: <code>${senderUserId}</code>\n${getWatermarkHtml()}`
             );
             continue;
           }
@@ -435,25 +441,25 @@ export function startTelegramPoller(): void {
                 };
                 await sendTelegramMessage(
                   chatId,
-                  `🎉 <b>Account Connected Successfully!</b>\n\nHello <b>${escapeHtml(linkResult.studentName)}</b>,\nYour Telegram is now securely connected to <b>IT TaskManager</b>.\n\nYou will receive private alerts for upcoming deadlines and target updates here! 🚀`,
+                  `🎉 <b>Welcome to IT TASK MANAGER!</b>\n\nHello <b>${escapeHtml(linkResult.studentName)}</b>,\nYour Telegram is now securely connected to <b>IT TaskManager</b>.\n\nYou will receive private alerts for upcoming deadlines and target updates here! 🚀\n${getWatermarkHtml()}`,
                   { reply_markup: inlineKeyboard }
                 );
               } else {
                 await sendTelegramMessage(
                   chatId,
-                  `⚠️ <b>Could Not Link Account</b>\n\n${escapeHtml(linkResult.message)}\n\nPlease check your Register Number or connect via the IT TaskManager portal.`
+                  `⚠️ <b>Could Not Link Account</b>\n\n${escapeHtml(linkResult.message)}\n\nPlease check your Register Number or connect via the IT TaskManager portal.\n${getWatermarkHtml()}`
                 );
               }
             } else {
               if (isGroup) {
                 await sendTelegramMessage(
                   chatId,
-                  `👋 <b>Hello Everyone!</b> I am the <b>IT TaskManager Bot</b>.\n\n📌 <b>Group ID:</b> <code>${chatId}</code>\n\nThis group receives daily task reports and department announcements.\n\n💡 <i>Students: To link your account for private alerts, message @IT_TaskManager_Alerts_bot directly!</i>`
+                  `👋 <b>Welcome to IT TASK MANAGER!</b>\n\n📌 <b>Group ID:</b> <code>${chatId}</code>\n\nThis group receives automated daily task reports and department announcements.\n\n💡 <i>Students: To link your account for private alerts, message @IT_TaskManager_Alerts_bot directly!</i>\n${getWatermarkHtml()}`
                 );
               } else {
                 await sendTelegramMessage(
                   chatId,
-                  `👋 <b>Hello ${escapeHtml(senderName)}!</b> Welcome to the <b>IT TaskManager Bot</b>.\n\nTo link your student account and receive private task reminders, reply with:\n<code>/link YOUR_REGISTER_NUMBER</code>\n\n<i>Example:</i> <code>/link 7376222IT101</code>`
+                  `👋 <b>Welcome to IT TASK MANAGER!</b>\n\nHello <b>${escapeHtml(senderName)}</b>!\n\nTo link your student account and receive private task reminders, reply with:\n<code>/link YOUR_REGISTER_NUMBER</code>\n\n<i>Example:</i> <code>/link 7376222IT101</code>\n${getWatermarkHtml()}`
                 );
               }
             }
@@ -471,7 +477,7 @@ export function startTelegramPoller(): void {
             if (userRes.rows.length === 0) {
               await sendTelegramMessage(
                 chatId,
-                `ℹ️ Your Telegram is not yet connected to a student profile.\n\nReply with <code>/link YOUR_REGISTER_NUMBER</code> to connect!`
+                `ℹ️ Your Telegram is not yet connected to a student profile.\n\nReply with <code>/link YOUR_REGISTER_NUMBER</code> to connect!\n${getWatermarkHtml()}`
               );
             } else {
               const u = userRes.rows[0];
@@ -489,7 +495,7 @@ export function startTelegramPoller(): void {
               if (tasksRes.rows.length === 0) {
                 await sendTelegramMessage(
                   chatId,
-                  `🎉 <b>Great job, ${escapeHtml(u.full_name)}!</b>\nYou have no pending tasks right now. All caught up!`
+                  `🎉 <b>Great job, ${escapeHtml(u.full_name)}!</b>\nYou have no pending tasks right now. All caught up!\n${getWatermarkHtml()}`
                 );
               } else {
                 let html = `📋 <b>Your Pending Tasks (${tasksRes.rows.length}):</b>\n\n`;
@@ -499,7 +505,8 @@ export function startTelegramPoller(): void {
                     : 'No deadline';
                   html += `${i + 1}. 📌 <b>${escapeHtml(t.title)}</b>\n   ⏰ Due: ${dStr}\n\n`;
                 });
-                html += `👉 <i>Submit your proof on the IT TaskManager portal!</i>`;
+                html += `👉 <i>Submit your proof on the IT TaskManager portal!</i>\n`;
+                html += getWatermarkHtml();
 
                 await sendTelegramMessage(chatId, html, {
                   reply_markup: {
@@ -517,7 +524,7 @@ export function startTelegramPoller(): void {
               SET telegram_chat_id = NULL, telegram_username = NULL, telegram_linked_at = NULL
               WHERE telegram_chat_id = $1
             `, [String(senderUserId)]);
-            await sendTelegramMessage(chatId, `✅ Your Telegram has been disconnected from your IT TaskManager student account.`);
+            await sendTelegramMessage(chatId, `✅ Your Telegram has been disconnected from your IT TaskManager student account.\n${getWatermarkHtml()}`);
           }
 
           // Command: /status
@@ -526,10 +533,10 @@ export function startTelegramPoller(): void {
             if (userRes.rows.length > 0) {
               await sendTelegramMessage(
                 chatId,
-                `✅ <b>Connected Account:</b>\n• <b>Name:</b> ${escapeHtml(userRes.rows[0].full_name)}\n• <b>Register No:</b> <code>${escapeHtml(userRes.rows[0].register_number)}</code>\n• <b>Role:</b> ${userRes.rows[0].role}`
+                `✅ <b>Connected Account:</b>\n• <b>Name:</b> ${escapeHtml(userRes.rows[0].full_name)}\n• <b>Register No:</b> <code>${escapeHtml(userRes.rows[0].register_number)}</code>\n• <b>Role:</b> ${userRes.rows[0].role}\n${getWatermarkHtml()}`
               );
             } else {
-              await sendTelegramMessage(chatId, `ℹ️ This chat is not yet linked to any student profile. Send <code>/link &lt;Your_Register_Number&gt;</code> to link.`);
+              await sendTelegramMessage(chatId, `ℹ️ This chat is not yet linked to any student profile. Send <code>/link &lt;Your_Register_Number&gt;</code> to link.\n${getWatermarkHtml()}`);
             }
           }
 
@@ -537,7 +544,7 @@ export function startTelegramPoller(): void {
           else if (text.startsWith('/summary') || text.startsWith('/report')) {
             const res = await sendGroupSummary(String(chatId));
             if (!res.success) {
-              await sendTelegramMessage(chatId, `⚠️ ${escapeHtml(res.message)}`);
+              await sendTelegramMessage(chatId, `⚠️ ${escapeHtml(res.message)}\n${getWatermarkHtml()}`);
             }
           }
 
@@ -547,12 +554,12 @@ export function startTelegramPoller(): void {
             if (userRes.rows.length > 0) {
               await sendTelegramMessage(
                 chatId,
-                `👋 Hello <b>${escapeHtml(userRes.rows[0].full_name)}</b>!\n\nYour account is linked (<code>${escapeHtml(userRes.rows[0].register_number)}</code>).\n\n<b>Available Commands:</b>\n• <code>/tasks</code> - View your pending assignments\n• <code>/status</code> - View connected profile\n• <code>/summary</code> - View class overview\n• <code>/unlink</code> - Disconnect account`
+                `👋 <b>Welcome to IT TASK MANAGER!</b>\n\nHello <b>${escapeHtml(userRes.rows[0].full_name)}</b>!\nYour account is linked (<code>${escapeHtml(userRes.rows[0].register_number)}</code>).\n\n<b>Available Commands:</b>\n• <code>/tasks</code> - View your pending assignments\n• <code>/status</code> - View connected profile\n• <code>/summary</code> - View class overview\n• <code>/unlink</code> - Disconnect account\n${getWatermarkHtml()}`
               );
             } else {
               await sendTelegramMessage(
                 chatId,
-                `🤖 <b>IT TaskManager Bot</b>\n\nHello! To receive private task deadline alerts, reply with:\n<code>/link YOUR_REGISTER_NUMBER</code>\n\n<i>Example:</i> <code>/link 7376222IT101</code>`
+                `🤖 <b>Welcome to IT TASK MANAGER!</b>\n\nHello! To receive private task deadline alerts, reply with:\n<code>/link YOUR_REGISTER_NUMBER</code>\n\n<i>Example:</i> <code>/link 7376222IT101</code>\n${getWatermarkHtml()}`
               );
             }
           }
