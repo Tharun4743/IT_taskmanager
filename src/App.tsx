@@ -6193,25 +6193,58 @@ export default function App() {
   if (isLoading) {
     return (
       <div className="flex h-screen bg-[#F5F5F4] font-sans text-zinc-900 overflow-hidden">
-        <div className="w-64 bg-white border-r border-zinc-200 flex flex-col">
-          <div className="p-6 border-b border-zinc-100 mb-4">
-            <Skeleton className="h-8 w-3/4" />
+        {/* Sidebar Skeleton */}
+        <div className="w-64 bg-white border-r border-zinc-200 flex flex-col shrink-0">
+          <div className="p-4 border-b border-zinc-100 flex items-center gap-3 shrink-0 h-20">
+            <Skeleton className="w-10 h-10 rounded-full" />
+            <Skeleton className="h-6 w-24 rounded" />
           </div>
-          <div className="px-4 space-y-4">
+          <div className="flex-1 p-4 space-y-3 overflow-y-auto">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+          {/* User bottom panel skeleton */}
+          <div className="p-4 border-t border-zinc-100 shrink-0 bg-white space-y-3">
+            <div className="px-4 py-2 bg-zinc-50 rounded-xl space-y-2">
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-3 w-40" />
+            </div>
+            <Skeleton className="h-10 w-full rounded-xl" />
           </div>
         </div>
-        <div className="flex-1 p-8 flex flex-col gap-6">
-          <Skeleton className="h-12 w-48 mb-2" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-            <Skeleton className="h-32 w-full rounded-2xl bg-white border border-zinc-200" />
-            <Skeleton className="h-32 w-full rounded-2xl bg-white border border-zinc-200" />
-            <Skeleton className="h-32 w-full rounded-2xl bg-white border border-zinc-200" />
-            <Skeleton className="h-32 w-full rounded-2xl bg-white border border-zinc-200" />
+
+        {/* Content Pane Skeleton */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Top Navbar Skeleton */}
+          <div className="h-20 bg-white border-b border-zinc-200 flex items-center justify-between px-8 shrink-0">
+            <Skeleton className="h-8 w-48" />
+            <div className="flex items-center gap-4">
+              <Skeleton className="h-10 w-10 rounded-full animate-pulse" />
+              <Skeleton className="h-10 w-10 rounded-full animate-pulse" />
+              <Skeleton className="h-10 w-24 rounded-xl animate-pulse" />
+            </div>
           </div>
-          <Skeleton className="h-64 w-full rounded-2xl bg-white border border-zinc-200" />
+          
+          {/* Scrollable Content Workspace Skeleton */}
+          <div className="flex-1 p-8 overflow-y-auto space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+              <Skeleton className="h-32 w-full rounded-2xl bg-white border border-zinc-200 shadow-sm" />
+              <Skeleton className="h-32 w-full rounded-2xl bg-white border border-zinc-200 shadow-sm" />
+              <Skeleton className="h-32 w-full rounded-2xl bg-white border border-zinc-200 shadow-sm" />
+              <Skeleton className="h-32 w-full rounded-2xl bg-white border border-zinc-200 shadow-sm" />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <Skeleton className="h-[450px] lg:col-span-2 rounded-2xl bg-white border border-zinc-200 shadow-sm" />
+              <Skeleton className="h-[450px] rounded-2xl bg-white border border-zinc-200 shadow-sm" />
+            </div>
+          </div>
         </div>
       </div>
     );
