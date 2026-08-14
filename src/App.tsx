@@ -5610,9 +5610,9 @@ export default function App() {
 
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div>
-                    <label className="text-sm font-medium text-zinc-700 mb-1 block">Email ID or Register Number</label>
+                    <label className="text-sm font-medium text-zinc-700 mb-1 block">Email ID</label>
                     <Input
-                      placeholder="e.g. 922524205001 or student@gmail.com"
+                      placeholder="student@gmail.com"
                       value={loginData.username}
                       onChange={e => setLoginData(prev => ({ ...prev, username: e.target.value }))}
                       required
@@ -5620,14 +5620,11 @@ export default function App() {
                     />
                   </div>
                   <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <label className="text-sm font-medium text-zinc-700 block">Password</label>
-                      <span className="text-xs text-zinc-400">Default: 12-digit Register No</span>
-                    </div>
+                    <label className="text-sm font-medium text-zinc-700 mb-1 block">Password</label>
                     <div className="relative">
                       <Input
                         type={showPassword ? 'text' : 'password'}
-                        placeholder="Enter Password (or Register No)"
+                        placeholder="Enter Password"
                         value={loginData.password}
                         onChange={e => setLoginData(prev => ({ ...prev, password: e.target.value }))}
                         required
