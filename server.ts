@@ -23,7 +23,7 @@ import { pool, initDB } from './db.js';
 import { syncAndGenerateStudentDirectory, updateStudentCodingProfileInDirectory, constantStudentByIdMap, constantStudentByRegNoMap, constantStudentByEmailMap, constantStudentsByClassMap, updateGitHubFileViaAPI } from './studentDirectoryService.js';
 import { cleanupOnlyTaskScreenshots } from './imageCleanupService.js';
 import { generateDatabaseSnapshot } from './dbBackupService.js';
-import { initSentry, captureException } from './sentryService.js';
+import { initSentry } from './sentryService.js';
 import {
   startTelegramPoller,
   sendGroupSummary,
@@ -31,7 +31,6 @@ import {
   getTelegramStats,
   setGroupChatId,
   sendTelegramMessage,
-  linkStudentTelegram,
   notifyNewTaskCreated,
   notifyTaskSubmissionReceived,
   notifySubmissionVerifiedOrRejected,
@@ -2611,12 +2610,6 @@ async function startServer() {
       SELECT count(*) FROM task_submissions ts
       JOIN users u ON ts.user_id = u.id
       WHERE u.department_id = $1 AND ts.status = 'VERIFIED'
-    `, [deptId]);
-
-    const notParticipatingSubmissionsRes = await pool.query(`
-      SELECT count(*) FROM task_submissions ts
-      JOIN users u ON ts.user_id = u.id
-      WHERE u.department_id = $1 AND ts.status = 'NOT_PARTICIPATING'
     `, [deptId]);
 
     res.json({
@@ -5402,40 +5395,21 @@ async function startServer() {
   // 9. Specific Student Progress History & Modal Details
   app.get('/api/leetcode/progress/student/:studentId', authenticate, asyncHandler(async (req: any, res: Response) => {
     const { studentId } = req.params;
-    const dateStr = getISTDateStr();
 
     const stdRes = await pool.query(`
-      SELECT u.id, u.register_number, u.full_name, u.class_id, u.department_id, c.year, c.name as class_name
-      FROM users u
-      LEFT JOIN classes c ON u.class_id = c.id
-      WHERE u.id = $1 LIMIT 1
+      SELECT id FROM users WHERE id = $1 AND role = 'STUDENT'
     `, [studentId]);
 
     if (stdRes.rowCount === 0) {
       return res.status(404).json({ error: 'Student not found' });
     }
 
-    const student = stdRes.rows[0];
-    const enriched = (await enrichStudentProgressBatch([student], dateStr))[0];
-
     const dailyHistory = await pool.query(`
-      SELECT date, solved_today, daily_target, status
+      SELECT date, solved_today, daily_target
       FROM leetcode_daily_progress
       WHERE user_id = $1 AND total_solved IS NOT NULL
       ORDER BY date DESC LIMIT 30
     `, [studentId]);
-
-    const weeklyHistoryQuery = `
-      SELECT 
-        DATE_TRUNC('week', date) as week_start,
-        SUM(solved_today) as solved_week,
-        MAX(daily_target) * 5 as weekly_target_estimated
-      FROM leetcode_daily_progress
-      WHERE user_id = $1 AND total_solved IS NOT NULL
-      GROUP BY DATE_TRUNC('week', date)
-      ORDER BY week_start DESC LIMIT 4
-    `;
-    const weeklyHistoryRes = await pool.query(weeklyHistoryQuery, [studentId]);
 
     const dailyPoints = dailyHistory.rows.map(r => ({
       date: new Date(r.date).toISOString().split('T')[0],
@@ -5444,8 +5418,6 @@ async function startServer() {
     })).reverse();
 
     const weeklyPoints: any[] = [];
-    const activeTarget = await getActiveTargetForStudent(pool, student.id, student.class_id, student.year ? Number(student.year) : null, student.department_id, dateStr);
-    
     const baseISTDateStr = getISTDateStr();
     for (let k = 0; k < 4; k++) {
       const parts = baseISTDateStr.split('-');

@@ -3,7 +3,7 @@ import * as Sentry from '@sentry/node';
 /**
  * Initializes Sentry Error Tracking if SENTRY_DSN environment variable is present.
  */
-export function initSentry(app?: any) {
+export function initSentry() {
   const dsn = process.env.SENTRY_DSN;
   if (!dsn) {
     console.log('[Sentry] SENTRY_DSN environment variable not set. Error tracking disabled.');
