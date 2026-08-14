@@ -376,7 +376,7 @@ async function startServer() {
       return res.status(400).json({ error: 'No Telegram Chat ID found. Please connect your Telegram account first or provide a target Chat ID.' });
     }
 
-    const testMsg = `🔔 *IT TaskManager — Test Notification*\n\n✅ Your connection to the IT TaskManager Telegram Bot is working perfectly!\n📅 Time: ${new Date().toLocaleString('en-IN')}`;
+    const testMsg = `🔔 *IT TaskManager — Test Notification*\n\n✅ Your connection to the IT TaskManager Telegram Bot is working perfectly!\n📅 Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
     const result = await sendTelegramMessage(chatId, testMsg, { parse_mode: 'Markdown' });
     
     if (result.ok) {

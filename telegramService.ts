@@ -530,7 +530,7 @@ export async function getTasksCard(user: any): Promise<{ html: string; keyboard:
     html = `📋 <b>YOUR PENDING ASSIGNMENTS (${tasksRes.rows.length}):</b>\n\n`;
     tasksRes.rows.forEach((t, i) => {
       const dStr = t.deadline
-        ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
         : 'No deadline';
       html += `${i + 1}. 📌 <b>${escapeHtml(t.title)}</b>\n`;
       if (t.category) html += `   📂 <code>${escapeHtml(t.category)}</code>\n`;
@@ -571,7 +571,7 @@ export async function notifyNewTaskCreated(task: {
 }, classIds: string[]): Promise<void> {
   const portalUrl = getPortalUrl();
   const deadlineStr = task.deadline
-    ? new Date(task.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    ? new Date(task.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
     : 'No deadline set';
 
   let html = `📢 <b>NEW ASSIGNMENT POSTED!</b>\n\n`;
@@ -784,7 +784,7 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
       tasksRes.rows.forEach((t, idx) => {
         const completed = parseInt(t.completed_count || '0', 10);
         const deadlineStr = t.deadline
-          ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+          ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
           : 'No deadline';
         
         const progressBar = totalStudents > 0 ? makeProgressBar(completed, totalStudents, 8) : '';
@@ -900,7 +900,7 @@ export async function triggerPendingTaskReminders(): Promise<{
 
       info.tasks.slice(0, 5).forEach((t, i) => {
         const dStr = t.deadline
-          ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+          ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
           : 'No deadline';
         html += `${i + 1}. 📌 <b>${escapeHtml(t.title)}</b>\n`;
         if (t.category) html += `   📂 <code>${escapeHtml(t.category)}</code>\n`;
