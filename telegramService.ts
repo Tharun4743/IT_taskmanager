@@ -1,14 +1,11 @@
 import { pool } from './db.js';
 
-const DEFAULT_BOT_TOKEN = '8906561119:AAFhIhNfyLDNhlvIS34Kdd4WUchZKStNIvc';
-const DEFAULT_ADMIN_CHAT_ID = '1321795497';
-
 export function getBotToken(): string {
-  return process.env.TELEGRAM_BOT_TOKEN || DEFAULT_BOT_TOKEN;
+  return process.env.TELEGRAM_BOT_TOKEN || '';
 }
 
 export function getAdminChatId(): string {
-  return process.env.TELEGRAM_ADMIN_CHAT_ID || DEFAULT_ADMIN_CHAT_ID;
+  return process.env.TELEGRAM_ADMIN_CHAT_ID || '';
 }
 
 export async function getGroupChatId(): Promise<string | null> {
