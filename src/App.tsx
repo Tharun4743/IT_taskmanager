@@ -2721,8 +2721,7 @@ function SettingsView({
           <div className="space-y-4">
             {[
               { key: 'task_reminders', title: 'Task Deadline Reminders', desc: 'Get automated in-app alerts 24 hours before deadlines and when tasks are overdue' },
-              { key: 'notice_reminders', title: 'Digital Notice Board Alerts', desc: 'Receive notifications when new announcements or urgent notices are published' },
-              { key: 'event_reminders', title: 'Event & Calendar Notifications', desc: 'Receive reminders for scheduled academic department events' }
+              { key: 'notice_reminders', title: 'Digital Notice Board Alerts', desc: 'Receive notifications when new announcements or urgent notices are published' }
             ].map(({ key, title, desc }) => (
               <label key={key} className="flex items-start justify-between gap-4 p-3 hover:bg-zinc-50 rounded-xl transition-colors cursor-pointer border border-zinc-100">
                 <div>
