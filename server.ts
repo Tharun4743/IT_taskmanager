@@ -4962,6 +4962,36 @@ async function startServer() {
     res.json({ success: true });
   }));
 
+  // TEMPORARY ADMIN ROUTE: Fix Anomalous Historical LeetCode Data
+  app.get('/api/admin/fix-anomalous-data', asyncHandler(async (req: any, res: Response) => {
+    // The previous sync bug caused total_solved to be incorrectly inserted into solved_today 
+    // when a user first connected or their total count jumped. 
+    // Since LeetCode's recent submissions maxes at 50, any solved_today > 30 is highly likely 
+    // to be this bug (unless they genuinely grinded 30+ problems in one day, which is rare, 
+    // but resetting it to 0 is the safest way to repair weekly/monthly aggregates).
+    
+    const result = await pool.query(`
+      UPDATE leetcode_daily_progress 
+      SET solved_today = 0, updated_at = CURRENT_TIMESTAMP
+      WHERE solved_today > 25
+    `);
+    
+    // Also recalculate progress statuses for the last 30 days to fix daily status texts
+    const today = new Date();
+    const endDateStr = today.toISOString().split('T')[0];
+    const startDate = new Date();
+    startDate.setDate(today.getDate() - 30);
+    const startDateStr = startDate.toISOString().split('T')[0];
+    
+    await recalculateProgressStatuses(startDateStr, endDateStr, {}).catch(err => console.error(err));
+    
+    res.json({ 
+      success: true, 
+      message: "Anomalous historical data has been fixed and statuses recalculated.", 
+      fixedRows: result.rowCount 
+    });
+  }));
+
   // 4. Trigger Progress Sync
   app.post('/api/leetcode/sync', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
     const scope = enforceUserScopeFilter(req.user, req.body);
