@@ -12,7 +12,7 @@ This document provides a detailed, comprehensive side-by-side comparison between
 | **🐙 Live GitHub Activity Tracking** | ❌ **Not Available** (No GitHub integration) | ✅ **Full GitHub Tracker**: Daily commit tracking, new repository creations, daily commit status, weekly commit aggregates, and Monday–Sunday day breakdown. |
 | **⚡ Combined Coding Progress View** | ❌ **Not Available** | ✅ **Combined Coding Monitor**: Single unified progress table displaying LeetCode problem solving and GitHub commit statistics side-by-side for all students. |
 | **🎯 4-Level Target Management Engine** | ❌ **Not Available** | ✅ **4-Level Target Engine**: Set daily/weekly targets at **Student**, **Class**, **Year**, or **Department** level with automatic inheritance priority resolution. |
-| **🚀 RAM Student Directory Accelerator** | ❌ **Not Available** (Executed raw DB joins per request) | ✅ **In-Memory RAM Directory Cache** (`studentDirectoryService.ts`): Pre-indexes 400+ student profiles in RAM, dropping lookup times from **~30ms** to **< 0.01ms**. |
+| **🚀 RAM Student Directory Accelerator** | ❌ **Not Available** (Executed raw DB joins per request) | ✅ **In-Memory RAM Directory Cache** ([`studentDirectoryService.ts`](file:///c:/Users/tharu/Downloads/IT_taskmanager-main/studentDirectoryService.ts)): Pre-indexes 400+ student profiles in RAM, dropping lookup times from **~30ms** to **< 0.01ms**. |
 | **⚡ Tab-Scoped Parallel Request Batching** | ❌ **Not Available** (Sequential HTTP roundtrips) | ✅ **Parallel Batching**: Grouped `Promise.all` requests scoped to active platform tab (`LEETCODE` vs `GITHUB`), reducing API network roundtrips by **60–75%**. |
 | **📊 Advanced Excel Export Suite** | ⚠️ **Basic CSV Export** | ✅ **9 Specialized Excel Exporters**: Export Daily, Weekly, Mon–Sun Detailed, and Defaulters/Incomplete reports for LeetCode, GitHub, and Combined coding progress. |
 | **🔄 Cloud Keep-Alive & Cron Webhooks** | ❌ **Not Available** | ✅ **Render Automation**: Lightweight `GET /api/health` (< 2ms ping for keep-alive monitoring) + Protected `POST /api/cron/sync-coding-progress` webhook for automated daily syncs. |
@@ -20,15 +20,16 @@ This document provides a detailed, comprehensive side-by-side comparison between
 | **👥 Team Tasks & Group Formation** | ❌ **Not Available** (All tasks were individual) | ✅ **Team Tasks System**: Min/Max team size controls, interactive invitation banners, leader/member roles, pre-submission team editing, and disband/leave endpoints. |
 | **🛑 Student Opt-Out / Not Participating** | ❌ **Not Available** | ✅ **"Not Participating" Module**: Radio choice cards ("Yes I'll Submit" vs "Skip / Not Interested"), mandatory reason collection, reason editing, and stat cards. |
 | **💬 Peer Discussions & Mentions** | ❌ **Not Available** | ✅ **Task Q&A Thread**: Threaded discussion box under each task, `@mentions` to tag faculty/peers, and real-time notification alerts. |
-| **📬 Feedback & Complaints System** | ❌ **Not Available** | ✅ **Feedback Portal**: Category selection (`Suggestion`, `Bug`, `Complaint`), Anonymous mode, priority tagging, and staff status resolution (`Open`, `In Progress`, `Resolved`, `Rejected`). |
 | **🔄 Task Rejection & Resubmission** | ❌ **Basic** (Only simple verify/delete) | ✅ **Rejection Pipeline**: Staff reject submissions with detailed feedback notes; students receive Red Alert banners and 1-click **Re-upload Proof**. |
 | **⏰ Task Expiry & Reopening** | ❌ **Fixed Expiry** (Expired tasks locked permanently) | ✅ **HOD Task Control**: HODs can reopen expired tasks, extend deadline dates, and automatically send notification alerts to assigned students. |
 | **🔐 Student Auth & Login** | ⚠️ **Basic Login** | ✅ **Strict Login Policy**: Official College Email ID login support, Register Number default password enforcement, whitespace trimming, and case-insensitive matching. |
-| **☁️ Automated Cloud Database Backup** | ❌ **Not Available** | ✅ **Auto Cloud Backup Service** (`autoExcelGitHubReportService.ts`): Periodically compiles database snapshots into Excel reports and pushes them to GitHub. |
-| **🖼️ Media Storage & Cleanup** | ⚠️ **Manual Storage** | ✅ **Auto-Cleanup Worker** (`imageCleanupService.ts`): Purges Cloudinary screenshot uploads older than 7 days to keep media storage light. |
+| **☁️ Automated Database Snapshot Backup** | ❌ **Not Available** | ✅ **Auto Database Snapshot Backup** ([`dbBackupService.ts`](file:///c:/Users/tharu/Downloads/IT_taskmanager-main/dbBackupService.ts)): Generates JSON snapshots of all core Postgres tables upon startup and every 24 hours, keeping the 7 most recent backups to control disk footprint. |
+| **🖼️ Media Storage & Cleanup** | ⚠️ **Manual Storage** | ✅ **Auto-Cleanup Worker** ([`imageCleanupService.ts`](file:///c:/Users/tharu/Downloads/IT_taskmanager-main/imageCleanupService.ts)): Purges Cloudinary screenshot uploads older than 7 days to keep media storage light. |
 | **⚡ Database Performance** | ⚠️ **Un-indexed Queries** | ✅ **Optimized Database**: Compound PostgreSQL indexes on `leetcode_daily_progress` and `github_daily_progress` for high-frequency queries. |
-| **🚨 Error Monitoring** | ❌ **Not Available** | ✅ **Sentry Integration** (`sentryService.ts`): Captures unhandled backend errors and reports them to Sentry dashboard. |
-| **📂 Database Tables** | ⚠️ **Basic Tables Only** | ✅ **12 New Database Tables**: `leetcode_targets`, `github_targets`, `leetcode_daily_progress`, `github_daily_progress`, `notices`, `discussions`, `feedback`, `feedback_messages`, `task_teams`, `team_members`, `notifications`, `task_classes`. |
+| **🚨 Error Monitoring** | ❌ **Not Available** | ✅ **Sentry Integration** ([`sentryService.ts`](file:///c:/Users/tharu/Downloads/IT_taskmanager-main/sentryService.ts)): Captures unhandled backend errors and reports them to Sentry dashboard. |
+| **🤖 Telegram Bot & Notification Engine** | ❌ **Not Available** (No Telegram integration) | ✅ **Full Telegram Bot Engine** ([`telegramService.ts`](file:///c:/Users/tharu/Downloads/IT_taskmanager-main/telegramService.ts)): Dedicated Telegram Bot with interactive quick-action menus, account linking by Register Number, scorecards, real-time task lifecycle alerts, daily private reminders (8:00 PM IST), and group summary reports (9:00 PM IST). |
+| **👤 Student Profile & Resume Builder Suite** | ❌ **Not Available** | ✅ **Professional Portfolio Builder**: Full-featured student profile editor and resume builder with 10 database tables, letting students compile biographies, academic metrics (CGPA/arrears), skills, projects, internships, certifications, coding platform handles (LeetCode, GitHub, HackerRank, GFG, CodeChef, Codeforces), and career preferences. |
+| **📂 Database Tables** | ⚠️ **Basic Tables Only** | ✅ **23 New Database Tables**: `leetcode_targets`, `leetcode_daily_progress`, `github_targets`, `github_daily_progress`, `notices`, `task_discussions`, `teams`, `team_members`, `team_invitations`, `team_submissions`, `system_settings`, `scheduled_notifications`, `user_notification_settings`, `student_profiles`, `student_skills`, `student_projects`, `student_internships`, `student_certifications`, `student_coding_profiles`, `student_resumes`, `student_achievements`, `student_languages`, `student_career_preferences`. |
 
 ---
 
@@ -39,7 +40,7 @@ This document provides a detailed, comprehensive side-by-side comparison between
 - **Endpoints**: `GET/POST/DELETE /api/leetcode/targets`, `GET/POST/DELETE /api/github/targets`, `GET /api/leetcode/progress/daily`, `GET /api/github/progress/daily`, `GET /api/coding/progress/combined`.
 
 ### 2. High-Speed RAM Student Directory (NEW)
-- **Features**: Pre-indexes student handles, register numbers, classes, and emails in Node.js RAM (`studentDirectoryService.ts`). Drops student lookup latency from **~30ms** to **< 0.01ms**.
+- **Features**: Pre-indexes student handles, register numbers, classes, and emails in Node.js RAM ([`studentDirectoryService.ts`](file:///c:/Users/tharu/Downloads/IT_taskmanager-main/studentDirectoryService.ts)). Drops student lookup latency from **~30ms** to **< 0.01ms**.
 
 ### 3. Advanced Excel Export Suite (NEW)
 - **Features**: Exports Daily, Weekly, Mon-Sun Detailed, and Defaulters reports for LeetCode, GitHub, and Combined coding progress with auto-formatted column widths.
@@ -57,7 +58,14 @@ This document provides a detailed, comprehensive side-by-side comparison between
 - **Features**: Choice cards ("Yes I'll Submit" vs "Skip / Not Interested"), mandatory reason collection, reason editing option, and HOD dashboard analytics cards for opted-out students.
 
 ### 8. Submission Rejection & Proof Re-Upload (NEW)
-- **Features**: Staff can reject submissions with detailed rejection reasons. Students see red alerts on task cards with exact feedback and can re-upload proof with 1-click.
+- **Features**: Staff can reject submissions with detailed rejection feedback notes. Students see red alerts on task cards with exact comments and can re-upload proof with 1-click.
 
-### 9. Feedback & Case Management (NEW)
-- **Features**: Submit general suggestions, complaints, or bug reports with optional anonymous mode. Staff can manage cases (`Open`, `In Progress`, `Resolved`, `Rejected`).
+### 9. Interactive Telegram Bot Integration (NEW)
+- **Features**: Dedicated Telegram Bot (`@IT_TaskManager_Alerts_bot`) with long-polling daemon, native commands menu, student account linking by Register Number, inline buttons, scorecards, real-time task lifecycle alerts (assigned, submitted, verified, rejected), 8:00 PM IST daily private reminders, and 9:00 PM IST departmental group summaries.
+- **Files**: [`telegramService.ts`](file:///c:/Users/tharu/Downloads/IT_taskmanager-main/telegramService.ts)
+- **Endpoints**: `GET /api/telegram/status`, `POST /api/telegram/set-group-chat`, `POST /api/telegram/send-group-summary`, `POST /api/telegram/send-reminders`, `POST /api/telegram/test`, `DELETE /api/student/unlink-telegram`
+
+### 10. Student Profile & Resume Builder Suite (NEW)
+- **Features**: Comprehensive dashboard allowing students to construct profile resumes: personal information, skills portfolios, academic projects, internships, industry certifications, extra coding platform links, custom resume document uploads, language profiles, achievements, and career placement preferences.
+- **Files**: [`db.ts`](file:///c:/Users/tharu/Downloads/IT_taskmanager-main/db.ts) (Schema setup), `server.ts` (API endpoints), and `src/App.tsx` (Dashboard UI views).
+- **Endpoints**: `GET /api/student/profile`, `GET /api/student/profile/:studentId` (for staff review), `POST /api/student/profile/avatar`, `PUT /api/student/profile/personal`, `POST/DELETE /api/student/profile/skills`, `POST/DELETE /api/student/profile/projects`, `POST/DELETE /api/student/profile/internships`, `POST/DELETE /api/student/profile/certifications`, `PUT /api/student/profile/coding-profiles`, `POST /api/student/profile/resume`, `POST/DELETE /api/student/profile/achievements`, `POST/DELETE /api/student/profile/languages`, `PUT /api/student/profile/career-preferences`

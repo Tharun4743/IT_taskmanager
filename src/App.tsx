@@ -666,9 +666,479 @@ const Card = ({ children, className, ...props }: React.HTMLAttributes<HTMLDivEle
   </div>
 );
 
-const FooterContext = React.createContext<((type: 'PRIVACY' | 'TERMS' | 'SUPPORT') => void) | null>(null);
+// --- Feature Comparison Component ---
+const FeatureComparisonView = () => {
+  const [activeTab, setActiveTab] = useState<'matrix' | 'details'>('matrix');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTag, setSelectedTag] = useState<string>('ALL');
 
-const Footer = ({ onShowModal }: { onShowModal: (type: 'PRIVACY' | 'TERMS' | 'SUPPORT') => void }) => (
+  const comparisonData = useMemo(() => [
+    {
+      category: "Live LeetCode Progress Tracking",
+      oldRepo: "Not Available (No LeetCode integration)",
+      newRepo: "Full LeetCode Tracker: Daily & Weekly progress views, total solved problems, daily status (COMPLETED / NOT COMPLETED), remaining target counters, and active target resolution.",
+      tag: "Core Tracking",
+      isNew: true,
+      hasOptimized: false,
+    },
+    {
+      category: "Live GitHub Activity Tracking",
+      oldRepo: "Not Available (No GitHub integration)",
+      newRepo: "Full GitHub Tracker: Daily commit tracking, new repository creations, daily commit status, weekly commit aggregates, and Monday–Sunday day breakdown.",
+      tag: "Core Tracking",
+      isNew: true,
+      hasOptimized: false,
+    },
+    {
+      category: "Combined Coding Progress View",
+      oldRepo: "Not Available",
+      newRepo: "Combined Coding Monitor: Single unified progress table displaying LeetCode problem solving and GitHub commit statistics side-by-side for all students.",
+      tag: "Core Tracking",
+      isNew: true,
+      hasOptimized: false,
+    },
+    {
+      category: "4-Level Target Management Engine",
+      oldRepo: "Not Available",
+      newRepo: "4-Level Target Engine: Set daily/weekly targets at Student, Class, Year, or Department level with automatic inheritance priority resolution.",
+      tag: "Core Tracking",
+      isNew: true,
+      hasOptimized: false,
+    },
+    {
+      category: "RAM Student Directory Accelerator",
+      oldRepo: "Not Available (Executed raw DB joins per request)",
+      newRepo: "In-Memory RAM Directory Cache (studentDirectoryService.ts): Pre-indexes 400+ student profiles in RAM, dropping lookup times from ~30ms to < 0.01ms.",
+      tag: "Performance",
+      isNew: true,
+      hasOptimized: true,
+    },
+    {
+      category: "Tab-Scoped Parallel Request Batching",
+      oldRepo: "Not Available (Sequential HTTP roundtrips)",
+      newRepo: "Parallel Batching: Grouped Promise.all requests scoped to active platform tab (LEETCODE vs GITHUB), reducing API network roundtrips by 60–75%.",
+      tag: "Performance",
+      isNew: true,
+      hasOptimized: true,
+    },
+    {
+      category: "Advanced Excel Export Suite",
+      oldRepo: "Basic CSV Export",
+      newRepo: "9 Specialized Excel Exporters: Export Daily, Weekly, Mon–Sun Detailed, and Defaulters/Incomplete reports for LeetCode, GitHub, and Combined coding progress.",
+      tag: "Analytics",
+      isNew: false,
+      hasOptimized: true,
+    },
+    {
+      category: "Cloud Keep-Alive & Cron Webhooks",
+      oldRepo: "Not Available",
+      newRepo: "Render Automation: Lightweight GET /api/health (< 2ms ping for keep-alive monitoring) + Protected POST /api/cron/sync-coding-progress webhook for automated daily syncs.",
+      tag: "System Services",
+      isNew: true,
+      hasOptimized: false,
+    },
+    {
+      category: "Digital Notice Board",
+      oldRepo: "Not Available",
+      newRepo: "Full Notice Board: Multi-class/department scoping, priority tags (Urgent, High, Normal, Low), pinning, file attachments, and direct link sharing.",
+      tag: "Collaborative",
+      isNew: true,
+      hasOptimized: false,
+    },
+    {
+      category: "Team Tasks & Group Formation",
+      oldRepo: "Not Available (All tasks were individual)",
+      newRepo: "Team Tasks System: Min/Max team size controls, interactive invitation banners, leader/member roles, pre-submission team editing, and disband/leave endpoints.",
+      tag: "Collaborative",
+      isNew: true,
+      hasOptimized: false,
+    },
+    {
+      category: "Student Opt-Out / Not Participating",
+      oldRepo: "Not Available",
+      newRepo: "\"Not Participating\" Module: Radio choice cards (\"Yes I'll Submit\" vs \"Skip / Not Interested\"), mandatory reason collection, reason editing, and HOD dashboard analytics cards.",
+      tag: "Collaborative",
+      isNew: true,
+      hasOptimized: false,
+    },
+    {
+      category: "Peer Discussions & Mentions",
+      oldRepo: "Not Available",
+      newRepo: "Task Q&A Thread: Threaded discussion box under each task, @mentions to tag faculty/peers, and real-time notification alerts.",
+      tag: "Collaborative",
+      isNew: true,
+      hasOptimized: false,
+    },
+    {
+      category: "Task Rejection & Resubmission",
+      oldRepo: "Basic (Only simple verify/delete)",
+      newRepo: "Rejection Pipeline: Staff reject submissions with detailed feedback notes; students receive Red Alert banners and 1-click Re-upload Proof.",
+      tag: "Collaborative",
+      isNew: false,
+      hasOptimized: true,
+    },
+    {
+      category: "Task Expiry & Reopening",
+      oldRepo: "Fixed Expiry (Expired tasks locked permanently)",
+      newRepo: "HOD Task Control: HODs can reopen expired tasks, extend deadline dates, and automatically send notification alerts to assigned students.",
+      tag: "System Services",
+      isNew: true,
+      hasOptimized: true,
+    },
+    {
+      category: "Student Auth & Login",
+      oldRepo: "Basic Login",
+      newRepo: "Strict Login Policy: Official College Email ID login support, Register Number default password enforcement, whitespace trimming, and case-insensitive matching.",
+      tag: "System Services",
+      isNew: false,
+      hasOptimized: true,
+    },
+    {
+      category: "Automated Database Snapshot Backup",
+      oldRepo: "Not Available",
+      newRepo: "Auto Database Snapshot Backup (dbBackupService.ts): Generates JSON snapshots of all core Postgres tables upon startup and every 24 hours, keeping the 7 most recent backups to control disk footprint.",
+      tag: "System Services",
+      isNew: true,
+      hasOptimized: false,
+    },
+    {
+      category: "Media Storage & Cleanup",
+      oldRepo: "Manual Storage",
+      newRepo: "Auto-Cleanup Worker (imageCleanupService.ts): Purges Cloudinary screenshot uploads older than 7 days to keep media storage light.",
+      tag: "System Services",
+      isNew: true,
+      hasOptimized: true,
+    },
+    {
+      category: "Database Performance",
+      oldRepo: "Un-indexed Queries",
+      newRepo: "Optimized Database: Compound PostgreSQL indexes on leetcode_daily_progress and github_daily_progress for high-frequency queries.",
+      tag: "Performance",
+      isNew: false,
+      hasOptimized: true,
+    },
+    {
+      category: "Error Monitoring",
+      oldRepo: "Not Available",
+      newRepo: "Sentry Integration (sentryService.ts): Captures unhandled backend errors and reports them to Sentry dashboard.",
+      tag: "System Services",
+      isNew: true,
+      hasOptimized: false,
+    },
+    {
+      category: "Telegram Bot & Notification Engine",
+      oldRepo: "Not Available (No Telegram integration)",
+      newRepo: "Full Telegram Bot Engine (telegramService.ts): Dedicated Telegram Bot with interactive quick-action menus, account linking by Register Number, scorecards, real-time task lifecycle alerts, daily private reminders (8:00 PM IST), and group summary reports (9:00 PM IST).",
+      tag: "Collaborative",
+      isNew: true,
+      hasOptimized: false,
+    },
+    {
+      category: "Student Profile & Resume Builder Suite",
+      oldRepo: "Not Available",
+      newRepo: "Professional Portfolio Builder: Full-featured student profile editor and resume builder with 10 database tables, letting students compile biographies, academic metrics (CGPA/arrears), skills, projects, internships, certifications, coding platform handles (LeetCode, GitHub, HackerRank, GFG, CodeChef, Codeforces), and career preferences.",
+      tag: "Collaborative",
+      isNew: true,
+      hasOptimized: false,
+    },
+    {
+      category: "Database Tables",
+      oldRepo: "Basic Tables Only",
+      newRepo: "23 New Database Tables: leetcode_targets, leetcode_daily_progress, github_targets, github_daily_progress, notices, task_discussions, teams, team_members, team_invitations, team_submissions, system_settings, scheduled_notifications, user_notification_settings, student_profiles, student_skills, student_projects, student_internships, student_certifications, student_coding_profiles, student_resumes, student_achievements, student_languages, student_career_preferences.",
+      tag: "System Services",
+      isNew: true,
+      hasOptimized: true,
+    }
+  ], []);
+
+  const tags = useMemo(() => ['ALL', 'Core Tracking', 'Collaborative', 'Performance', 'System Services', 'Analytics'], []);
+
+  const filteredData = useMemo(() => {
+    return comparisonData.filter(item => {
+      const matchesSearch = item.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.newRepo.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesTag = selectedTag === 'ALL' || item.tag === selectedTag;
+      return matchesSearch && matchesTag;
+    });
+  }, [searchQuery, selectedTag, comparisonData]);
+
+  const detailedSections = useMemo(() => [
+    {
+      title: "1. Live Coding Progress & Target Management",
+      features: "Dual platform tracking (LeetCode GraphQL API & GitHub REST/GraphQL API), 4-level target inheritance priority, combined progress matrix, Monday–Sunday weekly breakdown, and live target configuration manager.",
+      endpoints: ["GET/POST/DELETE /api/leetcode/targets", "GET/POST/DELETE /api/github/targets", "GET /api/leetcode/progress/daily", "GET /api/github/progress/daily", "GET /api/coding/progress/combined"]
+    },
+    {
+      title: "2. High-Speed RAM Student Directory",
+      features: "Pre-indexes student handles, register numbers, classes, and emails in Node.js RAM (studentDirectoryService.ts). Drops student lookup latency from ~30ms to < 0.01ms.",
+      files: ["studentDirectoryService.ts"]
+    },
+    {
+      title: "3. Advanced Excel Export Suite",
+      features: "Exports Daily, Weekly, Mon-Sun Detailed, and Defaulters reports for LeetCode, GitHub, and Combined coding progress with auto-formatted column widths."
+    },
+    {
+      title: "4. Cloud Keep-Alive & Cron Automation",
+      features: "GET /api/health endpoint (< 2ms response) for keep-alive monitoring + POST /api/cron/sync-coding-progress webhook protected by CRON_SECRET header for external cron sync."
+    },
+    {
+      title: "5. Digital Notice Board",
+      features: "Multi-class target picker, department-level notices, global announcements, priority tags (Urgent, High, Normal, Low), pinning, file attachments, and direct link sharing."
+    },
+    {
+      title: "6. Team Task System",
+      features: "Individual vs Team task mode, configurable team sizes (2–5 members), interactive invitation dashboard banner, leader/member role badges, and pre-approval editing."
+    },
+    {
+      title: "7. Student Opt-Out & Not Participating Tracking",
+      features: "Choice cards (\"Yes I'll Submit\" vs \"Skip / Not Interested\"), mandatory reason collection, reason editing option, and HOD dashboard analytics cards for opted-out students."
+    },
+    {
+      title: "8. Submission Rejection & Proof Re-Upload",
+      features: "Staff can reject submissions with detailed rejection feedback notes. Students see red alerts on task cards with exact comments and can re-upload proof with 1-click."
+    },
+    {
+      title: "9. Interactive Telegram Bot Integration",
+      features: "Dedicated Telegram Bot (@IT_TaskManager_Alerts_bot) with long-polling daemon, native commands menu, student account linking by Register Number, inline buttons, scorecards, real-time task lifecycle alerts (assigned, submitted, verified, rejected), 8:00 PM IST daily private reminders, and 9:00 PM IST departmental group summaries.",
+      files: ["telegramService.ts"],
+      endpoints: ["GET /api/telegram/status", "POST /api/telegram/set-group-chat", "POST /api/telegram/send-group-summary", "POST /api/telegram/send-reminders", "POST /api/telegram/test", "DELETE /api/student/unlink-telegram"]
+    },
+    {
+      title: "10. Student Profile & Resume Builder Suite",
+      features: "Comprehensive dashboard allowing students to construct profile resumes: personal information, skills portfolios, academic projects, internships, industry certifications, extra coding platform links, custom resume document uploads, language profiles, achievements, and career placement preferences.",
+      files: ["db.ts (Schema setup)", "server.ts (API endpoints)", "src/App.tsx (UI views)"],
+      endpoints: [
+        "GET /api/student/profile",
+        "GET /api/student/profile/:studentId",
+        "POST /api/student/profile/avatar",
+        "PUT /api/student/profile/personal",
+        "POST/DELETE /api/student/profile/skills",
+        "POST/DELETE /api/student/profile/projects",
+        "POST/DELETE /api/student/profile/internships",
+        "POST/DELETE /api/student/profile/certifications",
+        "PUT /api/student/profile/coding-profiles",
+        "POST /api/student/profile/resume",
+        "POST/DELETE /api/student/profile/achievements",
+        "POST/DELETE /api/student/profile/languages",
+        "PUT /api/student/profile/career-preferences"
+      ]
+    }
+  ], []);
+
+  return (
+    <div className="space-y-6">
+      {/* Banner */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-700 p-6 text-white shadow-lg">
+        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 opacity-10 blur-2xl">
+          <div className="w-72 h-72 rounded-full bg-white" />
+        </div>
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Upgrade Master</span>
+              <span className="bg-indigo-500/30 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">v2.0 Production-Grade</span>
+            </div>
+            <h2 className="text-2xl md:text-3xl font-black tracking-tight">Codebase Upgrade Comparison</h2>
+            <p className="text-indigo-100 text-sm max-w-xl">
+              An inspection of the core architectural transformation between the original repository (<code className="bg-black/20 px-1 py-0.5 rounded text-white font-mono text-xs">PratapSakthivel</code>) and the production platform (<code className="bg-black/20 px-1 py-0.5 rounded text-white font-mono text-xs">Tharun4743</code>).
+            </p>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="bg-white/10 backdrop-blur px-4 py-2.5 rounded-xl border border-white/10 text-center">
+              <div className="text-2xl font-black">23+</div>
+              <div className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">New Tables</div>
+            </div>
+            <div className="bg-white/10 backdrop-blur px-4 py-2.5 rounded-xl border border-white/10 text-center">
+              <div className="text-2xl font-black">10+</div>
+              <div className="text-[10px] text-indigo-200 font-bold uppercase tracking-wider">Epic Modules</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex items-center border-b border-zinc-200 gap-6">
+        <button
+          onClick={() => setActiveTab('matrix')}
+          className={cn(
+            "pb-3 text-sm font-bold tracking-tight relative transition-colors",
+            activeTab === 'matrix' ? "text-indigo-600 border-b-2 border-indigo-600" : "text-zinc-500 hover:text-zinc-800"
+          )}
+        >
+          📊 Side-by-Side Matrix
+        </button>
+        <button
+          onClick={() => setActiveTab('details')}
+          className={cn(
+            "pb-3 text-sm font-bold tracking-tight relative transition-colors",
+            activeTab === 'details' ? "text-indigo-600 border-b-2 border-indigo-600" : "text-zinc-500 hover:text-zinc-800"
+          )}
+        >
+          🔬 Detailed Breakdown
+        </button>
+      </div>
+
+      {activeTab === 'matrix' && (
+        <div className="space-y-4">
+          {/* Controls */}
+          <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+            {/* Search */}
+            <div className="relative flex-1 max-w-md">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+              <input
+                type="text"
+                placeholder="Search features..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-zinc-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600">
+                  <XCircle size={14} />
+                </button>
+              )}
+            </div>
+
+            {/* Tag Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none flex-wrap">
+              {tags.map(t => (
+                <button
+                  key={t}
+                  onClick={() => setSelectedTag(t)}
+                  className={cn(
+                    "px-3 py-1 rounded-full text-xs font-bold transition-all whitespace-nowrap",
+                    selectedTag === t
+                      ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/10"
+                      : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                  )}
+                >
+                  {t === 'ALL' ? '🏷️ All Categories' : t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Matrix Table */}
+          <div className="border border-zinc-200/80 rounded-2xl overflow-hidden bg-white shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left">
+                <thead>
+                  <tr className="bg-zinc-50 border-b border-zinc-200/80 text-[11px] font-extrabold uppercase tracking-wider text-zinc-500">
+                    <th className="py-3.5 px-4 md:px-6 w-1/4">Category / Feature</th>
+                    <th className="py-3.5 px-4 md:px-6 w-1/3">Old Codebase (PratapSakthivel)</th>
+                    <th className="py-3.5 px-4 md:px-6 w-5/12">Upgraded Codebase (Tharun4743)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 text-xs">
+                  {filteredData.length > 0 ? (
+                    filteredData.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-zinc-50/50 transition-colors group">
+                        <td className="py-4 px-4 md:px-6 font-bold text-zinc-800 space-y-1 align-top">
+                          <div>{item.category}</div>
+                          <span className="inline-block text-[9px] bg-zinc-100 text-zinc-600 px-2 py-0.5 rounded font-bold uppercase tracking-wider group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                            {item.tag}
+                          </span>
+                        </td>
+                        <td className="py-4 px-4 md:px-6 text-zinc-500 align-top">
+                          <div className="flex items-start gap-2">
+                            {item.oldRepo.startsWith('❌') ? (
+                              <span className="text-red-500 shrink-0 font-bold">❌</span>
+                            ) : item.oldRepo.startsWith('⚠️') ? (
+                              <span className="text-amber-500 shrink-0 font-bold">⚠️</span>
+                            ) : null}
+                            <span>{item.oldRepo.replace(/^[❌⚠️]\s*/, '')}</span>
+                          </div>
+                        </td>
+                        <td className="py-4 px-4 md:px-6 text-zinc-700 align-top bg-indigo-50/10 group-hover:bg-indigo-50/20 transition-colors">
+                          <div className="flex items-start gap-2">
+                            <span className="text-emerald-600 shrink-0 font-bold">✅</span>
+                            <div className="space-y-1.5">
+                              <span className="font-medium">{item.newRepo.replace(/^✅\s*/, '')}</span>
+                              <div className="flex gap-2 flex-wrap pt-0.5">
+                                {item.isNew && (
+                                  <span className="bg-emerald-100 text-emerald-800 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                    New Module
+                                  </span>
+                                )}
+                                {item.hasOptimized && (
+                                  <span className="bg-indigo-100 text-indigo-800 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                    Optimized
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={3} className="py-8 text-center text-zinc-400 font-bold">
+                        No features found matching the filters.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'details' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {detailedSections.map((sec, idx) => (
+            <div key={idx} className="border border-zinc-200/80 rounded-2xl p-5 bg-white shadow-sm flex flex-col space-y-4 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between gap-3">
+                <h4 className="text-sm font-extrabold text-zinc-900 leading-snug">{sec.title}</h4>
+                <span className="bg-indigo-50 text-indigo-700 text-[10px] font-black w-6 h-6 flex items-center justify-center rounded-full shrink-0">
+                  {idx + 1}
+                </span>
+              </div>
+              <p className="text-zinc-600 text-xs leading-relaxed flex-1">{sec.features}</p>
+              
+              {/* Extra files metadata */}
+              {sec.files && sec.files.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                    <Layers size={10} /> Core Files
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {sec.files.map(f => (
+                      <span key={f} className="bg-zinc-100 text-zinc-700 font-mono text-[10px] px-2 py-0.5 rounded border border-zinc-200/60 font-medium">
+                        {f}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Endpoints metadata */}
+              {sec.endpoints && sec.endpoints.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                    <Terminal size={10} /> Main Endpoints
+                  </div>
+                  <div className="max-h-24 overflow-y-auto space-y-1 pr-1 border border-zinc-100 rounded-lg p-2 bg-zinc-50/50 scrollbar-thin">
+                    {sec.endpoints.map(e => (
+                      <div key={e} className="font-mono text-[9.5px] text-zinc-600 bg-white border border-zinc-200/40 px-1.5 py-0.5 rounded leading-tight">
+                        {e}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const FooterContext = React.createContext<((type: 'PRIVACY' | 'TERMS' | 'SUPPORT' | 'SOURCES') => void) | null>(null);
+
+const Footer = ({ onShowModal }: { onShowModal: (type: 'PRIVACY' | 'TERMS' | 'SUPPORT' | 'SOURCES') => void }) => (
   <footer className="mt-8 pt-4 pb-4 border-t border-zinc-200/80 shrink-0 w-full bg-white/60 backdrop-blur-md px-4 md:px-8">
     <div className="w-full flex flex-col lg:flex-row items-center justify-between gap-3 text-xs min-w-0">
       {/* Brand Logo & Name */}
@@ -691,6 +1161,10 @@ const Footer = ({ onShowModal }: { onShowModal: (type: 'PRIVACY' | 'TERMS' | 'SU
         <span className="text-zinc-300">•</span>
         <button onClick={() => onShowModal('SUPPORT')} className="hover:text-indigo-600 transition-colors whitespace-nowrap">
           Help & Support
+        </button>
+        <span className="text-zinc-300">•</span>
+        <button onClick={() => onShowModal('SOURCES')} className="hover:text-indigo-600 transition-colors whitespace-nowrap font-semibold text-indigo-600">
+          Sources
         </button>
       </div>
 
@@ -3507,7 +3981,7 @@ export default function App() {
   const [verificationClassFilter, setVerificationClassFilter] = useState('');
   const [verificationTaskFilter, setVerificationTaskFilter] = useState('');
   const [studentFilter, setStudentFilter] = useState<'ALL' | 'COORDINATORS'>('ALL');
-  const [showFooterModal, setShowFooterModal] = useState<'PRIVACY' | 'TERMS' | 'SUPPORT' | null>(null);
+  const [showFooterModal, setShowFooterModal] = useState<'PRIVACY' | 'TERMS' | 'SUPPORT' | 'SOURCES' | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [userPage, setUserPage] = useState(1);
   const [submissionSearchTerm, setSubmissionSearchTerm] = useState('');
@@ -11221,23 +11695,26 @@ export default function App() {
             )}
 
             {showFooterModal && (
-              <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+              <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
-                  className="bg-white rounded-3xl p-6 md:p-8 max-w-2xl w-full max-h-[85vh] overflow-y-auto shadow-2xl relative"
+                  className={cn(
+                    "bg-white rounded-3xl p-6 md:p-8 w-full max-h-[85vh] overflow-y-auto shadow-2xl relative scrollbar-thin",
+                    showFooterModal === 'SOURCES' ? 'max-w-5xl' : 'max-w-2xl'
+                  )}
                 >
                   <button
                     onClick={() => setShowFooterModal(null)}
-                    className="absolute top-6 right-6 p-2 hover:bg-zinc-100 rounded-full transition-colors"
+                    className="absolute top-6 right-6 p-2 hover:bg-zinc-100 rounded-full transition-colors z-20"
                   >
-                    <XCircle size={24} className="text-zinc-400" />
+                    <XCircle size={24} className="text-zinc-400 hover:text-zinc-600 transition-colors" />
                   </button>
 
                   {showFooterModal === 'PRIVACY' && (
                     <div className="space-y-4">
-                      <h3 className="text-2xl font-black">Privacy Policy</h3>
+                      <h3 className="text-2xl font-black text-zinc-900">Privacy Policy</h3>
                       <div className="text-zinc-600 leading-relaxed text-sm space-y-4">
                         <p>The VSBEC IT Academic Task Management System respects the privacy of all users.</p>
                         <p>Information collected through the platform, including login credentials, academic task records, submissions, and user activity, is used only for academic administration and internal institutional purposes.</p>
@@ -11249,7 +11726,7 @@ export default function App() {
 
                   {showFooterModal === 'TERMS' && (
                     <div className="space-y-4">
-                      <h3 className="text-2xl font-black">Terms of Service</h3>
+                      <h3 className="text-2xl font-black text-zinc-900">Terms of Service</h3>
                       <div className="text-zinc-600 leading-relaxed text-sm space-y-4">
                         <p>By using the VSBEC IT Academic Task Management System, users agree to use the platform only for academic and institutional purposes.</p>
                         <p>Students, faculty, and administrators must provide accurate information and use their assigned accounts responsibly.</p>
@@ -11261,13 +11738,17 @@ export default function App() {
 
                   {showFooterModal === 'SUPPORT' && (
                     <div className="space-y-4">
-                      <h3 className="text-2xl font-black">Support</h3>
+                      <h3 className="text-2xl font-black text-zinc-900">Support</h3>
                       <div className="text-zinc-600 leading-relaxed text-sm space-y-4">
                         <p>For technical assistance, login issues, task-related concerns, or system access problems, users may contact the concerned department administrator or system support team.</p>
                         <p>Support is provided during working hours through the institution’s official communication channels.</p>
                         <p>For unresolved issues, users may report directly to the IT Department responsible for maintaining the platform.</p>
                       </div>
                     </div>
+                  )}
+
+                  {showFooterModal === 'SOURCES' && (
+                    <FeatureComparisonView />
                   )}
 
                   <Button onClick={() => setShowFooterModal(null)} className="w-full mt-8">Close</Button>
