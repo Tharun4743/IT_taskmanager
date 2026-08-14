@@ -72,7 +72,7 @@ function isValidLink(urlString: string | null | undefined): boolean {
 async function injectWatermarkImage(xlsxBuffer: Buffer): Promise<Buffer> {
   try {
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(xlsxBuffer);
+    await workbook.xlsx.load(xlsxBuffer as any);
     
     const logoPath = path.join(process.cwd(), 'public', 'logo.png');
     if (fs.existsSync(logoPath)) {
@@ -90,7 +90,7 @@ async function injectWatermarkImage(xlsxBuffer: Buffer): Promise<Buffer> {
     }
     
     const buffer = await workbook.xlsx.writeBuffer();
-    return Buffer.from(buffer);
+    return Buffer.from(buffer as any);
   } catch (err) {
     console.error('[Excel Watermark Injection Error]:', err);
     return xlsxBuffer;
