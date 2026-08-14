@@ -153,7 +153,6 @@ export async function registerBotCommandsMenu(): Promise<void> {
       { command: 'leetcode', description: 'Check LeetCode solved count & targets' },
       { command: 'github', description: 'Check GitHub commits & targets' },
       { command: 'stats', description: 'Your overall performance scorecard' },
-      { command: 'leaderboard', description: 'Class & department top performers' },
       { command: 'defaulters', description: 'List students with pending targets (Staff)' },
       { command: 'status', description: 'Check linked student account' },
       { command: 'link', description: 'Connect account (/link <reg_no>)' },
@@ -189,7 +188,6 @@ export function getInteractiveMenuKeyboard(role?: string) {
       { text: '📊 My Scorecard', callback_data: 'cb_stats' }
     ],
     [
-      { text: '🏆 Leaderboard', callback_data: 'cb_leaderboard' },
       { text: '🌐 Open Portal', url: portalUrl }
     ]
   ];
@@ -410,91 +408,9 @@ export async function getStudentStatsCard(user: any): Promise<{ html: string; ke
         { text: '💻 GitHub Details', callback_data: 'cb_github' }
       ],
       [
-        { text: '📋 View Pending Tasks', callback_data: 'cb_tasks' },
-        { text: '🏆 Leaderboard', callback_data: 'cb_leaderboard' }
+        { text: '📋 View Pending Tasks', callback_data: 'cb_tasks' }
       ],
       [
-        { text: '🌐 Open Portal', url: getPortalUrl() }
-      ]
-    ]
-  };
-
-  return { html, keyboard };
-}
-
-/**
- * 🏆 Leaderboard Card: Top Solvers & Committers
- */
-export async function getLeaderboardCard(classId?: string, className?: string): Promise<{ html: string; keyboard: any }> {
-  const dateStr = getISTDateStr();
-
-  let lcQuery = `
-    SELECT u.full_name, u.register_number, lp.solved_today
-    FROM leetcode_daily_progress lp
-    JOIN users u ON u.id = lp.user_id
-    WHERE lp.date = $1 AND lp.solved_today > 0
-  `;
-  const lcParams: any[] = [dateStr];
-  if (classId) {
-    lcParams.push(classId);
-    lcQuery += ` AND u.class_id = $${lcParams.length}`;
-  }
-  lcQuery += ` ORDER BY lp.solved_today DESC, u.full_name ASC LIMIT 5`;
-
-  let ghQuery = `
-    SELECT u.full_name, u.register_number, gp.commits_today
-    FROM github_daily_progress gp
-    JOIN users u ON u.id = gp.user_id
-    WHERE gp.date = $1 AND gp.commits_today > 0 AND gp.sync_status = 'SUCCESS'
-  `;
-  const ghParams: any[] = [dateStr];
-  if (classId) {
-    ghParams.push(classId);
-    ghQuery += ` AND u.class_id = $${ghParams.length}`;
-  }
-  ghQuery += ` ORDER BY gp.commits_today DESC, u.full_name ASC LIMIT 5`;
-
-  const [topLcRes, topGhRes] = await Promise.all([
-    pool.query(lcQuery, lcParams),
-    pool.query(ghQuery, ghParams)
-  ]);
-
-  const scopeTitle = className ? `Section ${className}` : 'Department of Information Technology';
-  const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
-
-  let html = `🏆 <b>TODAY'S TOP PERFORMERS LEADERBOARD</b>\n`;
-  html += `🏛️ <i>${escapeHtml(scopeTitle)}</i>\n`;
-  html += `📅 <i>${dateStr} (IST)</i>\n`;
-  html += `─────────────────────────\n\n`;
-
-  html += `🧩 <b>Top LeetCode Solvers Today:</b>\n`;
-  if (topLcRes.rows.length === 0) {
-    html += `<i>No submissions recorded yet today. Be the first to solve!</i>\n`;
-  } else {
-    topLcRes.rows.forEach((r, idx) => {
-      html += `${medals[idx]} <b>${escapeHtml(r.full_name)}</b> (<code>${escapeHtml(r.register_number)}</code>) — <b>${r.solved_today}</b> solved\n`;
-    });
-  }
-
-  html += `\n💻 <b>Top GitHub Committers Today:</b>\n`;
-  if (topGhRes.rows.length === 0) {
-    html += `<i>No commits recorded yet today. Make your first commit!</i>\n`;
-  } else {
-    topGhRes.rows.forEach((r, idx) => {
-      html += `${medals[idx]} <b>${escapeHtml(r.full_name)}</b> (<code>${escapeHtml(r.register_number)}</code>) — <b>${r.commits_today}</b> commits\n`;
-    });
-  }
-
-  html += getWatermarkHtml();
-
-  const keyboard = {
-    inline_keyboard: [
-      [
-        { text: '🔄 Refresh Leaderboard', callback_data: 'cb_leaderboard' },
-        { text: '📊 My Scorecard', callback_data: 'cb_stats' }
-      ],
-      [
-        { text: '📱 Main Menu', callback_data: 'cb_menu' },
         { text: '🌐 Open Portal', url: getPortalUrl() }
       ]
     ]
@@ -827,7 +743,7 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
   try {
     const dateStr = getISTDateStr();
 
-    const [tasksRes, studentsRes, lcRes, ghRes, topLc, topGh] = await Promise.all([
+    const [tasksRes, studentsRes, lcRes, ghRes] = await Promise.all([
       pool.query(`
         SELECT t.id, t.title, t.category, t.deadline, t.status,
                COUNT(DISTINCT tc.class_id) as class_count,
@@ -842,9 +758,7 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
       `),
       pool.query(`SELECT COUNT(*) as total_students, COUNT(telegram_chat_id) as linked_telegram_count FROM users WHERE role = 'STUDENT'`),
       pool.query(`SELECT COUNT(DISTINCT user_id) as active_solvers, SUM(solved_today) as total_problems_solved FROM leetcode_daily_progress WHERE date = $1 AND solved_today > 0`, [dateStr]),
-      pool.query(`SELECT COUNT(DISTINCT user_id) as active_committers, SUM(commits_today) as total_commits FROM github_daily_progress WHERE date = $1 AND commits_today > 0 AND sync_status = 'SUCCESS'`, [dateStr]),
-      pool.query(`SELECT u.full_name, lp.solved_today FROM leetcode_daily_progress lp JOIN users u ON u.id = lp.user_id WHERE lp.date = $1 AND lp.solved_today > 0 ORDER BY lp.solved_today DESC LIMIT 1`, [dateStr]),
-      pool.query(`SELECT u.full_name, gp.commits_today FROM github_daily_progress gp JOIN users u ON u.id = gp.user_id WHERE gp.date = $1 AND gp.commits_today > 0 AND gp.sync_status = 'SUCCESS' ORDER BY gp.commits_today DESC LIMIT 1`, [dateStr])
+      pool.query(`SELECT COUNT(DISTINCT user_id) as active_committers, SUM(commits_today) as total_commits FROM github_daily_progress WHERE date = $1 AND commits_today > 0 AND sync_status = 'SUCCESS'`, [dateStr])
     ]);
 
     const totalStudents = parseInt(studentsRes.rows[0]?.total_students || '0', 10);
@@ -861,14 +775,7 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
 
     html += `🚀 <b>Today's Coding Highlights:</b>\n`;
     html += `• 🧩 <b>LeetCode:</b> <b>${lcTotalSolved}</b> problems solved (${lcSolvers} active solvers)\n`;
-    if (topLc.rows[0]) {
-      html += `  🥇 Top Solver: <b>${escapeHtml(topLc.rows[0].full_name)}</b> (${topLc.rows[0].solved_today} solved)\n`;
-    }
-    html += `• 💻 <b>GitHub:</b> <b>${ghTotalCommits}</b> commits pushed (${ghCommitters} active committers)\n`;
-    if (topGh.rows[0]) {
-      html += `  🥇 Top Committer: <b>${escapeHtml(topGh.rows[0].full_name)}</b> (${topGh.rows[0].commits_today} commits)\n`;
-    }
-    html += `\n`;
+    html += `• 💻 <b>GitHub:</b> <b>${ghTotalCommits}</b> commits pushed (${ghCommitters} active committers)\n\n`;
 
     if (tasksRes.rows.length === 0) {
       html += `✨ <b>No pending assignments today! Keep up the great work!</b> 🎉\n`;
@@ -894,7 +801,6 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
     const inlineKeyboard = {
       inline_keyboard: [
         [
-          { text: '🏆 View Leaderboard', callback_data: 'cb_leaderboard' },
           { text: '🌐 Open Portal', url: getPortalUrl() }
         ]
       ]
@@ -1112,7 +1018,6 @@ export function startTelegramPoller(): void {
 
   const poll = async () => {
     try {
-      // Use 10-second long polling for lightning-fast responsiveness
       const url = `https://api.telegram.org/bot${token}/getUpdates?offset=${lastUpdateId + 1}&timeout=10`;
       const response = await fetch(url);
       const data = await response.json();
@@ -1122,7 +1027,7 @@ export function startTelegramPoller(): void {
           lastUpdateId = Math.max(lastUpdateId, update.update_id);
         }
 
-        // Process all updates concurrently in parallel with Promise.allSettled!
+        // Process all updates concurrently in parallel
         await Promise.allSettled(data.result.map(async (update: any) => {
           // ── Handle Inline Button Callbacks ──────────────────────────────
           if (update.callback_query) {
@@ -1148,7 +1053,7 @@ export function startTelegramPoller(): void {
 
             const user = userRes.rows[0];
 
-            if (!user && cbData !== 'cb_help' && cbData !== 'cb_leaderboard') {
+            if (!user && cbData !== 'cb_help') {
               await sendTelegramMessage(
                 cbChatId,
                 `ℹ️ Your Telegram is not yet connected to a student profile.\n\nReply with <code>/link YOUR_REGISTER_NUMBER</code> to connect!\n${getWatermarkHtml()}`
@@ -1167,9 +1072,6 @@ export function startTelegramPoller(): void {
               await sendTelegramMessage(cbChatId, card.html, { reply_markup: card.keyboard });
             } else if (cbData === 'cb_stats') {
               const card = await getStudentStatsCard(user);
-              await sendTelegramMessage(cbChatId, card.html, { reply_markup: card.keyboard });
-            } else if (cbData === 'cb_leaderboard') {
-              const card = await getLeaderboardCard(user?.class_id, user?.class_name);
               await sendTelegramMessage(cbChatId, card.html, { reply_markup: card.keyboard });
             } else if (cbData === 'cb_defaulters') {
               const card = await getDefaultersCard();
@@ -1275,7 +1177,6 @@ export function startTelegramPoller(): void {
             helpHtml += `• <code>/leetcode</code> (or <code>/lc</code>) - Daily LeetCode progress & targets\n`;
             helpHtml += `• <code>/github</code> (or <code>/gh</code>) - Daily GitHub commits & targets\n`;
             helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
-            helpHtml += `• <code>/leaderboard</code> (or <code>/top</code>) - Top performers ranking\n`;
             helpHtml += `• <code>/status</code> - Connected profile info\n`;
             helpHtml += `• <code>/unlink</code> - Disconnect account\n`;
 
@@ -1321,13 +1222,6 @@ export function startTelegramPoller(): void {
               const card = await getStudentStatsCard(user);
               await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
             }
-            return;
-          }
-
-          // Command: /leaderboard or /top or /rankings
-          if (text.startsWith('/leaderboard') || text.startsWith('/top') || text.startsWith('/rankings')) {
-            const card = await getLeaderboardCard(user?.class_id, user?.class_name);
-            await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
             return;
           }
 
@@ -1436,7 +1330,6 @@ export function startTelegramPoller(): void {
       // Graceful poll loop recovery
     } finally {
       if (isPolling) {
-        // Zero delay if busy, short 500ms delay when idle
         setTimeout(poll, 500);
       }
     }
