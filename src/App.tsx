@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
+import ExcelJS from 'exceljs';
 import { API_URL } from './config';
 import {
   LayoutDashboard,
@@ -5674,6 +5675,35 @@ export default function App() {
     };
     const getSection = (cn: string) => { const m = cn.trim().match(/([A-Za-z])$/); return m ? m[1].toUpperCase() : ''; };
 
+    const injectClientWatermarkImage = async (xlsxBuffer: ArrayBuffer): Promise<ArrayBuffer> => {
+      try {
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(xlsxBuffer);
+        
+        const response = await fetch('/logo.png');
+        const blob = await response.blob();
+        const imageArrayBuffer = await blob.arrayBuffer();
+        
+        const imageId = workbook.addImage({
+          buffer: imageArrayBuffer,
+          extension: 'png',
+        });
+
+        workbook.eachSheet((worksheet) => {
+          worksheet.addImage(imageId, {
+            tl: { col: 1, row: 1 },
+            ext: { width: 120, height: 60 }
+          });
+        });
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        return buffer;
+      } catch (err) {
+        console.error('Error fetching/adding logo watermark in browser:', err);
+        return xlsxBuffer;
+      }
+    };
+
     // Build "III YEAR IT SECTION A" style string from a Class object
     const buildClassInfo = (cls: Class): string => {
       const yr = cls.year ? toRomanYear(Number(cls.year)) : '';
@@ -6093,7 +6123,16 @@ export default function App() {
     const dateTag = new Date().toISOString().split('T')[0];
     const roleTag = isAdminRole ? 'SuperAdmin' : isHODRole ? 'HOD' : isYearCoordRole ? `Year${user?.year_scope}_Coord` : 'Class';
     const statusTag = selectedStatus === 'ALL' ? 'All' : selectedStatus.charAt(0) + selectedStatus.slice(1).toLowerCase();
-    XLSX.writeFile(wb, `${roleTag}_Report_${statusTag}_${dateTag}.xlsx`);
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    injectClientWatermarkImage(excelBuffer).then((finalBuffer) => {
+      const blob = new Blob([finalBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${roleTag}_Report_${statusTag}_${dateTag}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
     setShowExportModal(false);
   };
 

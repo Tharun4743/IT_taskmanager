@@ -1,6 +1,8 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+import ExcelJS from 'exceljs';
+
 import { exec } from 'child_process';
 import util from 'util';
 const execPromise = util.promisify(exec);
@@ -65,6 +67,34 @@ function isValidLink(urlString: string | null | undefined): boolean {
     }
   }
   return /^[a-zA-Z0-9_-]+$/.test(trimmed);
+}
+
+async function injectWatermarkImage(xlsxBuffer: Buffer): Promise<Buffer> {
+  try {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(xlsxBuffer);
+    
+    const logoPath = path.join(process.cwd(), 'public', 'logo.png');
+    if (fs.existsSync(logoPath)) {
+      const imageId = workbook.addImage({
+        filename: logoPath,
+        extension: 'png',
+      });
+
+      workbook.eachSheet((worksheet) => {
+        worksheet.addImage(imageId, {
+          tl: { col: 1, row: 1 },
+          ext: { width: 120, height: 60 }
+        });
+      });
+    }
+    
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
+  } catch (err) {
+    console.error('[Excel Watermark Injection Error]:', err);
+    return xlsxBuffer;
+  }
 }
 
 function addExcelWatermark(ws: XLSX.WorkSheet) {
@@ -5551,10 +5581,11 @@ async function startServer() {
     addExcelWatermark(ws);
     XLSX.utils.book_append_sheet(wb, ws, 'Daily LeetCode Report');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const finalBuf = await injectWatermarkImage(buf);
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=Leetcode_Daily_Report_${dateStr}.xlsx`);
-    res.send(buf);
+    res.send(finalBuf);
   }));
 
   // 2. Weekly Excel Report
@@ -5608,10 +5639,11 @@ async function startServer() {
     addExcelWatermark(ws);
     XLSX.utils.book_append_sheet(wb, ws, 'Weekly LeetCode Report');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const finalBuf = await injectWatermarkImage(buf);
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=Leetcode_Weekly_Report_${week.start}_to_${week.end}.xlsx`);
-    res.send(buf);
+    res.send(finalBuf);
   }));
 
   // 3. Weekly Detailed Excel Report (Sunday -> Saturday breakdown)
@@ -5702,10 +5734,11 @@ async function startServer() {
     addExcelWatermark(ws);
     XLSX.utils.book_append_sheet(wb, ws, 'Detailed Weekly Report');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const finalBuf = await injectWatermarkImage(buf);
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=Leetcode_Weekly_Detailed_${week.start}_to_${week.end}.xlsx`);
-    res.send(buf);
+    res.send(finalBuf);
   }));
 
   // 4. Incomplete Students Excel Report
@@ -5753,10 +5786,11 @@ async function startServer() {
     addExcelWatermark(ws);
     XLSX.utils.book_append_sheet(wb, ws, 'Defaulters Report');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const finalBuf = await injectWatermarkImage(buf);
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=Leetcode_Defaulters_${dateStr}.xlsx`);
-    res.send(buf);
+    res.send(finalBuf);
   }));
 
   // Daily LeetCode Sync Daemon at 8:00 AM IST and 11:50 PM IST
@@ -6564,9 +6598,10 @@ async function startServer() {
     addExcelWatermark(ws);
     XLSX.utils.book_append_sheet(wb, ws, 'GitHub Daily Report');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const finalBuf = await injectWatermarkImage(buf);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=GitHub_Daily_Report_${dateStr}.xlsx`);
-    res.send(buf);
+    res.send(finalBuf);
   }));
 
   // Weekly GitHub Report
@@ -6595,9 +6630,10 @@ async function startServer() {
     addExcelWatermark(ws);
     XLSX.utils.book_append_sheet(wb, ws, 'GitHub Weekly Report');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const finalBuf = await injectWatermarkImage(buf);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=GitHub_Weekly_Report_${week.start}_to_${week.end}.xlsx`);
-    res.send(buf);
+    res.send(finalBuf);
   }));
 
   // Weekly Detailed GitHub Report (Sunday -> Saturday breakdown)
@@ -6673,9 +6709,10 @@ async function startServer() {
     addExcelWatermark(ws);
     XLSX.utils.book_append_sheet(wb, ws, 'GitHub Detailed Weekly');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const finalBuf = await injectWatermarkImage(buf);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=GitHub_Weekly_Detailed_${week.start}_to_${week.end}.xlsx`);
-    res.send(buf);
+    res.send(finalBuf);
   }));
 
   // GitHub Defaulters Excel Report
@@ -6706,9 +6743,10 @@ async function startServer() {
     addExcelWatermark(ws);
     XLSX.utils.book_append_sheet(wb, ws, 'GitHub Defaulters');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const finalBuf = await injectWatermarkImage(buf);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=GitHub_Defaulters_${dateStr}.xlsx`);
-    res.send(buf);
+    res.send(finalBuf);
   }));
 
   // Export Excel for Coding Progress
@@ -6821,9 +6859,10 @@ async function startServer() {
     addExcelWatermark(ws);
     XLSX.utils.book_append_sheet(wb, ws, `${view} Report`);
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const finalBuf = await injectWatermarkImage(buf);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=${view}_Progress_Report_${dateStr}.xlsx`);
-    res.send(buf);
+    res.send(finalBuf);
   }));
 
   // ── GitHub Nightly Sync Daemon at 23:55 IST ──────────────────────────────────
