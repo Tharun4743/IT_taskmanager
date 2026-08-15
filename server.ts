@@ -22,7 +22,7 @@ import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { pool, initDB } from './db.js';
-import { syncAndGenerateStudentDirectory, updateStudentCodingProfileInDirectory, constantStudentByIdMap, constantStudentByRegNoMap, constantStudentByEmailMap, constantStudentsByClassMap, updateGitHubFileViaAPI } from './studentDirectoryService.js';
+import { syncAndGenerateStudentDirectory, updateStudentCodingProfileInDirectory, constantStudentByIdMap, constantStudentByRegNoMap, constantStudentByEmailMap, constantStudentsByClassMap, updateGitHubFileViaAPI, cleanStudentName } from './studentDirectoryService.js';
 import { cleanupOnlyTaskScreenshots } from './imageCleanupService.js';
 import { generateDatabaseSnapshot } from './dbBackupService.js';
 import { initSentry } from './sentryService.js';
@@ -713,7 +713,7 @@ async function startServer() {
             defaultPassHash,
             validDeptId,
             validClassId,
-            directoryStudent.full_name || 'Student',
+            cleanStudentName(directoryStudent.full_name) || 'Student',
             directoryStudent.email || null,
             directoryStudent.register_number.trim(),
             directoryStudent.gender || 'Not Specified'
@@ -1153,7 +1153,7 @@ async function startServer() {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, $9, $10)
         RETURNING *
       `, [
-        username.trim(), hashed, userRole, deptId, clsId, full_name?.trim(),
+        username.trim(), hashed, userRole, deptId, clsId, cleanStudentName(full_name),
         email?.trim() || null, register_number?.trim() || null,
         is_year_coordinator || false, year_scope || null
       ]);
@@ -1206,7 +1206,7 @@ async function startServer() {
         ) VALUES ($1, $2, 'STUDENT', $3, $4, $5, $6)
         RETURNING *
       `, [
-        registrationNumber.trim(), hashed, deptId, clsId, fullName.trim(), registrationNumber.trim()
+        registrationNumber.trim(), hashed, deptId, clsId, cleanStudentName(fullName), registrationNumber.trim()
       ]);
       const u = newUserRes.rows[0];
       await syncAndGenerateStudentDirectory().catch(err => console.error('[StudentDirectory] Sync on student create warning:', err));
@@ -1259,7 +1259,7 @@ async function startServer() {
         ) VALUES ($1, $2, 'CLASS_ADVISOR', $3, $4, $5, $6, FALSE, $7, $8)
         RETURNING *
       `, [
-        username.trim(), hashed, deptId, clsId, fullName.trim(), username.trim(),
+        username.trim(), hashed, deptId, clsId, cleanStudentName(fullName), username.trim(),
         is_year_coordinator || false, year_scope || null
       ]);
       const u = newUserRes.rows[0];
@@ -1294,7 +1294,7 @@ async function startServer() {
           INSERT INTO users (
             username, password, role, department_id, class_id, full_name, email, register_number
           ) VALUES ($1, $2, 'STUDENT', $3, $4, $5, $6, $7)
-        `, [regNo, hashed, deptId, classId, s.name?.trim() || null, s.email?.trim() || null, regNo]);
+        `, [regNo, hashed, deptId, classId, cleanStudentName(s.name) || null, s.email?.trim() || null, regNo]);
         success++;
       } catch { failed++; }
     }

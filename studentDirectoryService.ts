@@ -22,6 +22,38 @@ export interface ConstantStudent {
   github?: string;
 }
 
+/**
+ * Cleans a student/user name to be all capital letters.
+ * If any initial with a dot is at the first position, it moves to the end of the name and the dot is removed.
+ * All other dots are also removed and whitespace is normalized.
+ */
+export function cleanStudentName(name: string): string {
+  if (!name) return '';
+  // 1. Remove leading dots and trim, then convert to uppercase
+  let cleaned = name.toUpperCase().trim().replace(/^\.+/, '').trim();
+  
+  // 2. Move starting initials to the end and remove dots
+  const prefixRegex = /^((?:[A-Z]\s*\.\s*)+)(.*)$/;
+  const match = cleaned.match(prefixRegex);
+  if (match) {
+    const initialsBlock = match[1];
+    const remainingName = match[2].trim();
+    
+    // Extract individual initials
+    const initials = initialsBlock.replace(/[^A-Z]/g, '').split('');
+    
+    if (remainingName.length > 0) {
+      cleaned = `${remainingName} ${initials.join(' ')}`;
+    } else {
+      cleaned = initials.join(' ');
+    }
+  }
+  
+  // Replace multiple spaces with a single space and remove any other dots
+  cleaned = cleaned.replace(/\./g, '').replace(/\s+/g, ' ').trim();
+  return cleaned;
+}
+
 // In-Memory Constant Caches
 export const constantStudentByIdMap = new Map<string, ConstantStudent>();
 export const constantStudentByRegNoMap = new Map<string, ConstantStudent>();
@@ -134,6 +166,7 @@ export async function syncAndGenerateStudentDirectory() {
     const yearSectionGroup: Record<string, Record<string, ConstantStudent[]>> = {};
 
     for (const student of students) {
+      student.full_name = cleanStudentName(student.full_name);
       // Merge LeetCode and GitHub URL from existing disk files to keep it strictly file-based
       const regKey = student.register_number ? student.register_number.toLowerCase().trim() : '';
       const existing = constantStudentByRegNoMap.get(regKey);
