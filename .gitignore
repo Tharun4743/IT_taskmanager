@@ -9,4 +9,5 @@ coverage/
 *.sql
 scratch_*.js
 backups/
-
+sih-prep/
+scratch_*
