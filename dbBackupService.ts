@@ -7,11 +7,31 @@ import { updateGitHubFileViaAPI, deleteGitHubFileViaAPI } from './studentDirecto
 
 const execPromise = util.promisify(exec);
 
+function getISTDateStr(): string {
+  const now = new Date();
+  const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+  return istTime.toISOString().split('T')[0];
+}
+
 /**
  * Creates a complete JSON data snapshot of all 29 tables in PostgreSQL
  * and automatically commits and pushes the backup snapshot to GitHub.
  */
-export async function generateDatabaseSnapshot() {
+export async function generateDatabaseSnapshot(force = false) {
+  const todayStr = getISTDateStr();
+
+  if (!force) {
+    try {
+      const checkRes = await pool.query("SELECT value FROM system_settings WHERE key = 'last_db_backup_date' LIMIT 1");
+      if (checkRes.rows.length > 0 && checkRes.rows[0].value === todayStr) {
+        console.log(`[DB Backup] A database snapshot backup has already been generated today (${todayStr}). Skipping auto-backup.`);
+        return { filePath: '', backupPayload: null, skipped: true };
+      }
+    } catch (checkErr: any) {
+      console.warn('[DB Backup] Failed to check last backup date in system_settings:', checkErr.message);
+    }
+  }
+
   console.log('[DB Backup] Starting database snapshot creation...');
   try {
     const tables = [
@@ -123,6 +143,13 @@ export async function generateDatabaseSnapshot() {
     } catch {
       // Handled via GitHub API above if CLI authentication is absent
     }
+
+    // Record the backup date in system_settings
+    await pool.query(`
+      INSERT INTO system_settings (key, value, updated_at)
+      VALUES ('last_db_backup_date', $1, CURRENT_TIMESTAMP)
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
+    `, [todayStr]).catch(err => console.warn('[DB Backup] Failed to save backup date in system_settings:', err.message));
 
     return { filePath, backupPayload };
   } catch (error) {

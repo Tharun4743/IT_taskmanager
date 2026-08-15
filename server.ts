@@ -581,7 +581,7 @@ async function startServer() {
 
   // Admin endpoint: Export complete database JSON snapshot
   app.get('/api/admin/export-db-snapshot', authenticate, authorize(['SUPREME_ADMIN', 'HOD']), asyncHandler(async (req: Request, res: Response) => {
-    const snapshot = await generateDatabaseSnapshot();
+    const snapshot = await generateDatabaseSnapshot(true);
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', `attachment; filename="${path.basename(snapshot.filePath)}"`);
     res.send(JSON.stringify(snapshot.backupPayload, null, 2));
