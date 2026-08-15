@@ -337,12 +337,6 @@ async function startServer() {
     cleanupOnlyTaskScreenshots().catch(err => console.error('[ImageCleanup] Scheduled cleanup warning:', err));
   }, 24 * 60 * 60 * 1000);
 
-  // Trigger initial DB snapshot backup and schedule daily execution (every 24 hours)
-  generateDatabaseSnapshot().catch(err => console.error('[DBBackup] Startup snapshot warning:', err));
-  setInterval(() => {
-    generateDatabaseSnapshot().catch(err => console.error('[DBBackup] Scheduled snapshot warning:', err));
-  }, 24 * 60 * 60 * 1000);
-
   // Initialize Telegram Bot update poller for automated student 1-click account linking
   try {
     startTelegramPoller();
@@ -413,6 +407,7 @@ async function startServer() {
           console.log(`[LeetCode AutoSync] 🚀 Running automated 11:55 PM IST daily LeetCode sync & CSV export for ${todayStr}...`);
           syncLeetcodeProgressForScope()
             .then(() => exportAndPushLeetcodeDailyProgress(todayStr))
+            .then(() => generateDatabaseSnapshot())
             .catch(err => console.error('[LeetCode AutoSync] Nightly sync error:', err));
         }
       }
