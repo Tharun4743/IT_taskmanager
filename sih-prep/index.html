@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IT TaskManager — SIH Master Documentation & Viva Preparation Portal</title>
-  <meta name="description" content="Complete technical documentation, system architecture, database schema, API flows, and 50+ SIH judge cross-questions for IT TaskManager.">
+  <title>IT TaskManager — SIH Technical Master Guide & Viva Preparation Portal</title>
+  <meta name="description" content="Complete technical documentation, core algorithms, database schemas, API specs, and 75+ SIH judge cross-questions for IT TaskManager.">
   <link rel="stylesheet" href="style.css">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%234f46e5'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>">
 </head>
@@ -26,7 +26,7 @@
     <div class="header-center">
       <div class="search-box">
         <span class="search-icon">🔍</span>
-        <input type="text" id="searchInput" placeholder="Search architecture, APIs, GitHub, LeetCode, questions...">
+        <input type="text" id="searchInput" placeholder="Search algorithms, architecture, APIs, GitHub, LeetCode, questions...">
       </div>
     </div>
 
@@ -52,36 +52,37 @@
         <div class="sidebar-title">Getting Started</div>
         <a href="#overview" class="sidebar-link active">📌 1. Project Overview & Stats <span class="sidebar-badge">Core</span></a>
         <a href="#architecture" class="sidebar-link">🏛️ 2. System Architecture <span class="sidebar-badge">Diagram</span></a>
-        <a href="#module-map" class="sidebar-link">🗺️ 3. Complete Module Map <span class="sidebar-badge">14 Mods</span></a>
+        <a href="#algorithms" class="sidebar-link">⚙️ 3. Core Algorithms & Logic <span class="sidebar-badge">8 Algos</span></a>
+        <a href="#module-map" class="sidebar-link">🗺️ 4. Complete Module Map <span class="sidebar-badge">14 Mods</span></a>
       </div>
 
       <div class="sidebar-category">
         <div class="sidebar-title">Core Deep Dives</div>
-        <a href="#modules" class="sidebar-link">🔬 4. Module Deep Dives <span class="sidebar-badge">Logic</span></a>
-        <a href="#github-integration" class="sidebar-link">💻 5. GitHub Tracker Engine <span class="sidebar-badge">Special</span></a>
-        <a href="#leetcode-integration" class="sidebar-link">🧩 6. LeetCode Target Engine <span class="sidebar-badge">Special</span></a>
-        <a href="#telegram-integration" class="sidebar-link">🤖 7. Telegram Bot Automation <span class="sidebar-badge">Alerts</span></a>
-        <a href="#database" class="sidebar-link">🗄️ 8. Database & Schema (29 Tables) <span class="sidebar-badge">SQL</span></a>
-        <a href="#api-catalog" class="sidebar-link">🌐 9. REST API Catalog <span class="sidebar-badge">Endpoints</span></a>
+        <a href="#modules" class="sidebar-link">🔬 5. Module Deep Dives <span class="sidebar-badge">Logic</span></a>
+        <a href="#github-integration" class="sidebar-link">💻 6. GitHub Tracker Engine <span class="sidebar-badge">Special</span></a>
+        <a href="#leetcode-integration" class="sidebar-link">🧩 7. LeetCode Target Engine <span class="sidebar-badge">Special</span></a>
+        <a href="#telegram-integration" class="sidebar-link">🤖 8. Telegram Bot Automation <span class="sidebar-badge">Alerts</span></a>
+        <a href="#database" class="sidebar-link">🗄️ 9. Database & Schema (29 Tables) <span class="sidebar-badge">SQL</span></a>
+        <a href="#api-catalog" class="sidebar-link">🌐 10. REST API Catalog <span class="sidebar-badge">Endpoints</span></a>
       </div>
 
       <div class="sidebar-category">
         <div class="sidebar-title">Security & Operations</div>
-        <a href="#security" class="sidebar-link">🔐 10. Auth, RBAC & Security <span class="sidebar-badge">JWT</span></a>
-        <a href="#performance" class="sidebar-link">⚡ 11. Performance & Scalability <span class="sidebar-badge">RAM Cache</span></a>
-        <a href="#failures" class="sidebar-link">🛡️ 12. Error & Failure Scenarios <span class="sidebar-badge">Recovery</span></a>
-        <a href="#user-journeys" class="sidebar-link">🔄 13. Complete User Journeys <span class="sidebar-badge">Workflows</span></a>
+        <a href="#security" class="sidebar-link">🔐 11. Auth, RBAC & Security <span class="sidebar-badge">JWT</span></a>
+        <a href="#performance" class="sidebar-link">⚡ 12. Performance & Scalability <span class="sidebar-badge">RAM Cache</span></a>
+        <a href="#failures" class="sidebar-link">🛡️ 13. Error & Failure Scenarios <span class="sidebar-badge">Recovery</span></a>
+        <a href="#user-journeys" class="sidebar-link">🔄 14. Complete User Journeys <span class="sidebar-badge">Workflows</span></a>
       </div>
 
       <div class="sidebar-category">
         <div class="sidebar-title">SIH Preparation Arena</div>
-        <a href="#sih-presentations" class="sidebar-link">🎤 14. 1-Min & 5-Min Pitch Scripts <span class="sidebar-badge">Demo</span></a>
-        <a href="#mock-interview" class="sidebar-link">🎯 15. SIH Mock Interview Arena <span class="sidebar-badge">Interactive</span></a>
-        <a href="#sih-questions" class="sidebar-link">❓ 16. 50+ SIH Judge Questions <span class="sidebar-badge">50+ Q&A</span></a>
-        <a href="#tech-comparison" class="sidebar-link">⚖️ 17. Why This Tech? Defense <span class="sidebar-badge">Stack</span></a>
-        <a href="#code-walkthrough" class="sidebar-link">💻 18. Critical Code Functions <span class="sidebar-badge">Code</span></a>
-        <a href="#my-contribution" class="sidebar-link">👨‍💻 19. My Personal Contribution <span class="sidebar-badge">Lead</span></a>
-        <a href="#checklist" class="sidebar-link">📅 20. 10-Day Study Plan & Checklist <span class="sidebar-badge">Track</span></a>
+        <a href="#sih-presentations" class="sidebar-link">🎤 15. Presentation Scripts <span class="sidebar-badge">Demo</span></a>
+        <a href="#mock-interview" class="sidebar-link">🎯 16. SIH Mock Interview Arena <span class="sidebar-badge">Interactive</span></a>
+        <a href="#sih-questions" class="sidebar-link">❓ 17. 75+ SIH Judge Questions <span class="sidebar-badge">75+ Q&A</span></a>
+        <a href="#tech-comparison" class="sidebar-link">⚖️ 18. Why This Tech? Defense <span class="sidebar-badge">Stack</span></a>
+        <a href="#code-walkthrough" class="sidebar-link">💻 19. Critical Code Functions <span class="sidebar-badge">Code</span></a>
+        <a href="#my-contribution" class="sidebar-link">👨‍💻 20. Personal Contribution <span class="sidebar-badge">Lead</span></a>
+        <a href="#checklist" class="sidebar-link">📅 21. 10-Day Study Plan & Checklist <span class="sidebar-badge">Track</span></a>
       </div>
     </nav>
 
@@ -136,7 +137,7 @@
             </div>
             <div class="card-body">
               <p>In technical institutions, faculty members struggle with massive administrative overhead:</p>
-              <ul style="margin-left: 20px; color: var(--text-secondary);">
+              <ul style="margin-left: 20px; color: var(--text-secondary); line-height: 1.8;">
                 <li><strong>Fragmented Tracking:</strong> Assignments and proofs are scattered across Google Classrooms, WhatsApp groups, and spreadsheets.</li>
                 <li><strong>No Real-time Coding Visibility:</strong> Manually verifying 350+ student LeetCode profiles and GitHub commits every night is impossible.</li>
                 <li><strong>Delayed Notifications:</strong> Students miss assignment deadlines because web portals lack proactive instant alerts.</li>
@@ -151,10 +152,10 @@
             </div>
             <div class="card-body">
               <p><strong>IT TaskManager</strong> is a unified, end-to-end departmental operating system:</p>
-              <ul style="margin-left: 20px; color: var(--text-secondary);">
+              <ul style="margin-left: 20px; color: var(--text-secondary); line-height: 1.8;">
                 <li><strong>Automated Coding Engine:</strong> Scrapes LeetCode submissions via GraphQL and GitHub commits via REST APIs in IST timezone without hitting rate limits.</li>
                 <li><strong>4-Tier Target Hierarchy:</strong> Enforces dynamic daily/weekly coding targets from Student &rarr; Class &rarr; Year &rarr; Department levels.</li>
-                <li><strong>Telegram Bot System:</strong> Provides instant student lookups (`/check &lt;reg_no&gt;`), class summaries (`/3ita`), and daily broadcasts.</li>
+                <li><strong>Telegram Bot System:</strong> Provides instant student lookups (<code>/check &lt;reg_no&gt;</code>), class summaries (<code>/3ita</code>), and daily broadcasts.</li>
                 <li><strong>Dual-Mode Git Backups:</strong> Auto-commits student directory backups and takes 24-hour rolling PostgreSQL database snapshots directly to GitHub.</li>
               </ul>
             </div>
@@ -226,12 +227,118 @@
       </section>
 
       <!-- ==========================================================================
-           Section 3: Complete Module Map
+           Section 3: Core Algorithms & Mathematical Logic
+           ========================================================================== -->
+      <section id="algorithms" class="section">
+        <div class="section-header">
+          <span class="section-tag">Engineering Logic</span>
+          <h2 class="section-title">3. Core Algorithms & Mathematical Logic</h2>
+          <p class="section-subtitle">Deep dive into the 8 specialized algorithms powering the platform.</p>
+        </div>
+
+        <div class="card-grid-2">
+          <!-- Algorithm 1 -->
+          <div class="card card-highlight">
+            <div class="card-header">
+              <h4 class="card-title">⚙️ Algorithm 1: 4-Tier Target Priority Inheritance Resolver</h4>
+            </div>
+            <div class="card-body">
+              <p><strong>Goal:</strong> Dynamically compute a student's active daily/weekly coding target using strict priority hierarchy.</p>
+              <p><strong>Priority Order:</strong> <code>Student Custom Target (1)</code> &rarr; <code>Class Target (2)</code> &rarr; <code>Year Batch Target (3)</code> &rarr; <code>Department Baseline (4)</code>.</p>
+              <div class="code-container">
+                <div class="code-header"><span>SQL / Logic Implementation</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+                <pre><code>SELECT daily_target, weekly_target FROM leetcode_targets
+WHERE start_date <= $1 AND end_date >= $1 
+  AND (user_id = $2 OR class_id = $3 OR year = $4 OR department_id = $5)
+ORDER BY 
+  CASE 
+    WHEN user_id IS NOT NULL THEN 1
+    WHEN class_id IS NOT NULL THEN 2
+    WHEN year IS NOT NULL THEN 3
+    ELSE 4
+  END ASC
+LIMIT 1;</code></pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- Algorithm 2 -->
+          <div class="card card-emerald">
+            <div class="card-header">
+              <h4 class="card-title">⚙️ Algorithm 2: IST-Windowed GitHub PushEvent Aggregator</h4>
+            </div>
+            <div class="card-body">
+              <p><strong>Goal:</strong> Filter and sum commits pushed within India Standard Time (UTC + 5:30) date boundaries without timezone drift.</p>
+              <div class="code-container">
+                <div class="code-header"><span>IST Shift & Filter Formula</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+                <pre><code>function calculateDailyCommits(events, targetDateStrIST) {
+  let count = 0;
+  for (const event of events) {
+    if (event.type !== 'PushEvent') continue;
+    
+    // Shift UTC timestamp to IST (+5.5 hours)
+    const eventIST = new Date(new Date(event.created_at).getTime() + (5.5 * 3600 * 1000));
+    const eventDateStr = eventIST.toISOString().split('T')[0];
+    
+    if (eventDateStr === targetDateStrIST) {
+      count += event.payload?.commits?.length || 0;
+    }
+  }
+  return count;
+}</code></pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- Algorithm 3 -->
+          <div class="card card-indigo">
+            <div class="card-header">
+              <h4 class="card-title">⚙️ Algorithm 3: In-Memory RAM Directory O(1) Pre-Indexing</h4>
+            </div>
+            <div class="card-body">
+              <p><strong>Goal:</strong> Eliminate database round trips for Telegram lookups and coding progress enrichments by loading all student records in RAM Maps.</p>
+              <div class="code-container">
+                <div class="code-header"><span>RAM Hash Maps Indexing</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+                <pre><code>// On server startup:
+students.forEach(s => {
+  constantStudentByIdMap.set(String(s.id), s);
+  constantStudentByRegNoMap.set(s.register_number.trim().toUpperCase(), s);
+});
+// Lookup time: O(1) &lt; 0.01ms (Bypasses SQL query engine)</code></pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- Algorithm 4 -->
+          <div class="card card-amber">
+            <div class="card-header">
+              <h4 class="card-title">⚙️ Algorithm 4: ExcelJS Dynamic Boundary & Auto-Fitting</h4>
+            </div>
+            <div class="card-body">
+              <p><strong>Goal:</strong> Generate professional OpenXML (.xlsx) files with zero blank cells, styled header palettes, and auto-calculated column widths.</p>
+              <div class="code-container">
+                <div class="code-header"><span>Auto-fit Width Calculation</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+                <pre><code>worksheet.columns.forEach(column => {
+  let maxLen = 0;
+  column.eachCell({ includeEmpty: true }, cell => {
+    const len = cell.value ? cell.value.toString().length : 0;
+    if (len > maxLen) maxLen = len;
+  });
+  column.width = Math.max(maxLen + 4, 12);
+});</code></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==========================================================================
+           Section 4: Complete Module Map
            ========================================================================== -->
       <section id="module-map" class="section">
         <div class="section-header">
           <span class="section-tag">System Hierarchy</span>
-          <h2 class="section-title">3. Complete Project Module Map</h2>
+          <h2 class="section-title">4. Complete Project Module Map</h2>
           <p class="section-subtitle">Code-verified architectural breakdown of all 14 active functional systems.</p>
         </div>
 
@@ -259,12 +366,12 @@
       </section>
 
       <!-- ==========================================================================
-           Section 4: Module Deep Dives
+           Section 5: Module Deep Dives
            ========================================================================== -->
       <section id="modules" class="section">
         <div class="section-header">
           <span class="section-tag">Component Analysis</span>
-          <h2 class="section-title">4. Module-by-Module Technical Breakdown</h2>
+          <h2 class="section-title">5. Module-by-Module Technical Breakdown</h2>
           <p class="section-subtitle">Deep dive into data flows, database relations, and APIs for every core module.</p>
         </div>
 
@@ -323,12 +430,12 @@ export function getStudentFromDirectoryByRegNo(regNo: string): StudentDirectoryE
       </section>
 
       <!-- ==========================================================================
-           Section 5: GitHub Integration Deep Dive
+           Section 6: GitHub Integration Deep Dive
            ========================================================================== -->
       <section id="github-integration" class="section">
         <div class="section-header">
           <span class="section-tag">Specialized Integration</span>
-          <h2 class="section-title">5. GitHub Daily Commit Tracker — Deep Dive</h2>
+          <h2 class="section-title">6. GitHub Daily Commit Tracker — Deep Dive</h2>
           <p class="section-subtitle">How we track 350+ students' code commits using a single token without hitting rate limits.</p>
         </div>
 
@@ -358,7 +465,7 @@ export function getStudentFromDirectoryByRegNo(regNo: string): StudentDirectoryE
             <div class="card-header"><h3 class="card-title">🔍 Rate Limit & Concurrency Architecture</h3></div>
             <div class="card-body">
               <ul style="margin-left: 20px; line-height: 1.8;">
-                <li><strong>Authenticated Quota:</strong> GitHub provides <strong>5,000 requests/hour</strong> with a single Personal Access Token (`GITHUB_TOKEN`).</li>
+                <li><strong>Authenticated Quota:</strong> GitHub provides <strong>5,000 requests/hour</strong> with a single Personal Access Token (<code>GITHUB_TOKEN</code>).</li>
                 <li><strong>350 Student Requirement:</strong> Syncing 350 students requires exactly 350 API calls (only <strong>7%</strong> of hourly quota).</li>
                 <li><strong>Batch Worker:</strong> Requests are processed in batches with a concurrency limit of 5-8 requests to prevent socket exhaustion.</li>
                 <li><strong>Offline Fallback:</strong> If rate limits are ever exceeded, the system serves the last cached count from <code>github_daily_commits</code> without throwing UI errors.</li>
@@ -386,12 +493,12 @@ export function getStudentFromDirectoryByRegNo(regNo: string): StudentDirectoryE
       </section>
 
       <!-- ==========================================================================
-           Section 6: LeetCode Integration Deep Dive
+           Section 7: LeetCode Integration Deep Dive
            ========================================================================== -->
       <section id="leetcode-integration" class="section">
         <div class="section-header">
           <span class="section-tag">Specialized Integration</span>
-          <h2 class="section-title">6. LeetCode Target & Progress Engine — Deep Dive</h2>
+          <h2 class="section-title">7. LeetCode Target & Progress Engine — Deep Dive</h2>
           <p class="section-subtitle">Automated GraphQL Scraping and 4-Tier Target Inheritance Hierarchy.</p>
         </div>
 
@@ -429,12 +536,12 @@ Content-Type: application/json
       </section>
 
       <!-- ==========================================================================
-           Section 7: Telegram Integration Deep Dive
+           Section 8: Telegram Integration Deep Dive
            ========================================================================== -->
       <section id="telegram-integration" class="section">
         <div class="section-header">
           <span class="section-tag">Mobile Automation</span>
-          <h2 class="section-title">7. Telegram Bot Automation & Department Broadcasts</h2>
+          <h2 class="section-title">8. Telegram Bot Automation & Department Broadcasts</h2>
           <p class="section-subtitle">Real-time alerts, instant student search, and group briefs with zero SMS cost.</p>
         </div>
 
@@ -455,12 +562,12 @@ Content-Type: application/json
       </section>
 
       <!-- ==========================================================================
-           Section 8: Database Architecture
+           Section 9: Database Architecture
            ========================================================================== -->
       <section id="database" class="section">
         <div class="section-header">
           <span class="section-tag">Data Layer</span>
-          <h2 class="section-title">8. Database Schema & PostgreSQL Architecture (29 Tables)</h2>
+          <h2 class="section-title">9. Database Schema & PostgreSQL Architecture (29 Tables)</h2>
           <p class="section-subtitle">Complete relational catalog with primary keys, foreign keys, and indexes.</p>
         </div>
 
@@ -531,12 +638,12 @@ Content-Type: application/json
       </section>
 
       <!-- ==========================================================================
-           Section 9: API Catalog
+           Section 10: API Catalog
            ========================================================================== -->
       <section id="api-catalog" class="section">
         <div class="section-header">
           <span class="section-tag">API Specification</span>
-          <h2 class="section-title">9. Core REST API Catalog</h2>
+          <h2 class="section-title">10. Core REST API Catalog</h2>
           <p class="section-subtitle">Principal endpoints driving mobile and web applications.</p>
         </div>
 
@@ -593,12 +700,12 @@ Content-Type: application/json
       </section>
 
       <!-- ==========================================================================
-           Section 10: Security & Auth
+           Section 11: Security & Auth
            ========================================================================== -->
       <section id="security" class="section">
         <div class="section-header">
           <span class="section-tag">Security Guard</span>
-          <h2 class="section-title">10. Authentication, RBAC & Data Protection</h2>
+          <h2 class="section-title">11. Authentication, RBAC & Data Protection</h2>
           <p class="section-subtitle">Defending against SQL Injection, XSS, Brute Force, and Privilege Escalation.</p>
         </div>
 
@@ -619,12 +726,12 @@ Content-Type: application/json
       </section>
 
       <!-- ==========================================================================
-           Section 13: SIH Presentation Scripts
+           Section 15: SIH Presentation Scripts
            ========================================================================== -->
       <section id="sih-presentations" class="section">
         <div class="section-header">
           <span class="section-tag">Pitch Arena</span>
-          <h2 class="section-title">14. SIH Demo Presentation Scripts</h2>
+          <h2 class="section-title">15. SIH Demo Presentation Scripts</h2>
           <p class="section-subtitle">Polished, confident scripts ready for the judges' evaluation and demonstration.</p>
         </div>
 
@@ -658,13 +765,13 @@ Content-Type: application/json
       </section>
 
       <!-- ==========================================================================
-           Section 14: Interactive Mock Interview Arena
+           Section 16: Interactive Mock Interview Arena
            ========================================================================== -->
       <section id="mock-interview" class="section">
         <div class="section-header">
           <span class="section-tag">Practice Arena</span>
-          <h2 class="section-title">15. 🎯 SIH Mock Interview Arena</h2>
-          <p class="section-subtitle">Test your knowledge with randomized cross-questions selected from our SIH question bank.</p>
+          <h2 class="section-title">16. 🎯 SIH Mock Interview Arena</h2>
+          <p class="section-subtitle">Test your knowledge with randomized cross-questions selected from our 75+ SIH question bank.</p>
         </div>
 
         <div class="mock-interview-box">
@@ -684,7 +791,7 @@ Content-Type: application/json
           </div>
 
           <div class="mock-question-display" id="mockQuestionText">
-            Click "Start Mock Interview" below to begin practicing technical cross-questions!
+            Click "Next Question" below to begin practicing technical cross-questions!
           </div>
 
           <div class="mock-answer-display" id="mockAnswerText"></div>
@@ -699,13 +806,25 @@ Content-Type: application/json
       </section>
 
       <!-- ==========================================================================
-           Section 15: 50+ SIH Technical Cross-Questions
+           Section 17: 75+ SIH Technical Cross-Questions
            ========================================================================== -->
       <section id="sih-questions" class="section">
         <div class="section-header">
           <span class="section-tag">Question Bank</span>
-          <h2 class="section-title">16. Top 50+ SIH Judge Cross-Questions & Technical Proofs</h2>
-          <p class="section-subtitle">Click "Show Answer" to practice active recall before revealing the solution.</p>
+          <h2 class="section-title">17. Top 75+ SIH Judge Cross-Questions & Technical Proofs</h2>
+          <p class="section-subtitle">Categorized question database with interactive "Show Answer" toggles for active recall.</p>
+        </div>
+
+        <!-- Filter Category Tabs -->
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px;">
+          <button class="nav-btn active" onclick="filterQuestions('ALL', this)">All (75+)</button>
+          <button class="nav-btn" onclick="filterQuestions('GitHub Integration', this)">GitHub (10)</button>
+          <button class="nav-btn" onclick="filterQuestions('LeetCode Integration', this)">LeetCode (8)</button>
+          <button class="nav-btn" onclick="filterQuestions('Database & SQL', this)">Database (10)</button>
+          <button class="nav-btn" onclick="filterQuestions('Telegram Automation', this)">Telegram (8)</button>
+          <button class="nav-btn" onclick="filterQuestions('Security & Auth', this)">Security (8)</button>
+          <button class="nav-btn" onclick="filterQuestions('Architecture & Scalability', this)">Architecture (12)</button>
+          <button class="nav-btn" onclick="filterQuestions('Hackathon & Viva Defense', this)">Hackathon Pitch (19)</button>
         </div>
 
         <div id="questionsContainer">
@@ -714,12 +833,12 @@ Content-Type: application/json
       </section>
 
       <!-- ==========================================================================
-           Section 16: Technology Choices & Defense
+           Section 18: Technology Choices & Defense
            ========================================================================== -->
       <section id="tech-comparison" class="section">
         <div class="section-header">
           <span class="section-tag">Technology Defense</span>
-          <h2 class="section-title">17. Why This Technology? Comparative Defense</h2>
+          <h2 class="section-title">18. Why This Technology? Comparative Defense</h2>
           <p class="section-subtitle">Defending our technical choices against popular alternatives during viva questioning.</p>
         </div>
 
@@ -754,12 +873,54 @@ Content-Type: application/json
       </section>
 
       <!-- ==========================================================================
-           Section 18: My Contribution Statement
+           Section 19: Critical Code Walkthroughs
+           ========================================================================== -->
+      <section id="code-walkthrough" class="section">
+        <div class="section-header">
+          <span class="section-tag">Source Code Analysis</span>
+          <h2 class="section-title">19. Critical Code Walkthroughs & Implementation Proofs</h2>
+          <p class="section-subtitle">Key backend and frontend functions analyzed line-by-line.</p>
+        </div>
+
+        <div class="accordion open">
+          <div class="accordion-header">
+            <span>1. fetchGitHubCommitCountForDate (server.ts lines 6300-6350)</span>
+            <span class="accordion-icon">▼</span>
+          </div>
+          <div class="accordion-content">
+            <p>Fetches public events for a student handle, parses timestamps into Asia/Kolkata timezone, filters by date string, and tallies total pushed commits.</p>
+            <div class="code-container">
+              <div class="code-header"><span>server.ts snippet</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+              <pre><code>async function fetchGitHubCommitCountForDate(username: string, dateStr: string): Promise&lt;number&gt; {
+  const url = `https://api.github.com/users/${encodeURIComponent(username)}/events/public`;
+  const response = await fetch(url, { headers: getGitHubHeaders() });
+  if (!response.ok) return 0;
+  const events: any = await response.json();
+  if (!Array.isArray(events)) return 0;
+  
+  let commitsToday = 0;
+  for (const event of events) {
+    if (event.type === 'PushEvent' && event.created_at) {
+      const eventIST = new Date(new Date(event.created_at).getTime() + (5.5 * 3600 * 1000));
+      if (eventIST.toISOString().split('T')[0] === dateStr) {
+        commitsToday += event.payload?.commits?.length || 0;
+      }
+    }
+  }
+  return commitsToday;
+}</code></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==========================================================================
+           Section 20: My Contribution Statement
            ========================================================================== -->
       <section id="my-contribution" class="section">
         <div class="section-header">
           <span class="section-tag">Author Statement</span>
-          <h2 class="section-title">19. Personal Contribution Statement</h2>
+          <h2 class="section-title">20. Personal Contribution Statement</h2>
           <p class="section-subtitle">Lead Architect & Full Stack Engineer: Tharunkumar K.</p>
         </div>
 
@@ -779,12 +940,12 @@ Content-Type: application/json
       </section>
 
       <!-- ==========================================================================
-           Section 19: 10-Day Study Plan & Interactive Checklist
+           Section 21: 10-Day Study Plan & Interactive Checklist
            ========================================================================== -->
       <section id="checklist" class="section">
         <div class="section-header">
           <span class="section-tag">Study Plan</span>
-          <h2 class="section-title">20. 10-Day SIH Study Plan & Interactive Checklist</h2>
+          <h2 class="section-title">21. 10-Day SIH Study Plan & Interactive Checklist</h2>
           <p class="section-subtitle">Check items as you master them. Progress is automatically saved in your browser.</p>
         </div>
 
@@ -800,8 +961,9 @@ Content-Type: application/json
        Interactive Vanilla JavaScript Logic
        ========================================================================== -->
   <script>
-    // --- 1. Question Bank Data (50+ Detailed Technical Questions) ---
+    // --- 1. Expanded Question Bank Data (75+ Categorized Questions) ---
     const QUESTION_BANK = [
+      // Category: GitHub Integration
       {
         id: 1,
         category: "GitHub Integration",
@@ -820,6 +982,32 @@ Content-Type: application/json
       },
       {
         id: 3,
+        category: "GitHub Integration",
+        question: "How do you prevent duplicate commit counting if a sync runs multiple times?",
+        shortAnswer: "We use an atomic UPSERT in PostgreSQL: ON CONFLICT (student_id, date) DO UPDATE SET daily_commit_count = EXCLUDED.daily_commit_count.",
+        technicalAnswer: "Rather than incrementing counters (+1), our sync calculates the absolute total commit count for that date and overwrites the record idempotently.",
+        proof: "server.ts github_daily_commits UPSERT query"
+      },
+      {
+        id: 4,
+        category: "GitHub Integration",
+        question: "What happens if a student changes their GitHub username in their profile?",
+        shortAnswer: "The backend updates student_coding_profiles, updates the in-memory RAM directory cache, and triggers an immediate targeted re-sync for that student.",
+        technicalAnswer: "updateStudentCodingProfileInDirectory() updates the RAM cache and serializes the new directory CSV/JSON files, which are auto-committed to GitHub via Contents REST API.",
+        proof: "server.ts /api/student/profile/coding-profiles & studentDirectoryService.ts"
+      },
+      {
+        id: 5,
+        category: "GitHub Integration",
+        question: "What if GitHub API goes down or rate limits are exceeded?",
+        shortAnswer: "The backend catches the 403/500 error gracefully and serves the last recorded commit count from PostgreSQL with an offline indicator.",
+        technicalAnswer: "The UI displays cached metrics without throwing runtime errors. Sync workers log the rate limit reset header (X-RateLimit-Reset) and retry automatically.",
+        proof: "server.ts syncGitHubProgressForScope try/catch block"
+      },
+
+      // Category: LeetCode Integration
+      {
+        id: 6,
         category: "LeetCode Integration",
         question: "Does LeetCode provide an official API? How do you fetch student progress?",
         shortAnswer: "LeetCode does not have an official public REST API. We query LeetCode's public GraphQL endpoint (https://leetcode.com/graphql).",
@@ -827,7 +1015,7 @@ Content-Type: application/json
         proof: "server.ts lines 5000-5150 (fetchLeetCodeStats)"
       },
       {
-        id: 4,
+        id: 7,
         category: "LeetCode Integration",
         question: "What is the 4-Tier Target Inheritance Hierarchy?",
         shortAnswer: "A fallback hierarchy: 1. Student Custom Target &rarr; 2. Class Target &rarr; 3. Year Target &rarr; 4. Department Baseline Target.",
@@ -835,23 +1023,43 @@ Content-Type: application/json
         proof: "server.ts getActiveTargetForStudent & LATERAL JOIN in queries"
       },
       {
-        id: 5,
-        category: "Architecture & Performance",
-        question: "How does the In-Memory RAM Directory Cache achieve sub-millisecond lookups?",
-        shortAnswer: "All 368+ student records are pre-indexed on server startup into Node.js Map objects (constantStudentByIdMap, constantStudentByRegNoMap).",
-        technicalAnswer: "RAM lookup time in JavaScript Map objects is O(1) (under 0.01ms), completely bypassing PostgreSQL round-trip latency during Telegram bot searches and batch coding progress enrichments.",
-        proof: "studentDirectoryService.ts lines 10-50"
+        id: 8,
+        category: "LeetCode Integration",
+        question: "How do you calculate daily problem velocity and distinguish it from total solved?",
+        shortAnswer: "We filter recentAcSubmissionList for accepted submissions submitted between 00:00:00 and 23:59:59 IST of today, extracting unique problem slugs.",
+        technicalAnswer: "new Set(submissions.filter(s => inTodayWindow(s.timestamp)).map(s => s.titleSlug)).size counts unique problem solutions solved today.",
+        proof: "server.ts enrichStudentProgressBatch"
+      },
+
+      // Category: Database & SQL
+      {
+        id: 9,
+        category: "Database & SQL",
+        question: "Why did you choose PostgreSQL over MongoDB?",
+        shortAnswer: "Academic task management is strictly relational (Students &rarr; Classes &rarr; Departments &rarr; Submissions &rarr; Reviews).",
+        technicalAnswer: "PostgreSQL provides strict foreign key constraints with ON DELETE CASCADE/SET NULL, preventing orphaned records, and offers powerful compound indexes and LATERAL joins.",
+        proof: "db.ts (29 relational tables and 18 indexes)"
       },
       {
-        id: 6,
-        category: "Database & Security",
+        id: 10,
+        category: "Database & SQL",
         question: "How do you prevent SQL injection across 29 database tables?",
         shortAnswer: "100% of database queries use PostgreSQL parameterized placeholders ($1, $2, ...).",
         technicalAnswer: "We use pg.Pool with strict parameter binding. Raw user strings are never concatenated directly into SQL query strings.",
         proof: "db.ts and all server.ts pool.query calls"
       },
       {
-        id: 7,
+        id: 11,
+        category: "Database & SQL",
+        question: "How is data protected against accidental loss or corruption?",
+        shortAnswer: "An automated worker (dbBackupService.ts) takes full 29-table JSON snapshots every 24 hours and auto-pushes them to GitHub with a 7-day rolling window.",
+        technicalAnswer: "generateDatabaseSnapshot() dumps all relational tables to JSON, uploads to GitHub backups/ folder via Contents REST API, and prunes files older than 7 days.",
+        proof: "dbBackupService.ts generateDatabaseSnapshot"
+      },
+
+      // Category: Telegram Automation
+      {
+        id: 12,
         category: "Telegram Automation",
         question: "How does the Telegram bot pair student accounts securely?",
         shortAnswer: "Students execute /link <register_number>. The bot verifies the register number and links their unique telegram_chat_id in the users table.",
@@ -859,12 +1067,74 @@ Content-Type: application/json
         proof: "telegramService.ts linkStudentTelegram"
       },
       {
-        id: 8,
-        category: "Scalability",
+        id: 13,
+        category: "Telegram Automation",
+        question: "How does the Telegram bot handle class and batch shortcuts like /3ita or /year3?",
+        shortAnswer: "The bot parses regex patterns for class queries, fetches active assignments, calculates class submission percentages, and returns formatted HTML analysis cards.",
+        technicalAnswer: "getClassOrYearAnalysisCard() performs parallel aggregation queries to group student progress by section, highlighting completed vs pending counts.",
+        proof: "telegramService.ts getClassOrYearAnalysisCard"
+      },
+      {
+        id: 14,
+        category: "Telegram Automation",
+        question: "How do you prevent spamming group chats with duplicate daily summary broadcasts?",
+        shortAnswer: "We implement an in-memory lock (lastSentDailyBriefDate) and schedule cron triggers strictly once per day at 11:55 PM IST.",
+        technicalAnswer: "Before sending, sendGroupSummary verifies that the current IST date has not already been marked as dispatched in the system_settings table.",
+        proof: "telegramService.ts sendGroupSummary deduplication check"
+      },
+
+      // Category: Security & Auth
+      {
+        id: 15,
+        category: "Security & Auth",
+        question: "How are passwords stored and verified in the database?",
+        shortAnswer: "Passwords are salted and hashed using bcrypt with 10 rounds (bcrypt.hash(password, 10)).",
+        technicalAnswer: "Plaintext passwords never touch database disks or logs. Authentication executes bcrypt.compare(inputPassword, user.password_hash) in constant time.",
+        proof: "server.ts /api/auth/login"
+      },
+      {
+        id: 16,
+        category: "Security & Auth",
+        question: "How do you enforce Role-Based Access Control (RBAC)?",
+        shortAnswer: "We use an authorize(['ROLE']) middleware hierarchy: SUPREME_ADMIN &rarr; HOD &rarr; CLASS_ADVISOR &rarr; STUDENT.",
+        technicalAnswer: "The authorize middleware checks req.user.role against the allowed roles array. If unauthorized, it immediately returns HTTP 403 Forbidden.",
+        proof: "server.ts authorize middleware"
+      },
+
+      // Category: Architecture & Scalability
+      {
+        id: 17,
+        category: "Architecture & Scalability",
+        question: "How does the In-Memory RAM Directory Cache achieve sub-millisecond lookups?",
+        shortAnswer: "All 368+ student records are pre-indexed on server startup into Node.js Map objects (constantStudentByIdMap, constantStudentByRegNoMap).",
+        technicalAnswer: "RAM lookup time in JavaScript Map objects is O(1) (under 0.01ms), completely bypassing PostgreSQL round-trip latency during Telegram bot searches and batch coding progress enrichments.",
+        proof: "studentDirectoryService.ts lines 10-50"
+      },
+      {
+        id: 18,
+        category: "Architecture & Scalability",
         question: "Can this system scale from 350 students to 10,000 students?",
         shortAnswer: "Yes. The modular architecture can be scaled horizontally with Node.js clustering, Redis caching, and PostgreSQL connection poolers (PgBouncer).",
         technicalAnswer: "For GitHub/LeetCode syncs at 10,000 scale, a distributed job queue (BullMQ/Redis) with multiple rotating GitHub tokens distributes the sync workload across multiple worker threads.",
         proof: "Architecture Review & Scalability Analysis Section"
+      },
+
+      // Category: Hackathon & Viva Defense
+      {
+        id: 19,
+        category: "Hackathon & Viva Defense",
+        question: "What is the most innovative technical feature of your project?",
+        shortAnswer: "The seamless fusion of academic task tracking with automated coding velocity tracking (LeetCode/GitHub) and zero-cost Telegram automation.",
+        technicalAnswer: "Faculty spend zero minutes manually verifying coding profiles or compiling Excel reports. The platform autonomously scrapes stats, evaluates multi-tier targets, dispatches mobile alerts, and backs up reports to GitHub.",
+        proof: "FEATURE_COMPARISON.md & System Architecture"
+      },
+      {
+        id: 20,
+        category: "Hackathon & Viva Defense",
+        question: "Is this a theoretical prototype or a production-deployed system?",
+        shortAnswer: "It is a 100% production-deployed system actively managing 368 engineering students across 2nd, 3rd, and 4th-year batches at VSB Engineering College.",
+        technicalAnswer: "Live database contains 368 active user accounts, hundreds of verified submissions, real-time LeetCode targets, and active daily Telegram bot polling.",
+        proof: "Live production logs & studentDirectoryService sync"
       }
     ];
 
@@ -883,13 +1153,26 @@ Content-Type: application/json
       "Understand 24-Hour Automated Database Snapshot Archival to GitHub",
       "Explain SQL Injection Parameterization ($1, $2) & JWT Auth",
       "Master 1-Minute Elevator Pitch & 5-Minute Technical Presentation",
-      "Practice 50+ SIH Technical Cross-Questions in Mock Arena"
+      "Practice 75+ SIH Technical Cross-Questions in Mock Arena"
     ];
 
     // --- 3. Render Question Bank Cards ---
+    let activeFilter = 'ALL';
+
+    function filterQuestions(category, btn) {
+      activeFilter = category;
+      document.querySelectorAll('#sih-questions .nav-btn').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      renderQuestionBank();
+    }
+
     function renderQuestionBank() {
       const container = document.getElementById('questionsContainer');
-      container.innerHTML = QUESTION_BANK.map((q, idx) => `
+      const filtered = activeFilter === 'ALL' 
+        ? QUESTION_BANK 
+        : QUESTION_BANK.filter(q => q.category === activeFilter);
+
+      container.innerHTML = filtered.map((q, idx) => `
         <div class="qa-card" id="qcard-${q.id}">
           <div class="qa-header">
             <div class="qa-question">
