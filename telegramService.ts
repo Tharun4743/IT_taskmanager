@@ -262,28 +262,41 @@ export async function registerBotCommandsMenu(): Promise<void> {
  */
 export function getInteractiveMenuKeyboard(role?: string) {
   const portalUrl = getPortalUrl();
-  const rows: any[] = [
-    [
-      { text: '📋 My Tasks', callback_data: 'cb_tasks' },
-      { text: '🧩 LeetCode', callback_data: 'cb_leetcode' }
-    ],
-    [
-      { text: '💻 GitHub', callback_data: 'cb_github' },
-      { text: '📊 My Scorecard', callback_data: 'cb_stats' }
-    ],
-    [
-      { text: '🌐 Open Portal', url: portalUrl }
-    ]
-  ];
 
   if (role && (role === 'SUPREME_ADMIN' || role === 'STAFF' || role === 'COORDINATOR' || role === 'HOD' || role === 'CLASS_ADVISOR')) {
-    rows.push([
-      { text: '⚠️ Today\'s Defaulters', callback_data: 'cb_defaulters' },
-      { text: '📢 Group Summary', callback_data: 'cb_summary' }
-    ]);
+    return {
+      inline_keyboard: [
+        [
+          { text: '📊 Group Summary', callback_data: 'cb_summary' },
+          { text: '⚠️ Defaulters', callback_data: 'cb_defaulters' }
+        ],
+        [
+          { text: '🔎 Student Search', callback_data: 'cb_search_help' },
+          { text: '📋 Task Status', callback_data: 'cb_task_status' }
+        ],
+        [
+          { text: '🌐 Open Portal', url: portalUrl }
+        ]
+      ]
+    };
   }
 
-  return { inline_keyboard: rows };
+  return {
+    inline_keyboard: [
+      [
+        { text: '📋 My Tasks', callback_data: 'cb_tasks' },
+        { text: '🧩 LeetCode', callback_data: 'cb_leetcode' }
+      ],
+      [
+        { text: '💻 GitHub', callback_data: 'cb_github' },
+        { text: '📊 My Progress', callback_data: 'cb_stats' }
+      ],
+      [
+        { text: '👤 Profile', callback_data: 'cb_profile' },
+        { text: '🌐 Open Portal', url: portalUrl }
+      ]
+    ]
+  };
 }
 
 /**
@@ -294,7 +307,7 @@ export async function getStudentLeetCodeCard(user: any): Promise<{ html: string;
   const week = getWeekRange(dateStr);
 
   const [dailyRes, weeklyRes, targetRes] = await Promise.all([
-    pool.query(`SELECT solved_today, solved_yesterday, total_solved, status FROM leetcode_daily_progress WHERE user_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
+    pool.query(`SELECT solved_today, total_solved FROM leetcode_daily_progress WHERE user_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
     pool.query(`SELECT SUM(solved_today) as solved_week FROM leetcode_daily_progress WHERE user_id = $1 AND date >= $2 AND date <= $3`, [user.id, week.start, week.end]),
     pool.query(`
       SELECT daily_target, weekly_target FROM leetcode_targets
@@ -304,50 +317,24 @@ export async function getStudentLeetCodeCard(user: any): Promise<{ html: string;
     `, [dateStr, user.id, user.class_id])
   ]);
 
-  const daily = dailyRes.rows[0];
+  const solvedToday = Number(dailyRes.rows[0]?.solved_today) || 0;
+  const totalSolved = Number(dailyRes.rows[0]?.total_solved) || 0;
   const solvedWeek = Number(weeklyRes.rows[0]?.solved_week) || 0;
-  const target = targetRes.rows[0] || { daily_target: 0, weekly_target: 0 };
+  const dailyTarget = Number(targetRes.rows[0]?.daily_target) || 0;
+  const weeklyTarget = Number(targetRes.rows[0]?.weekly_target) || 0;
 
-  const solvedToday = daily?.total_solved !== null && daily?.total_solved !== undefined ? Number(daily.solved_today) : 0;
-  const totalSolved = daily?.total_solved ? Number(daily.total_solved) : 0;
-  const dailyTarget = Number(target.daily_target) || 0;
-  const weeklyTarget = Number(target.weekly_target) || 0;
-
-  const dailyProgress = dailyTarget > 0 ? makeProgressBar(solvedToday, dailyTarget, 8) : 'No Target Set';
-  const weeklyProgress = weeklyTarget > 0 ? makeProgressBar(solvedWeek, weeklyTarget, 8) : 'No Target Set';
-
-  const isCompleted = dailyTarget > 0 && solvedToday >= dailyTarget;
-  const statusEmoji = isCompleted ? '✅ <b>COMPLETED</b> 🎉' : (dailyTarget > 0 ? '⏳ <b>IN PROGRESS</b>' : '⚪ <i>No Target</i>');
-
-  let html = `🧩 <b>LEETCODE PERFORMANCE CARD</b>\n`;
-  html += `👤 <b>${escapeHtml(user.full_name)}</b> (<code>${escapeHtml(user.register_number)}</code>)\n`;
-  html += `🏫 <b>Class:</b> ${escapeHtml(user.class_name || 'IT Department')}\n`;
-  html += `📅 <b>Date:</b> <i>${dateStr} (IST)</i>\n`;
-  html += `─────────────────────────\n\n`;
-
-  html += `🎯 <b>Today's Daily Target:</b> ${dailyTarget} problem(s)\n`;
-  html += `⚡ <b>Solved Today:</b> <b>${solvedToday}</b> / ${dailyTarget}\n`;
-  html += `📈 <b>Daily Progress:</b> ${dailyProgress}\n`;
-  html += `📌 <b>Daily Status:</b> ${statusEmoji}\n\n`;
-
-  html += `🗓️ <b>Weekly Target:</b> ${weeklyTarget} problem(s)\n`;
-  html += `📊 <b>Solved This Week:</b> <b>${solvedWeek}</b> / ${weeklyTarget}\n`;
-  html += `📉 <b>Weekly Progress:</b> ${weeklyProgress}\n\n`;
-
-  if (totalSolved > 0) {
-    html += `🏆 <b>Total Lifetime Solved:</b> <b>${totalSolved}</b> problems\n`;
-  }
-  if (user.leetcode_url) {
-    html += `🔗 <a href="${escapeHtml(user.leetcode_url)}">View Profile on LeetCode</a>\n`;
-  }
-
+  let html = `🧩 <b>LEETCODE</b>\n\n`;
+  html += `• <b>Today's Solved:</b> <b>${solvedToday}</b>\n`;
+  html += `• <b>Daily Target:</b> <b>${dailyTarget}</b>\n`;
+  html += `• <b>Weekly Solved:</b> <b>${solvedWeek}</b>\n`;
+  html += `• <b>Weekly Target:</b> <b>${weeklyTarget}</b>\n`;
+  html += `• <b>Total Solved:</b> <b>${totalSolved}</b>\n`;
   html += getWatermarkHtml();
 
   const keyboard = {
     inline_keyboard: [
       [
-        { text: '🔄 Refresh LeetCode', callback_data: 'cb_leetcode' },
-        { text: '💻 View GitHub', callback_data: 'cb_github' }
+        { text: '🔄 Sync LeetCode', callback_data: 'cb_leetcode' }
       ],
       [
         { text: '📱 Main Menu', callback_data: 'cb_menu' },
@@ -374,26 +361,15 @@ export async function getStudentGitHubCard(user: any): Promise<{ html: string; k
   const commitsToday = Number(dailyRes.rows[0]?.daily_commit_count) || 0;
   const commitsWeek = Number(weeklyRes.rows[0]?.commits_week) || 0;
 
-  let html = `💻 <b>GITHUB PERFORMANCE CARD</b>\n`;
-  html += `👤 <b>${escapeHtml(user.full_name)}</b> (<code>${escapeHtml(user.register_number)}</code>)\n`;
-  html += `🏫 <b>Class:</b> ${escapeHtml(user.class_name || 'IT Department')}\n`;
-  html += `📅 <b>Date:</b> <i>${dateStr} (IST)</i>\n`;
-  html += `─────────────────────────\n\n`;
-
-  html += `⚡ <b>Commits Today:</b> <b>${commitsToday}</b> commit(s)\n`;
-  html += `📊 <b>Commits This Week:</b> <b>${commitsWeek}</b> commit(s)\n\n`;
-
-  if (user.github_url) {
-    html += `🔗 <a href="${escapeHtml(user.github_url)}">View Profile on GitHub</a>\n`;
-  }
-
+  let html = `💻 <b>GITHUB</b>\n\n`;
+  html += `• <b>Today's Commits:</b> <b>${commitsToday}</b>\n`;
+  html += `• <b>This Week's Commits:</b> <b>${commitsWeek}</b>\n`;
   html += getWatermarkHtml();
 
   const keyboard = {
     inline_keyboard: [
       [
-        { text: '🔄 Refresh GitHub', callback_data: 'cb_github' },
-        { text: '🧩 View LeetCode', callback_data: 'cb_leetcode' }
+        { text: '🔄 Sync GitHub', callback_data: 'cb_github' }
       ],
       [
         { text: '📱 Main Menu', callback_data: 'cb_menu' },
@@ -406,13 +382,19 @@ export async function getStudentGitHubCard(user: any): Promise<{ html: string; k
 }
 
 /**
- * 📊 Comprehensive Student Scorecard
+ * 📊 Simple Combined Progress Card (My Progress)
  */
 export async function getStudentStatsCard(user: any): Promise<{ html: string; keyboard: any }> {
   const dateStr = getISTDateStr();
 
-  const [lcRes, ghRes, tasksRes] = await Promise.all([
-    pool.query(`SELECT solved_today, total_solved FROM leetcode_daily_progress WHERE user_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
+  const [lcRes, lcTargetRes, ghRes, tasksRes] = await Promise.all([
+    pool.query(`SELECT solved_today FROM leetcode_daily_progress WHERE user_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
+    pool.query(`
+      SELECT daily_target FROM leetcode_targets
+      WHERE start_date <= $1 AND end_date >= $1 AND (user_id = $2 OR class_id = $3 OR class_id IS NULL)
+      ORDER BY CASE WHEN user_id IS NOT NULL THEN 1 WHEN class_id IS NOT NULL THEN 2 ELSE 3 END ASC
+      LIMIT 1
+    `, [dateStr, user.id, user.class_id]),
     pool.query(`SELECT daily_commit_count FROM github_daily_commits WHERE student_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
     pool.query(`
       SELECT 
@@ -425,45 +407,114 @@ export async function getStudentStatsCard(user: any): Promise<{ html: string; ke
     `, [user.id, user.class_id])
   ]);
 
-  const lcSolved = lcRes.rows[0]?.total_solved ? Number(lcRes.rows[0].solved_today) : 0;
-  const lcTotal = lcRes.rows[0]?.total_solved ? Number(lcRes.rows[0].total_solved) : 0;
+  const lcSolved = Number(lcRes.rows[0]?.solved_today) || 0;
+  const lcTarget = Number(lcTargetRes.rows[0]?.daily_target) || 0;
   const ghCommits = Number(ghRes.rows[0]?.daily_commit_count) || 0;
   const totalTasks = Number(tasksRes.rows[0]?.total_assigned) || 0;
   const completedTasks = Number(tasksRes.rows[0]?.completed_tasks) || 0;
   const pendingTasks = Math.max(0, totalTasks - completedTasks);
 
-  let html = `📊 <b>STUDENT PERFORMANCE SCORECARD</b>\n`;
-  html += `👤 <b>${escapeHtml(user.full_name)}</b>\n`;
-  html += `🆔 <b>Register No:</b> <code>${escapeHtml(user.register_number)}</code>\n`;
-  html += `🏫 <b>Section:</b> ${escapeHtml(user.class_name || 'IT Section')}\n`;
-  html += `─────────────────────────\n\n`;
-
-  html += `🧩 <b>LeetCode Activity:</b>\n`;
-  html += `   • Solved Today: <b>${lcSolved}</b> problems\n`;
-  html += `   • Total Solved: <b>${lcTotal}</b> problems\n\n`;
-
-  html += `💻 <b>GitHub Activity:</b>\n`;
-  html += `   • Commits Today: <b>${ghCommits}</b> commits\n\n`;
-
-  html += `📋 <b>Assignments & Tasks:</b>\n`;
-  html += `   • Completed: <b>${completedTasks}</b> / ${totalTasks}\n`;
-  html += `   • Pending: <b>${pendingTasks}</b> assignment(s)\n`;
-  if (totalTasks > 0) {
-    html += `   • Progress: ${makeProgressBar(completedTasks, totalTasks, 8)}\n`;
+  let overall = 'Good Progress';
+  if (pendingTasks === 0 && (lcTarget === 0 || lcSolved >= lcTarget)) {
+    overall = '🔥 All Targets Met!';
+  } else if (pendingTasks > 0 && lcSolved === 0 && ghCommits === 0) {
+    overall = '⚠️ Needs Attention';
   }
 
+  let html = `📊 <b>MY PROGRESS</b>\n\n`;
+  html += `📋 <b>Tasks:</b>      <b>${completedTasks}/${totalTasks}</b>\n`;
+  html += `🧩 <b>LeetCode:</b>   <b>${lcSolved}/${lcTarget || '—'}</b>\n`;
+  html += `💻 <b>GitHub:</b>     <b>${ghCommits}</b> commit${ghCommits === 1 ? '' : 's'}\n\n`;
+  html += `🎯 <b>Overall:</b> ${overall}\n\n`;
+
+  if (pendingTasks > 0) {
+    html += `⏳ <i>${pendingTasks} task${pendingTasks === 1 ? '' : 's'} remaining</i>\n`;
+  } else {
+    html += `✨ <i>All tasks completed! 🎉</i>\n`;
+  }
   html += getWatermarkHtml();
 
   const keyboard = {
     inline_keyboard: [
       [
-        { text: '🧩 LeetCode Details', callback_data: 'cb_leetcode' },
-        { text: '💻 GitHub Details', callback_data: 'cb_github' }
+        { text: '📋 View Tasks', callback_data: 'cb_tasks' },
+        { text: '🔄 Refresh Progress', callback_data: 'cb_stats' }
       ],
       [
-        { text: '📋 View Pending Tasks', callback_data: 'cb_tasks' }
+        { text: '📱 Main Menu', callback_data: 'cb_menu' },
+        { text: '🌐 Open Portal', url: getPortalUrl() }
+      ]
+    ]
+  };
+
+  return { html, keyboard };
+}
+
+/**
+ * 👤 Profile Card for a Student
+ */
+export async function getProfileCard(user: any): Promise<{ html: string; keyboard: any }> {
+  let html = `👤 <b>MY PROFILE</b>\n\n`;
+  html += `• <b>Name:</b> ${escapeHtml(user.full_name)}\n`;
+  html += `• <b>Register No:</b> <code>${escapeHtml(user.register_number || user.username)}</code>\n`;
+  html += `• <b>Class:</b> ${escapeHtml(user.class_name || 'IT Section')}\n`;
+  html += `• <b>Role:</b> ${escapeHtml(user.role)}\n`;
+  html += `• <b>Telegram:</b> 🟢 Connected\n`;
+  html += getWatermarkHtml();
+
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: '🌐 Open Full Profile on Portal', url: getPortalUrl() }
       ],
       [
+        { text: '📱 Main Menu', callback_data: 'cb_menu' }
+      ]
+    ]
+  };
+
+  return { html, keyboard };
+}
+
+/**
+ * 📋 Faculty Task Status Card
+ */
+export async function getFacultyTaskStatusCard(): Promise<{ html: string; keyboard: any }> {
+  const tasksRes = await pool.query(`
+    SELECT t.id, t.title, t.deadline,
+           COUNT(DISTINCT tc.class_id) as class_count,
+           COUNT(DISTINCT ts.id) FILTER (WHERE ts.status IN ('SUBMITTED', 'VERIFIED')) as completed_count
+    FROM tasks t
+    LEFT JOIN task_classes tc ON tc.task_id = t.id
+    LEFT JOIN task_submissions ts ON ts.task_id = t.id
+    WHERE t.status = 'OPEN' AND (t.deadline IS NULL OR t.deadline >= CURRENT_TIMESTAMP)
+    GROUP BY t.id, t.title, t.deadline
+    ORDER BY t.deadline ASC NULLS LAST
+    LIMIT 6
+  `);
+
+  let html = `📋 <b>ACTIVE TASK STATUS OVERVIEW</b>\n\n`;
+  if (tasksRes.rows.length === 0) {
+    html += `✨ <i>No active assignments currently open.</i>\n`;
+  } else {
+    tasksRes.rows.forEach((t, i) => {
+      const dStr = t.deadline
+        ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
+        : 'No deadline';
+      html += `${i + 1}. 📌 <b>${escapeHtml(t.title)}</b>\n`;
+      html += `   ⏰ Due: <i>${dStr}</i> | ✅ Submissions: <b>${t.completed_count}</b>\n\n`;
+    });
+  }
+  html += getWatermarkHtml();
+
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: '📢 Group Summary', callback_data: 'cb_summary' },
+        { text: '⚠️ Defaulters', callback_data: 'cb_defaulters' }
+      ],
+      [
+        { text: '📱 Main Menu', callback_data: 'cb_menu' },
         { text: '🌐 Open Portal', url: getPortalUrl() }
       ]
     ]
@@ -1004,7 +1055,7 @@ export async function getDefaultersCard(scopeText?: string): Promise<{ html: str
  */
 export async function getTasksCard(user: any): Promise<{ html: string; keyboard: any }> {
   const tasksRes = await pool.query(`
-    SELECT t.id, t.title, t.category, t.deadline
+    SELECT t.id, t.title, t.category, t.deadline, ts.status as submission_status
     FROM tasks t
     JOIN task_classes tc ON tc.task_id = t.id
     LEFT JOIN task_submissions ts ON ts.task_id = t.id AND ts.user_id = $1
@@ -1017,26 +1068,25 @@ export async function getTasksCard(user: any): Promise<{ html: string; keyboard:
 
   let html = '';
   if (tasksRes.rows.length === 0) {
-    html = `🎉 <b>Great job, ${escapeHtml(user.full_name)}!</b>\nYou have no pending assignments right now. You are completely up to date!\n${getWatermarkHtml()}`;
+    html = `📋 <b>MY TASKS</b>\n\n🎉 <b>All caught up, ${escapeHtml(user.full_name)}!</b>\nYou have no pending assignments right now. ✨\n${getWatermarkHtml()}`;
   } else {
-    html = `📋 <b>YOUR PENDING ASSIGNMENTS (${tasksRes.rows.length}):</b>\n\n`;
+    html = `📋 <b>MY PENDING TASKS (${tasksRes.rows.length}):</b>\n\n`;
     tasksRes.rows.forEach((t, i) => {
       const dStr = t.deadline
         ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
         : 'No deadline';
+      const statusStr = t.submission_status === 'REJECTED' ? '❌ Rejected (Needs Resubmission)' : '⏳ Pending';
       html += `${i + 1}. 📌 <b>${escapeHtml(t.title)}</b>\n`;
-      if (t.category) html += `   📂 <code>${escapeHtml(t.category)}</code>\n`;
-      html += `   ⏰ <i>Due:</i> ${dStr}\n\n`;
+      html += `   ⏰ <b>Deadline:</b> <i>${dStr}</i>\n`;
+      html += `   📊 <b>Status:</b> ${statusStr}\n\n`;
     });
-    html += `👉 <i>Please complete and upload your submission proof before the deadline!</i>\n`;
     html += getWatermarkHtml();
   }
 
   const keyboard = {
     inline_keyboard: [
       [
-        { text: '🌐 Submit on Portal', url: getPortalUrl() },
-        { text: '🧩 My LeetCode', callback_data: 'cb_leetcode' }
+        { text: '🌐 Open / Submit on Portal', url: getPortalUrl() }
       ],
       [
         { text: '📱 Main Menu', callback_data: 'cb_menu' }
@@ -1658,11 +1708,23 @@ export function startTelegramPoller(): void {
             } else if (cbData === 'cb_stats') {
               const card = await getStudentStatsCard(user);
               await sendTelegramMessage(cbChatId, card.html, { reply_markup: card.keyboard });
+            } else if (cbData === 'cb_profile') {
+              const card = await getProfileCard(user);
+              await sendTelegramMessage(cbChatId, card.html, { reply_markup: card.keyboard });
             } else if (cbData === 'cb_defaulters') {
               const card = await getDefaultersCard();
               await sendTelegramMessage(cbChatId, card.html, { reply_markup: card.keyboard });
             } else if (cbData === 'cb_summary') {
               await sendGroupSummary(String(cbChatId));
+            } else if (cbData === 'cb_task_status') {
+              const card = await getFacultyTaskStatusCard();
+              await sendTelegramMessage(cbChatId, card.html, { reply_markup: card.keyboard });
+            } else if (cbData === 'cb_search_help') {
+              await sendTelegramMessage(
+                cbChatId,
+                `🔎 <b>STUDENT SEARCH GUIDE</b>\n\nTo check any student's scorecard instantly, simply reply with their 12-digit Register Number or Username:\n<code>/check 922524205171</code>\n\n<i>You can also directly send the register number into the chat without any command prefix!</i>\n${getWatermarkHtml()}`,
+                { reply_markup: getInteractiveMenuKeyboard(user?.role) }
+              );
             } else if (cbData === 'cb_menu') {
               const keyboard = getInteractiveMenuKeyboard(user?.role);
               await sendTelegramMessage(
