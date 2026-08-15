@@ -7843,12 +7843,15 @@ export default function App() {
                         Section / Class {leetcodeSortColumn === 'className' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
                       </th>
                       <th className="px-6 py-4">GitHub Profile</th>
-                      <th onClick={() => handleSortHeader('commitsToday')} className="px-6 py-4 text-center cursor-pointer select-none">
-                        Commits Today {leetcodeSortColumn === 'commitsToday' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
-                      </th>
-                      <th onClick={() => handleSortHeader('commitsThisWeek')} className="px-6 py-4 text-center cursor-pointer select-none">
-                        Commits This Week {leetcodeSortColumn === 'commitsThisWeek' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
-                      </th>
+                      {leetcodeViewType === 'DAILY' ? (
+                        <th onClick={() => handleSortHeader('commitsToday')} className="px-6 py-4 text-center cursor-pointer select-none">
+                          Commits Today {leetcodeSortColumn === 'commitsToday' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                      ) : (
+                        <th onClick={() => handleSortHeader('commitsThisWeek')} className="px-6 py-4 text-center cursor-pointer select-none">
+                          Commits This Week {leetcodeSortColumn === 'commitsThisWeek' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                      )}
                       <th onClick={() => handleSortHeader('syncStatus')} className="px-6 py-4 text-center cursor-pointer select-none">
                         Sync Status {leetcodeSortColumn === 'syncStatus' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
                       </th>
@@ -7857,7 +7860,7 @@ export default function App() {
                   <tbody className="divide-y divide-zinc-200 text-sm">
                     {sortedGithubProgressList.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-12 text-center text-zinc-400 font-semibold">
+                        <td colSpan={6} className="px-6 py-12 text-center text-zinc-400 font-semibold">
                           No GitHub student records match the selected filters.
                         </td>
                       </tr>
@@ -7896,17 +7899,20 @@ export default function App() {
                                 <span className="text-xs text-zinc-400 font-medium">Not Linked</span>
                               )}
                             </td>
-                            <td className="px-6 py-4 text-center">
-                              <span className={cn(
-                                "font-bold text-sm",
-                                commitsToday > 0 ? "text-emerald-600 font-extrabold" : "text-zinc-400"
-                              )}>
-                                {commitsToday}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-center font-bold text-zinc-800">
-                              {commitsThisWeek}
-                            </td>
+                            {leetcodeViewType === 'DAILY' ? (
+                              <td className="px-6 py-4 text-center">
+                                <span className={cn(
+                                  "font-bold text-sm",
+                                  commitsToday > 0 ? "text-emerald-600 font-extrabold" : "text-zinc-400"
+                                )}>
+                                  {commitsToday}
+                                </span>
+                              </td>
+                            ) : (
+                              <td className="px-6 py-4 text-center font-bold text-zinc-800">
+                                {commitsThisWeek}
+                              </td>
+                            )}
                             <td className="px-6 py-4 text-center">
                               <span className={cn(
                                 "inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full",
