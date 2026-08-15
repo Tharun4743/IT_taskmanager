@@ -5710,8 +5710,8 @@ export default function App() {
           currentRowNum++;
         });
 
-        const lastUsedRow = currentRowNum - 1;
-        const lastUsedCol = cols.length;
+        let lastUsedRow = currentRowNum - 1;
+        let lastUsedCol = cols.length;
 
         // Auto-fit column widths strictly for actual columns 1 to lastUsedCol
         cols.forEach((colName, cIdx) => {
@@ -5727,17 +5727,47 @@ export default function App() {
           col.width = Math.min(Math.max(maxLen + 4, cIdx < 2 ? 14 : 12), 45);
         });
 
-        // Hide all unused rows below the report table so the worksheet visually terminates at lastUsedRow
-        for (let r = lastUsedRow + 1; r <= lastUsedRow + 1000; r++) {
-          const row = worksheet.getRow(r);
-          row.height = 15;
-          row.hidden = true;
+        // Calculate actual last used row and column based on populated cells
+        let actualLastRow = 0;
+        let actualLastCol = 0;
+        worksheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+          let rowHasValue = false;
+          row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+            if (cell.value !== null && cell.value !== undefined && cell.value !== '') {
+              rowHasValue = true;
+              if (colNumber > actualLastCol) {
+                actualLastCol = colNumber;
+              }
+            }
+          });
+          if (rowHasValue && rowNumber > actualLastRow) {
+            actualLastRow = rowNumber;
+          }
+        });
+        if (actualLastRow === 0) actualLastRow = lastUsedRow || 1;
+        if (actualLastCol === 0) actualLastCol = lastUsedCol || 1;
+
+        // Trim trailing generated/instantiated rows after that boundary where safely supported
+        if (worksheet.rowCount > actualLastRow) {
+          try {
+            worksheet.spliceRows(actualLastRow + 1, worksheet.rowCount - actualLastRow);
+          } catch (e) {
+            console.warn('[Excel Export] Error splicing rows:', e);
+          }
         }
 
-        // Hide all unused columns to the right so the worksheet visually terminates at lastUsedCol
-        for (let c = lastUsedCol + 1; c <= lastUsedCol + 100; c++) {
-          worksheet.getColumn(c).hidden = true;
+        // Trim trailing generated/instantiated columns after that boundary where safely supported
+        if (worksheet.columnCount > actualLastCol) {
+          try {
+            worksheet.spliceColumns(actualLastCol + 1, worksheet.columnCount - actualLastCol);
+          } catch (e) {
+            console.warn('[Excel Export] Error splicing columns:', e);
+          }
         }
+
+        // Use actual boundaries for print setup
+        lastUsedRow = actualLastRow;
+        lastUsedCol = actualLastCol;
 
         // Set Print Area and page boundary strictly to exact report range (e.g. A1:F55)
         const lastColLetter = getExcelColumnName(lastUsedCol);
