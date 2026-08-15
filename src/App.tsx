@@ -3936,6 +3936,22 @@ export default function App() {
     });
   }, [githubProgressList, leetcodeSortColumn, leetcodeSortOrder, leetcodeViewType]);
 
+const githubTop3 = useMemo(() => {
+    const isDaily = leetcodeViewType === 'DAILY';
+    return [...githubProgressList]
+      .filter(s => {
+        const count = isDaily ? (s.commitsToday ?? 0) : (s.commitsThisWeek ?? 0);
+        return count > 0;
+      })
+      .sort((a, b) => {
+        const countA = isDaily ? (a.commitsToday ?? 0) : (a.commitsThisWeek ?? 0);
+        const countB = isDaily ? (b.commitsToday ?? 0) : (b.commitsThisWeek ?? 0);
+        if (countB !== countA) return countB - countA;
+        return (a.fullName || '').localeCompare(b.fullName || '');
+      })
+      .slice(0, 3);
+  }, [githubProgressList, leetcodeViewType]);
+
   const sortedCombinedProgressList = useMemo(() => {
     return [...combinedProgressList].sort((a, b) => {
       let valA: any = '';
@@ -7836,12 +7852,70 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
         {/* ─── GITHUB TRACKER VIEW ─── */}
         {codingPlatformTab === 'GITHUB' && (
           <div>
-            {/* GitHub Stat Cards */}
+{/* GitHub Stat Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <StatCard title="Total Students" value={githubStats?.totalStudents || githubProgressList.length || 0} color="purple" icon={<Zap />} />
               <StatCard title="Active Committers Today" value={githubStats?.activeCommitters || 0} color="emerald" icon={<Terminal />} />
-              <StatCard title="Total Commits Today" value={githubStats?.commitsToday || 0} color="blue" icon={<TrendingUp />} />
-              <StatCard title="Total Commits This Week" value={githubStats?.commitsThisWeek || 0} color="indigo" icon={<Activity />} />
+              
+              {/* Top 3 Leaderboard Card */}
+              <Card className="p-4 border border-zinc-200 bg-white shadow-xs sm:col-span-2 lg:col-span-2 flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <Trophy size={16} className="text-amber-500 animate-pulse" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                      GitHub Top 3 Leaderboard ({leetcodeViewType === 'DAILY' ? 'Today' : 'This Week'})
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                    Champions
+                  </span>
+                </div>
+                
+                <div className="grid grid-cols-3 gap-2 flex-1 items-center">
+                  {githubTop3.length === 0 ? (
+                    <div className="col-span-3 text-center py-2 text-zinc-400 text-xs font-semibold">
+                      No commits recorded {leetcodeViewType === 'DAILY' ? 'today' : 'this week'} yet.
+                    </div>
+                  ) : (
+                    [0, 1, 2].map((index) => {
+                      const item = githubTop3[index];
+                      if (!item) {
+                        return (
+                          <div key={index} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-dashed border-zinc-200 bg-zinc-50/50 justify-center">
+                            <span className="text-[10px] font-bold text-zinc-300">#{index + 1} Empty</span>
+                          </div>
+                        );
+                      }
+                      
+                      const commits = leetcodeViewType === 'DAILY' ? (item.commitsToday ?? 0) : (item.commitsThisWeek ?? 0);
+                      const rankColors = index === 0 ? "bg-amber-100 text-amber-800 border-amber-200" :
+                                         index === 1 ? "bg-slate-100 text-slate-700 border-slate-200" :
+                                         "bg-orange-100 text-orange-800 border-orange-200";
+                      
+                      const rankEmoji = index === 0 ? "🥇" : index === 1 ? "🥈" : "🥉";
+
+                      return (
+                        <div key={item.studentId || index} className="flex items-center gap-2 p-2 rounded-xl border border-zinc-100 bg-zinc-50/80 shadow-2xs hover:bg-zinc-50 transition-colors">
+                          <span className={cn(
+                            "w-6 h-6 rounded-full flex items-center justify-center text-xs font-black border",
+                            rankColors
+                          )}>
+                            {rankEmoji}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-zinc-800 truncate" title={item.fullName}>
+                              {item.fullName}
+                            </p>
+                            <p className="text-[10px] font-bold text-indigo-600">
+                              {commits} {commits === 1 ? 'commit' : 'commits'}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </Card>
             </div>
 
             {/* Row 1: View Controls & Date */}

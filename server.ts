@@ -4189,7 +4189,23 @@ async function startServer() {
     const userId = req.user.id;
     const { github, leetcode, hackerrank, codechef, geeksforgeeks, linkedin, portfolio } = req.body;
 
-    const profileFields = { github, leetcode, hackerrank, codechef, geeksforgeeks, linkedin, portfolio };
+    const githubClean = github ? github.trim() : '';
+    const leetcodeClean = leetcode ? leetcode.trim() : '';
+    const hackerrankClean = hackerrank ? hackerrank.trim() : '';
+    const codechefClean = codechef ? codechef.trim() : '';
+    const geeksforgeeksClean = geeksforgeeks ? geeksforgeeks.trim() : '';
+    const linkedinClean = linkedin ? linkedin.trim() : '';
+    const portfolioClean = portfolio ? portfolio.trim() : '';
+
+    const profileFields = {
+      github: githubClean,
+      leetcode: leetcodeClean,
+      hackerrank: hackerrankClean,
+      codechef: codechefClean,
+      geeksforgeeks: geeksforgeeksClean,
+      linkedin: linkedinClean,
+      portfolio: portfolioClean
+    };
     for (const [key, value] of Object.entries(profileFields)) {
       if (value && !isValidLink(value)) {
         return res.status(400).json({ error: `Invalid URL or username format for ${key}` });
@@ -4210,17 +4226,17 @@ async function startServer() {
         portfolio = EXCLUDED.portfolio,
         updated_at = NOW()
       RETURNING *
-    `, [userId, github || '', leetcode || '', hackerrank || '', codechef || '', geeksforgeeks || '', linkedin || '', portfolio || '']);
+    `, [userId, githubClean, leetcodeClean, hackerrankClean, codechefClean, geeksforgeeksClean, linkedinClean, portfolioClean]);
 
     // 2. Update users table with leetcode_url & github_url
     await pool.query(`
       UPDATE users 
       SET leetcode_url = $1, github_url = $2, updated_at = NOW()
       WHERE id = $3
-    `, [leetcode || '', github || '', userId]);
+    `, [leetcodeClean, githubClean, userId]);
 
     // 3. Update in-memory caches and write to studentDirectory JSON/CSV on disk
-    updateStudentCodingProfileInDirectory(userId, leetcode || '', github || '');
+    updateStudentCodingProfileInDirectory(userId, leetcodeClean, githubClean);
 
     // 4. Trigger immediate background sync for LeetCode & GitHub for this student
     syncLeetcodeProgressForScope({ userId }).catch(err => console.error('[LeetCode Sync] Immediate sync error on profile update:', err));
