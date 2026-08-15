@@ -1207,7 +1207,7 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
   try {
     const dateStr = getISTDateStr();
 
-    const [tasksRes, studentsRes, lcRes, ghRes, lcIncompleteRes] = await Promise.all([
+const [tasksRes, studentsRes, lcRes, ghRes, lcIncompleteRes, topGhRes, topLcRes] = await Promise.all([
       pool.query(`
         SELECT t.id, t.title, t.category, t.deadline, t.status,
                COUNT(DISTINCT tc.class_id) as class_count,
@@ -1241,6 +1241,22 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
           AND lt.daily_target > 0
           AND COALESCE(lp.solved_today, 0) < lt.daily_target
         ORDER BY c.name, u.register_number ASC
+      `, [dateStr]),
+      pool.query(`
+        SELECT u.full_name, COALESCE(gh.daily_commit_count, 0) as commits_today
+        FROM users u
+        JOIN github_daily_commits gh ON gh.student_id = u.id AND gh.date = $1
+        WHERE u.role = 'STUDENT' AND gh.daily_commit_count > 0
+        ORDER BY gh.daily_commit_count DESC, u.full_name ASC
+        LIMIT 3
+      `, [dateStr]),
+      pool.query(`
+        SELECT u.full_name, COALESCE(lp.solved_today, 0) as solved_today
+        FROM users u
+        JOIN leetcode_daily_progress lp ON lp.user_id = u.id AND lp.date = $1
+        WHERE u.role = 'STUDENT' AND lp.solved_today > 0
+        ORDER BY lp.solved_today DESC, u.full_name ASC
+        LIMIT 3
       `, [dateStr])
     ]);
 
@@ -1256,9 +1272,30 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
     html += `👥 <b>Total Students:</b> ${totalStudents} | 📱 <b>Telegram Linked:</b> ${linkedTelegram}\n`;
     html += `─────────────────────────\n\n`;
 
-    html += `🚀 <b>Today's Coding Highlights:</b>\n`;
+html += `🚀 <b>Today's Coding Highlights:</b>\n`;
     html += `• 🧩 <b>LeetCode:</b> <b>${lcTotalSolved}</b> problems solved (${lcSolvers} active solvers)\n`;
-    html += `• 💻 <b>GitHub:</b> <b>${ghTotalCommits}</b> commits pushed (${ghCommitters} active committers)\n`;
+    html += `• 💻 <b>GitHub:</b> <b>${ghTotalCommits}</b> commits pushed (${ghCommitters} active committers)\n\n`;
+
+    html += `🏆 <b>TODAY'S CODING LEADERBOARDS:</b>\n`;
+    html += `💻 <b>GitHub Top Committers:</b>\n`;
+    if (topGhRes.rows.length === 0) {
+      html += `   <i>No commits recorded today.</i>\n`;
+    } else {
+      topGhRes.rows.forEach((r, idx) => {
+        const rankEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
+        html += `   ${rankEmoji} ${escapeHtml(r.full_name)} (<code>${r.commits_today}</code> commits)\n`;
+      });
+    }
+    html += `🧩 <b>LeetCode Top Solvers:</b>\n`;
+    if (topLcRes.rows.length === 0) {
+      html += `   <i>No problems solved today.</i>\n`;
+    } else {
+      topLcRes.rows.forEach((r, idx) => {
+        const rankEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
+        html += `   ${rankEmoji} ${escapeHtml(r.full_name)} (<code>${r.solved_today}</code> solved)\n`;
+      });
+    }
+    html += `─────────────────────────\n\n`;
 
     // LeetCode Incomplete / Defaulters
     if (lcIncompleteRes.rows.length > 0) {
@@ -1713,7 +1750,8 @@ export function startTelegramPoller(): void {
             helpHtml += `• <code>/tasks</code> - View pending assignments\n`;
             helpHtml += `• <code>/leetcode</code> (or <code>/lc</code>) - Daily LeetCode progress & targets\n`;
             helpHtml += `• <code>/github</code> (or <code>/gh</code>) - Daily GitHub commits & targets\n`;
-            helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
+helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
+            helpHtml += `• <code>/leaderboard</code> (or <code>/top</code>) - Daily coding leaderboards\n`;
             helpHtml += `• <code>/status</code> - Connected profile info\n`;
             helpHtml += `• <code>/unlink</code> - Disconnect account\n`;
 
@@ -1794,6 +1832,66 @@ export function startTelegramPoller(): void {
                 return;
               }
             }
+          }
+
+// Command: /leaderboard or /top or /rank
+          if (text.startsWith('/leaderboard') || text.startsWith('/top') || text.startsWith('/rank')) {
+            const dateStr = getISTDateStr();
+            try {
+              const [ghRes, lcRes] = await Promise.all([
+                pool.query(`
+                  SELECT u.full_name, COALESCE(gh.daily_commit_count, 0) as commits_today
+                  FROM users u
+                  JOIN github_daily_commits gh ON gh.student_id = u.id AND gh.date = $1
+                  WHERE u.role = 'STUDENT' AND gh.daily_commit_count > 0
+                  ORDER BY gh.daily_commit_count DESC, u.full_name ASC
+                  LIMIT 3
+                `, [dateStr]),
+                pool.query(`
+                  SELECT u.full_name, COALESCE(lp.solved_today, 0) as solved_today
+                  FROM users u
+                  JOIN leetcode_daily_progress lp ON lp.user_id = u.id AND lp.date = $1
+                  WHERE u.role = 'STUDENT' AND lp.solved_today > 0
+                  ORDER BY lp.solved_today DESC, u.full_name ASC
+                  LIMIT 3
+                `, [dateStr])
+              ]);
+
+              let leadHtml = `🏆 <b>TODAY'S CODING LEADERBOARD</b> 🏆\n`;
+              leadHtml += `📅 <i>${dateStr} (IST)</i>\n`;
+              leadHtml += `─────────────────────────\n\n`;
+
+              leadHtml += `💻 <b>GitHub Top 3 Committers:</b>\n`;
+              if (ghRes.rows.length === 0) {
+                leadHtml += `   <i>No commits recorded today yet.</i>\n`;
+              } else {
+                ghRes.rows.forEach((r, idx) => {
+                  const rankEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
+                  leadHtml += `   ${rankEmoji} <b>${escapeHtml(r.full_name)}</b> — <code>${r.commits_today}</code> commits\n`;
+                });
+              }
+              leadHtml += `\n`;
+
+              leadHtml += `🧩 <b>LeetCode Top 3 Solvers:</b>\n`;
+              if (lcRes.rows.length === 0) {
+                leadHtml += `   <i>No problems solved today yet.</i>\n`;
+              } else {
+                lcRes.rows.forEach((r, idx) => {
+                  const rankEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
+                  leadHtml += `   ${rankEmoji} <b>${escapeHtml(r.full_name)}</b> — <code>${r.solved_today}</code> solved\n`;
+                });
+              }
+              
+              leadHtml += `\n─────────────────────────\n`;
+              leadHtml += `💡 <i>Keep coding and push your code to reach the top!</i> 🚀\n`;
+              leadHtml += getWatermarkHtml();
+
+              await sendTelegramMessage(chatId, leadHtml);
+            } catch (err: any) {
+              console.error('[Telegram] leaderboard command error:', err);
+              await sendTelegramMessage(chatId, `⚠️ Failed to fetch leaderboard: ${err.message}\n${getWatermarkHtml()}`);
+            }
+            return;
           }
 
           // Command: /leetcode or /lc
