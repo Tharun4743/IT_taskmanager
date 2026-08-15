@@ -39,7 +39,6 @@ import {
   notifySubmissionBatchVerified,
   linkStudentTelegram
 } from './telegramService.js';
-import * as XLSX from 'xlsx';
 
 function isValidStrictUrl(urlString: string | null | undefined): boolean {
   if (!urlString) return true;
@@ -6416,9 +6415,6 @@ async function startServer() {
       };
     });
   }
-
-  // Alias for backward compatibility
-  const enrichStudentGitHubProgressBatch = enrichStudentGitHubDailyCommitsBatch;
 
   // ── GitHub REST API Routes ───────────────────────────────────────────────────
 

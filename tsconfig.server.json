@@ -11,7 +11,12 @@
   },
   "include": [
     "server.ts",
-    "db.ts"
+    "db.ts",
+    "telegramService.ts",
+    "studentDirectoryService.ts",
+    "imageCleanupService.ts",
+    "dbBackupService.ts",
+    "sentryService.ts"
   ],
   "exclude": [
     "node_modules",
