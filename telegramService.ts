@@ -420,6 +420,448 @@ export async function getStudentStatsCard(user: any): Promise<{ html: string; ke
 }
 
 /**
+ * 📊 Comprehensive Student Performance & Progress Card (By Register No / Identifier)
+ */
+export async function getComprehensiveStudentProgressCard(identifierOrUser: string | any): Promise<{ found: boolean; html: string; keyboard?: any }> {
+  let user = typeof identifierOrUser === 'object' && identifierOrUser !== null ? identifierOrUser : null;
+
+  if (!user && typeof identifierOrUser === 'string') {
+    const rawClean = identifierOrUser.trim();
+    const cleanNoSpaces = rawClean.replace(/\s+/g, '').toLowerCase();
+
+    const res = await pool.query(`
+      SELECT u.id, u.full_name, u.register_number, u.username, u.role, u.class_id, u.leetcode_url, u.github_url,
+             c.name as class_name, d.name as dept_name
+      FROM users u
+      LEFT JOIN classes c ON u.class_id = c.id
+      LEFT JOIN departments d ON u.department_id = d.id
+      WHERE REPLACE(LOWER(u.register_number), ' ', '') = $1
+         OR REPLACE(LOWER(u.username), ' ', '') = $1
+         OR REPLACE(LOWER(u.email), ' ', '') = $1
+         OR LOWER(u.register_number) = LOWER($2)
+         OR LOWER(u.username) = LOWER($2)
+      LIMIT 1
+    `, [cleanNoSpaces, rawClean]);
+
+    if (res.rows.length === 0) {
+      return {
+        found: false,
+        html: `⚠️ <b>Student Not Found</b>\n\nNo student found matching Register Number or Username: <code>${escapeHtml(rawClean)}</code>\n\nPlease verify the Register Number and try again.\n${getWatermarkHtml()}`
+      };
+    }
+    user = res.rows[0];
+  }
+
+  if (!user) {
+    return {
+      found: false,
+      html: `⚠️ <b>Student Not Specified</b>\n\nPlease provide a valid Register Number.\n${getWatermarkHtml()}`
+    };
+  }
+
+  const dateStr = getISTDateStr();
+  const week = getWeekRange(dateStr);
+
+  const [lcDailyRes, lcWeeklyRes, lcTargetRes, ghDailyRes, ghWeeklyRes, ghTargetRes, tasksAssignedRes, activePendingTasksRes] = await Promise.all([
+    pool.query(`SELECT solved_today, solved_yesterday, total_solved, status FROM leetcode_daily_progress WHERE user_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
+    pool.query(`SELECT SUM(solved_today) as solved_week FROM leetcode_daily_progress WHERE user_id = $1 AND date >= $2 AND date <= $3`, [user.id, week.start, week.end]),
+    pool.query(`
+      SELECT daily_target, weekly_target FROM leetcode_targets
+      WHERE start_date <= $1 AND end_date >= $1 AND (user_id = $2 OR class_id = $3 OR class_id IS NULL)
+      ORDER BY CASE WHEN user_id IS NOT NULL THEN 1 WHEN class_id IS NOT NULL THEN 2 ELSE 3 END ASC
+      LIMIT 1
+    `, [dateStr, user.id, user.class_id]),
+
+    pool.query(`SELECT commits_today, new_repos_today, total_repos, sync_status FROM github_daily_progress WHERE user_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
+    pool.query(`SELECT SUM(commits_today) as commits_week, SUM(new_repos_today) as repos_week FROM github_daily_progress WHERE user_id = $1 AND date >= $2 AND date <= $3`, [user.id, week.start, week.end]),
+    pool.query(`
+      SELECT daily_commit_target, weekly_commit_target, daily_repo_target, weekly_repo_target FROM github_targets
+      WHERE start_date <= $1 AND end_date >= $1 AND (user_id = $2 OR class_id = $3 OR class_id IS NULL)
+      ORDER BY CASE WHEN user_id IS NOT NULL THEN 1 WHEN class_id IS NOT NULL THEN 2 ELSE 3 END ASC
+      LIMIT 1
+    `, [dateStr, user.id, user.class_id]),
+
+    pool.query(`
+      SELECT 
+        COUNT(t.id) as total_assigned,
+        COUNT(ts.id) FILTER (WHERE ts.status IN ('SUBMITTED', 'VERIFIED')) as completed_tasks
+      FROM task_classes tc
+      JOIN tasks t ON t.id = tc.task_id
+      LEFT JOIN task_submissions ts ON ts.task_id = t.id AND ts.user_id = $1
+      WHERE tc.class_id = $2
+    `, [user.id, user.class_id]),
+
+    pool.query(`
+      SELECT t.id, t.title, t.category, t.deadline
+      FROM task_classes tc
+      JOIN tasks t ON t.id = tc.task_id
+      LEFT JOIN task_submissions ts ON ts.task_id = t.id AND ts.user_id = $1 AND ts.status IN ('SUBMITTED', 'VERIFIED')
+      WHERE tc.class_id = $2
+        AND t.status = 'OPEN'
+        AND (t.deadline IS NULL OR t.deadline >= CURRENT_TIMESTAMP)
+        AND ts.id IS NULL
+      ORDER BY t.deadline ASC NULLS LAST
+      LIMIT 3
+    `, [user.id, user.class_id])
+  ]);
+
+  // LeetCode calculations
+  const lcDaily = lcDailyRes.rows[0];
+  const lcSolvedToday = lcDaily?.total_solved !== null && lcDaily?.total_solved !== undefined ? Number(lcDaily.solved_today) : 0;
+  const lcTotalSolved = lcDaily?.total_solved ? Number(lcDaily.total_solved) : 0;
+  const lcSolvedWeek = Number(lcWeeklyRes.rows[0]?.solved_week) || 0;
+  const lcDailyTarget = Number(lcTargetRes.rows[0]?.daily_target) || 0;
+  const lcWeeklyTarget = Number(lcTargetRes.rows[0]?.weekly_target) || 0;
+
+  const lcDailyStatus = lcDailyTarget > 0 
+    ? (lcSolvedToday >= lcDailyTarget ? '✅ Completed' : '⏳ In Progress') 
+    : '⚪ No Target';
+
+  // GitHub calculations
+  const ghDaily = ghDailyRes.rows[0];
+  const ghCommitsToday = ghDaily?.sync_status === 'SUCCESS' ? Number(ghDaily.commits_today) : 0;
+  const ghTotalRepos = ghDaily?.total_repos ? Number(ghDaily.total_repos) : 0;
+  const ghCommitsWeek = Number(ghWeeklyRes.rows[0]?.commits_week) || 0;
+  const ghDailyTarget = Number(ghTargetRes.rows[0]?.daily_commit_target) || 0;
+  const ghWeeklyTarget = Number(ghTargetRes.rows[0]?.weekly_commit_target) || 0;
+
+  const ghDailyStatus = ghDailyTarget > 0
+    ? (ghCommitsToday >= ghDailyTarget ? '✅ Completed' : '⏳ In Progress')
+    : '⚪ No Target';
+
+  // Tasks calculations
+  const totalTasks = Number(tasksAssignedRes.rows[0]?.total_assigned) || 0;
+  const completedTasks = Number(tasksAssignedRes.rows[0]?.completed_tasks) || 0;
+  const taskProgress = totalTasks > 0 ? makeProgressBar(completedTasks, totalTasks, 8) : '[░░░░░░░░] 0%';
+  const pendingTasksList = activePendingTasksRes.rows;
+
+  let html = `📊 <b>STUDENT COMPREHENSIVE PERFORMANCE CARD</b>\n`;
+  html += `👤 <b>${escapeHtml(user.full_name)}</b>\n`;
+  html += `🆔 <b>Register No:</b> <code>${escapeHtml(user.register_number || user.username)}</code>\n`;
+  html += `🏫 <b>Class:</b> ${escapeHtml(user.class_name || 'IT Department')}\n`;
+  html += `📅 <b>Date:</b> <i>${dateStr} (IST)</i>\n`;
+  html += `─────────────────────────\n\n`;
+
+  html += `📝 <b>Academic Tasks Progress:</b>\n`;
+  html += `• Completed: <b>${completedTasks}</b> / ${totalTasks} ${taskProgress}\n`;
+  if (pendingTasksList.length === 0) {
+    html += `• ✨ <i>Status: All active assignments completed!</i> 🎉\n\n`;
+  } else {
+    html += `• ⏳ <b>Active Pending Tasks (${pendingTasksList.length}):</b>\n`;
+    pendingTasksList.forEach((t, i) => {
+      const dStr = t.deadline
+        ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
+        : 'No deadline';
+      html += `   ${i + 1}. <b>${escapeHtml(t.title)}</b> (<i>Due: ${dStr}</i>)\n`;
+    });
+    html += `\n`;
+  }
+
+  html += `🧩 <b>LeetCode Progress:</b>\n`;
+  html += `• Today's Target: <b>${lcSolvedToday}</b> / ${lcDailyTarget} (${lcDailyStatus})\n`;
+  html += `• This Week: <b>${lcSolvedWeek}</b> / ${lcWeeklyTarget} problems\n`;
+  html += `• Total Solved: <b>${lcTotalSolved}</b> problems\n`;
+  if (user.leetcode_url) {
+    html += `• 🔗 <a href="${escapeHtml(user.leetcode_url)}">LeetCode Profile</a>\n`;
+  }
+  html += `\n`;
+
+  html += `💻 <b>GitHub Progress:</b>\n`;
+  html += `• Today's Commits: <b>${ghCommitsToday}</b> / ${ghDailyTarget} (${ghDailyStatus})\n`;
+  html += `• This Week: <b>${ghCommitsWeek}</b> / ${ghWeeklyTarget} commits\n`;
+  html += `• Repositories: <b>${ghTotalRepos}</b> repos\n`;
+  if (user.github_url) {
+    html += `• 🔗 <a href="${escapeHtml(user.github_url)}">GitHub Profile</a>\n`;
+  }
+
+  html += getWatermarkHtml();
+
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: '🌐 Open Portal', url: getPortalUrl() }
+      ]
+    ]
+  };
+
+  return { found: true, html, keyboard };
+}
+
+/**
+ * 🏫 Class & Year-Wise Comprehensive Analysis Card
+ * Supports queries like: '3ita', '3itb', '3itc', '2ita', '2itb', '2itc', '2it', '3it', '4it', '1it', 'link/2it', 'link 3it', 'year3', 'year2'
+ */
+export async function getClassOrYearAnalysisCard(queryText: string): Promise<{ found: boolean; html: string; keyboard?: any }> {
+  const clean = queryText.toLowerCase().replace(/[@#/_]/g, '').trim();
+  const dateStr = getISTDateStr();
+
+  let targetYear: number | null = null;
+  let targetSection: string | null = null;
+  let isYearOnly = false;
+
+  // Pattern 1: Year-only e.g. '2it', '3it', '4it', '1it', 'year3', '3year', 'link2it', 'link3it', 'y3', 'year 3'
+  const yearMatch = clean.match(/^(?:link)?\s*(?:year|y)?\s*([1-4])\s*(?:it|year|yr)?$/i) || clean.match(/^([1-4])\s*(?:it|year|yr)$/i);
+  if (yearMatch) {
+    targetYear = parseInt(yearMatch[1], 10);
+    isYearOnly = true;
+  }
+
+  // Pattern 2: Specific Class with section e.g. '3ita', '3itb', '3itc', '2ita', '2itb', '2itc', 'link2ita', 'link3itc', '3a', '3b', '2a', '2b'
+  const classMatch = clean.match(/^(?:link)?\s*([1-4])\s*(?:it)?\s*([a-d])$/i) || clean.match(/^(?:link)?\s*(?:it)?\s*([1-4])\s*([a-d])$/i) || clean.match(/^(?:class)?\s*([1-4])\s*(?:it)?\s*([a-d])$/i);
+  if (classMatch) {
+    targetYear = parseInt(classMatch[1], 10);
+    targetSection = classMatch[2].toUpperCase();
+    isYearOnly = false;
+  }
+
+  // Query classes from DB matching target
+  let classesRes;
+  if (isYearOnly && targetYear) {
+    classesRes = await pool.query(`
+      SELECT c.id, c.name, c.year, c.batch, d.name as dept_name
+      FROM classes c
+      LEFT JOIN departments d ON c.department_id = d.id
+      WHERE c.year = $1
+      ORDER BY c.name ASC
+    `, [targetYear]);
+  } else if (targetYear && targetSection) {
+    classesRes = await pool.query(`
+      SELECT c.id, c.name, c.year, c.batch, d.name as dept_name
+      FROM classes c
+      LEFT JOIN departments d ON c.department_id = d.id
+      WHERE c.year = $1
+        AND (c.name ILIKE $2 OR c.name ILIKE $3 OR c.name ILIKE $4)
+      ORDER BY c.name ASC
+    `, [targetYear, `%${targetSection}%`, `%- ${targetSection}%`, `%Section ${targetSection}%`]);
+  } else {
+    // General search across class names
+    const searchParam = `%${clean}%`;
+    classesRes = await pool.query(`
+      SELECT c.id, c.name, c.year, c.batch, d.name as dept_name
+      FROM classes c
+      LEFT JOIN departments d ON c.department_id = d.id
+      WHERE c.name ILIKE $1 OR c.batch ILIKE $1
+      ORDER BY c.year ASC, c.name ASC
+    `, [searchParam]);
+  }
+
+  if (classesRes.rows.length === 0) {
+    return {
+      found: false,
+      html: `⚠️ <b>Class Not Found</b>\n\nNo active class found matching: <code>${escapeHtml(queryText)}</code>\n\n<i>Available helper shortcuts:</i>\n• <code>/3ita</code>, <code>/3itb</code>, <code>/3itc</code> (III Year Sections)\n• <code>/2ita</code>, <code>/2itb</code>, <code>/2itc</code> (II Year Sections)\n• <code>/3it</code>, <code>/2it</code>, <code>/year3</code> (Full Year Section Breakdown)\n${getWatermarkHtml()}`
+    };
+  }
+
+  const matchedClasses = classesRes.rows;
+  const classIds = matchedClasses.map(c => c.id);
+  const classNamesHeader = isYearOnly
+    ? `${targetYear}${targetYear === 1 ? 'st' : targetYear === 2 ? 'nd' : targetYear === 3 ? 'rd' : 'th'} YEAR (ALL SECTIONS)`
+    : matchedClasses.map(c => c.name).join(', ');
+
+  // Fetch enrolled students
+  const studentsRes = await pool.query(`
+    SELECT u.id, u.full_name, u.register_number, u.telegram_chat_id, u.class_id, c.name as class_name
+    FROM users u
+    JOIN classes c ON c.id = u.class_id
+    WHERE u.class_id = ANY($1)
+      AND u.role = 'STUDENT'
+    ORDER BY c.name ASC, u.register_number ASC
+  `, [classIds]);
+
+  const students = studentsRes.rows;
+  const totalStudents = students.length;
+  const linkedTelegram = students.filter(s => s.telegram_chat_id).length;
+  const linkedPct = totalStudents > 0 ? Math.round((linkedTelegram / totalStudents) * 100) : 0;
+
+  if (totalStudents === 0) {
+    return {
+      found: true,
+      html: `ℹ️ <b>${escapeHtml(classNamesHeader)}</b>\n\nNo enrolled students found in this class yet.\n${getWatermarkHtml()}`
+    };
+  }
+
+  const studentIds = students.map(s => s.id);
+
+  // LeetCode stats for this class/year today
+  const [lcRes, ghRes, activeTasksRes] = await Promise.all([
+    pool.query(`
+      SELECT u.id, u.full_name, u.register_number,
+             COALESCE(lp.solved_today, 0) as solved_today,
+             lt.daily_target
+      FROM users u
+      LEFT JOIN leetcode_daily_progress lp ON lp.user_id = u.id AND lp.date = $1
+      JOIN LATERAL (
+        SELECT daily_target FROM leetcode_targets
+        WHERE start_date <= $1 AND end_date >= $1 AND (user_id = u.id OR class_id = u.class_id OR class_id IS NULL)
+        ORDER BY CASE WHEN user_id IS NOT NULL THEN 1 WHEN class_id IS NOT NULL THEN 2 ELSE 3 END ASC
+        LIMIT 1
+      ) lt ON true
+      WHERE u.id = ANY($2)
+      ORDER BY u.register_number ASC
+    `, [dateStr, studentIds]),
+
+    pool.query(`
+      SELECT u.id, COALESCE(gp.commits_today, 0) as commits_today
+      FROM users u
+      LEFT JOIN github_daily_progress gp ON gp.user_id = u.id AND gp.date = $1
+      WHERE u.id = ANY($2)
+    `, [dateStr, studentIds]),
+
+    pool.query(`
+      SELECT DISTINCT t.id, t.title, t.category, t.deadline
+      FROM tasks t
+      JOIN task_classes tc ON tc.task_id = t.id
+      WHERE tc.class_id = ANY($1)
+        AND t.status = 'OPEN'
+        AND (t.deadline IS NULL OR t.deadline >= CURRENT_TIMESTAMP)
+      ORDER BY t.deadline ASC NULLS LAST
+      LIMIT 4
+    `, [classIds])
+  ]);
+
+  // Compute LeetCode metrics
+  let lcTotalSolved = 0;
+  let lcActiveSolvers = 0;
+  let lcMetCount = 0;
+  let lcTargetedCount = 0;
+  const lcDefaulters: { name: string; solved: number; target: number }[] = [];
+
+  lcRes.rows.forEach(r => {
+    const solved = Number(r.solved_today) || 0;
+    const target = Number(r.daily_target) || 0;
+    lcTotalSolved += solved;
+    if (solved > 0) lcActiveSolvers++;
+    if (target > 0) {
+      lcTargetedCount++;
+      if (solved >= target) {
+        lcMetCount++;
+      } else {
+        lcDefaulters.push({ name: r.full_name, solved, target });
+      }
+    }
+  });
+
+  // Compute GitHub metrics
+  let ghTotalCommits = 0;
+  let ghActiveCommitters = 0;
+  ghRes.rows.forEach(r => {
+    const commits = Number(r.commits_today) || 0;
+    ghTotalCommits += commits;
+    if (commits > 0) ghActiveCommitters++;
+  });
+
+  let html = `📊 <b>${isYearOnly ? 'YEAR' : 'CLASS'} ANALYSIS REPORT — ${escapeHtml(classNamesHeader)}</b>\n`;
+  html += `👥 <b>Students:</b> <b>${totalStudents}</b> | 📱 <b>Telegram Linked:</b> <b>${linkedTelegram}</b> (${linkedPct}%)\n`;
+  html += `📅 <i>${dateStr} (IST)</i>\n`;
+  html += `─────────────────────────\n\n`;
+
+  // Section-Wise Breakdown for Year Queries
+  if (isYearOnly && matchedClasses.length > 1) {
+    html += `🏢 <b>Section-Wise Overview:</b>\n`;
+    matchedClasses.forEach(sec => {
+      const secStudents = students.filter(s => s.class_id === sec.id);
+      const secStudentIds = new Set(secStudents.map(s => s.id));
+      let secLcSolved = 0;
+      let secLcMet = 0;
+      let secLcTargeted = 0;
+      let secGhCommits = 0;
+
+      lcRes.rows.forEach(r => {
+        if (secStudentIds.has(r.id)) {
+          const s = Number(r.solved_today) || 0;
+          const t = Number(r.daily_target) || 0;
+          secLcSolved += s;
+          if (t > 0) {
+            secLcTargeted++;
+            if (s >= t) secLcMet++;
+          }
+        }
+      });
+
+      ghRes.rows.forEach(r => {
+        if (secStudentIds.has(r.id)) {
+          secGhCommits += Number(r.commits_today) || 0;
+        }
+      });
+
+      const secName = sec.name.replace(/^(?:I|II|III|IV|\d+)\s*(?:Year)?\s*/i, '').trim() || sec.name;
+      html += `• <b>${escapeHtml(secName)} (${secStudents.length}):</b> 🧩 <b>${secLcSolved}</b> LC | 🎯 <b>${secLcMet}/${secLcTargeted}</b> Target | 💻 <b>${secGhCommits}</b> Commits\n`;
+    });
+    html += `\n─────────────────────────\n\n`;
+  }
+
+  html += `🚀 <b>Today's Coding Highlights:</b>\n`;
+  html += `• 🧩 <b>LeetCode:</b> <b>${lcTotalSolved}</b> problems solved (${lcActiveSolvers} active solvers)\n`;
+  if (lcTargetedCount > 0) {
+    const lcProgress = makeProgressBar(lcMetCount, lcTargetedCount, 8);
+    html += `• 🎯 <b>Target Status:</b> ${lcMetCount}/${lcTargetedCount} met target ${lcProgress}\n`;
+  }
+  if (lcDefaulters.length > 0) {
+    const limit = 8;
+    const defaulterNames = lcDefaulters.slice(0, limit).map(d => `${escapeHtml(d.name)} (<code>${d.solved}/${d.target}</code>)`).join(', ');
+    const moreText = lcDefaulters.length > limit ? ` <i>...and ${lcDefaulters.length - limit} more</i>` : '';
+    html += `• ⚠️ <b>Incomplete Solvers (${lcDefaulters.length}):</b>\n   ${defaulterNames}${moreText}\n`;
+  } else if (lcTargetedCount > 0) {
+    html += `• ✨ <i>All targeted students met their LeetCode goal today!</i> 🎉\n`;
+  }
+  html += `• 💻 <b>GitHub:</b> <b>${ghTotalCommits}</b> commits pushed (${ghActiveCommitters} active committers)\n\n`;
+
+  // Active Tasks for this class
+  html += `─────────────────────────\n`;
+  if (activeTasksRes.rows.length === 0) {
+    html += `📌 <b>Active Class Assignments:</b>\n✨ <i>No active assignments pending for this class right now!</i> 🎉\n`;
+  } else {
+    html += `📌 <b>Active Class Assignments:</b>\n\n`;
+
+    for (let idx = 0; idx < activeTasksRes.rows.length; idx++) {
+      const t = activeTasksRes.rows[idx];
+      const deadlineStr = t.deadline
+        ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
+        : 'No deadline';
+
+      const taskSubmissionsRes = await pool.query(`
+        SELECT u.id, u.full_name
+        FROM users u
+        LEFT JOIN task_submissions ts ON ts.task_id = $1 AND ts.user_id = u.id AND ts.status IN ('SUBMITTED', 'VERIFIED')
+        WHERE u.id = ANY($2)
+          AND ts.id IS NULL
+        ORDER BY u.register_number ASC
+      `, [t.id, studentIds]);
+
+      const pendingCount = taskSubmissionsRes.rows.length;
+      const completedCount = totalStudents - pendingCount;
+      const progressBar = makeProgressBar(completedCount, totalStudents, 8);
+
+      html += `<b>${idx + 1}. ${escapeHtml(t.title)}</b>\n`;
+      if (t.category) html += `   📂 <i>Category:</i> <code>${escapeHtml(t.category)}</code>\n`;
+      html += `   ⏰ <i>Due:</i> ${deadlineStr}\n`;
+      html += `   ✅ <i>Submissions:</i> <b>${completedCount} / ${totalStudents}</b> ${progressBar}\n`;
+
+      if (pendingCount === 0) {
+        html += `   ✨ <i>Status: 100% Complete! All students submitted!</i> 🎉\n\n`;
+      } else {
+        const limit = 8;
+        const pendingNames = taskSubmissionsRes.rows.slice(0, limit).map(p => escapeHtml(p.full_name)).join(', ');
+        const more = pendingCount > limit ? ` <i>...and ${pendingCount - limit} more</i>` : '';
+        html += `   ⏳ <b>Incomplete (${pendingCount}):</b> ${pendingNames}${more}\n\n`;
+      }
+    }
+  }
+
+  html += getWatermarkHtml();
+
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: '🌐 Open Portal', url: getPortalUrl() }
+      ]
+    ]
+  };
+
+  return { found: true, html, keyboard };
+}
+
+/**
  * ⚠️ Defaulters Card (For Faculty/Admins)
  */
 export async function getDefaultersCard(scopeText?: string): Promise<{ html: string; keyboard: any }> {
@@ -520,7 +962,8 @@ export async function getTasksCard(user: any): Promise<{ html: string; keyboard:
     WHERE tc.class_id = $2
       AND t.status = 'OPEN'
       AND (ts.id IS NULL OR ts.status = 'REJECTED')
-    ORDER BY t.deadline ASC
+      AND (t.deadline IS NULL OR t.deadline >= CURRENT_TIMESTAMP)
+    ORDER BY t.deadline ASC NULLS LAST
   `, [user.id, user.class_id]);
 
   let html = '';
@@ -743,7 +1186,7 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
   try {
     const dateStr = getISTDateStr();
 
-    const [tasksRes, studentsRes, lcRes, ghRes] = await Promise.all([
+    const [tasksRes, studentsRes, lcRes, ghRes, lcIncompleteRes] = await Promise.all([
       pool.query(`
         SELECT t.id, t.title, t.category, t.deadline, t.status,
                COUNT(DISTINCT tc.class_id) as class_count,
@@ -751,14 +1194,33 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
         FROM tasks t
         LEFT JOIN task_classes tc ON tc.task_id = t.id
         LEFT JOIN task_submissions ts ON ts.task_id = t.id
-        WHERE t.status = 'OPEN' OR t.deadline >= CURRENT_TIMESTAMP - INTERVAL '1 day'
+        WHERE t.status = 'OPEN' 
+          AND (t.deadline IS NULL OR t.deadline >= CURRENT_TIMESTAMP)
         GROUP BY t.id, t.title, t.category, t.deadline, t.status
-        ORDER BY t.deadline ASC
+        ORDER BY t.deadline ASC NULLS LAST
         LIMIT 5
       `),
       pool.query(`SELECT COUNT(*) as total_students, COUNT(telegram_chat_id) as linked_telegram_count FROM users WHERE role = 'STUDENT'`),
       pool.query(`SELECT COUNT(DISTINCT user_id) as active_solvers, SUM(solved_today) as total_problems_solved FROM leetcode_daily_progress WHERE date = $1 AND solved_today > 0`, [dateStr]),
-      pool.query(`SELECT COUNT(DISTINCT user_id) as active_committers, SUM(commits_today) as total_commits FROM github_daily_progress WHERE date = $1 AND commits_today > 0 AND sync_status = 'SUCCESS'`, [dateStr])
+      pool.query(`SELECT COUNT(DISTINCT user_id) as active_committers, SUM(commits_today) as total_commits FROM github_daily_progress WHERE date = $1 AND commits_today > 0 AND sync_status = 'SUCCESS'`, [dateStr]),
+      pool.query(`
+        SELECT u.full_name, u.register_number, c.name as class_name,
+               COALESCE(lp.solved_today, 0) as solved_today,
+               lt.daily_target
+        FROM users u
+        LEFT JOIN classes c ON c.id = u.class_id
+        LEFT JOIN leetcode_daily_progress lp ON lp.user_id = u.id AND lp.date = $1
+        JOIN LATERAL (
+          SELECT daily_target FROM leetcode_targets
+          WHERE start_date <= $1 AND end_date >= $1 AND (user_id = u.id OR class_id = u.class_id OR class_id IS NULL)
+          ORDER BY CASE WHEN user_id IS NOT NULL THEN 1 WHEN class_id IS NOT NULL THEN 2 ELSE 3 END ASC
+          LIMIT 1
+        ) lt ON true
+        WHERE u.role = 'STUDENT'
+          AND lt.daily_target > 0
+          AND COALESCE(lp.solved_today, 0) < lt.daily_target
+        ORDER BY c.name, u.register_number ASC
+      `, [dateStr])
     ]);
 
     const totalStudents = parseInt(studentsRes.rows[0]?.total_students || '0', 10);
@@ -775,13 +1237,29 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
 
     html += `🚀 <b>Today's Coding Highlights:</b>\n`;
     html += `• 🧩 <b>LeetCode:</b> <b>${lcTotalSolved}</b> problems solved (${lcSolvers} active solvers)\n`;
-    html += `• 💻 <b>GitHub:</b> <b>${ghTotalCommits}</b> commits pushed (${ghCommitters} active committers)\n\n`;
+    html += `• 💻 <b>GitHub:</b> <b>${ghTotalCommits}</b> commits pushed (${ghCommitters} active committers)\n`;
+
+    // LeetCode Incomplete / Defaulters
+    if (lcIncompleteRes.rows.length > 0) {
+      const lcPendingCount = lcIncompleteRes.rows.length;
+      const lcLimit = 8;
+      const lcPendingNames = lcIncompleteRes.rows
+        .slice(0, lcLimit)
+        .map(p => `${escapeHtml(p.full_name)} (<code>${p.solved_today}/${p.daily_target}</code>)`)
+        .join(', ');
+      const lcMore = lcPendingCount > lcLimit ? ` <i>...and ${lcPendingCount - lcLimit} more</i>` : '';
+      html += `• ⚠️ <b>LeetCode Incomplete (${lcPendingCount}):</b>\n   ${lcPendingNames}${lcMore}\n\n`;
+    } else {
+      html += `• ✨ <b>LeetCode Status:</b> All targeted students met today's goal! 🎉\n\n`;
+    }
 
     if (tasksRes.rows.length === 0) {
-      html += `✨ <b>No pending assignments today! Keep up the great work!</b> 🎉\n`;
+      html += `✨ <b>No active assignments pending today! Keep up the great work!</b> 🎉\n`;
     } else {
       html += `📌 <b>Active Assignments:</b>\n\n`;
-      tasksRes.rows.forEach((t, idx) => {
+      
+      for (let idx = 0; idx < tasksRes.rows.length; idx++) {
+        const t = tasksRes.rows[idx];
         const completed = parseInt(t.completed_count || '0', 10);
         const deadlineStr = t.deadline
           ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
@@ -789,11 +1267,38 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
         
         const progressBar = totalStudents > 0 ? makeProgressBar(completed, totalStudents, 8) : '';
 
+        // Query incomplete students for this specific task
+        const pendingStudentsRes = await pool.query(`
+          SELECT u.full_name, u.register_number, c.name as class_name
+          FROM users u
+          JOIN task_classes tc ON tc.class_id = u.class_id
+          LEFT JOIN task_submissions ts ON ts.task_id = tc.task_id AND ts.user_id = u.id AND ts.status IN ('SUBMITTED', 'VERIFIED')
+          LEFT JOIN classes c ON c.id = u.class_id
+          WHERE tc.task_id = $1
+            AND u.role = 'STUDENT'
+            AND ts.id IS NULL
+          ORDER BY c.name, u.register_number ASC
+        `, [t.id]);
+
+        const pendingCount = pendingStudentsRes.rows.length;
+
         html += `<b>${idx + 1}. ${escapeHtml(t.title)}</b>\n`;
         if (t.category) html += `   📂 <i>Category:</i> <code>${escapeHtml(t.category)}</code>\n`;
         html += `   ⏰ <i>Due:</i> ${deadlineStr}\n`;
-        html += `   ✅ <i>Submissions:</i> <b>${completed}</b> ${progressBar}\n\n`;
-      });
+        html += `   ✅ <i>Submissions:</i> <b>${completed}</b> ${progressBar}\n`;
+
+        if (pendingCount === 0) {
+          html += `   ✨ <i>Status: All assigned students completed!</i> 🎉\n\n`;
+        } else {
+          const displayLimit = 8;
+          const pendingNames = pendingStudentsRes.rows
+            .slice(0, displayLimit)
+            .map(p => escapeHtml(p.full_name))
+            .join(', ');
+          const moreText = pendingCount > displayLimit ? ` <i>...and ${pendingCount - displayLimit} more</i>` : '';
+          html += `   ⏳ <b>Incomplete (${pendingCount}):</b> ${pendingNames}${moreText}\n\n`;
+        }
+      }
     }
 
     html += getWatermarkHtml();
@@ -846,8 +1351,8 @@ export async function triggerPendingTaskReminders(): Promise<{
       WHERE u.role = 'STUDENT'
         AND t.status = 'OPEN'
         AND (ts.id IS NULL OR ts.status = 'REJECTED')
-        AND (t.deadline IS NULL OR t.deadline >= CURRENT_TIMESTAMP - INTERVAL '2 days')
-      ORDER BY u.id, t.deadline ASC
+        AND (t.deadline IS NULL OR t.deadline >= CURRENT_TIMESTAMP)
+      ORDER BY u.id, t.deadline ASC NULLS LAST
     `;
 
     const res = await pool.query(query);
@@ -1122,9 +1627,23 @@ export function startTelegramPoller(): void {
           if (text.startsWith('/start') || text.startsWith('/link')) {
             const cleanText = text.replace(/@\w+/g, '');
             const parts = cleanText.split(/\s+/);
-            const param = parts[1]?.trim();
+            const param = parts.slice(1).join(' ').trim() || text.replace(/^\/(?:start|link)[\s/]*/i, '').trim();
 
             if (param) {
+              // Check if param is a class or year query (e.g. 2ita, 3itc, 2it, 3it, year3, 4it, 1ita)
+              const cleanParam = param.toLowerCase().replace(/[@#/_]/g, '').trim();
+              const isClassOrYear =
+                /^(?:[1-4]\s*(?:it)?[a-d]|[1-4]\s*it|[1-4]\s*year|year\s*[1-4])$/i.test(cleanParam) ||
+                cleanParam.startsWith('year') ||
+                cleanParam.startsWith('class');
+
+              if (isClassOrYear) {
+                const card = await getClassOrYearAnalysisCard(param);
+                await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
+                return;
+              }
+
+              // Otherwise link student account with register number / username
               const linkResult = await linkStudentTelegram(param, senderUserId, fromUsername);
               if (linkResult.success) {
                 const inlineKeyboard = getInteractiveMenuKeyboard();
@@ -1173,6 +1692,9 @@ export function startTelegramPoller(): void {
               helpHtml += `👤 <b>Connected:</b> ${escapeHtml(user.full_name)} (<code>${escapeHtml(user.register_number)}</code>)\n\n`;
             }
             helpHtml += `<b>Available Commands:</b>\n`;
+            helpHtml += `• <code>/check &lt;Reg_No&gt;</code> (or send Reg No) - Complete student status (Tasks + LeetCode + GitHub)\n`;
+            helpHtml += `• <code>/3ita</code>, <code>/3itb</code>, <code>/2ita</code>, <code>/2itb</code> - Instant class analysis report\n`;
+            helpHtml += `• <code>/year3</code>, <code>/year2</code> - Year-wise department analysis\n`;
             helpHtml += `• <code>/tasks</code> - View pending assignments\n`;
             helpHtml += `• <code>/leetcode</code> (or <code>/lc</code>) - Daily LeetCode progress & targets\n`;
             helpHtml += `• <code>/github</code> (or <code>/gh</code>) - Daily GitHub commits & targets\n`;
@@ -1190,6 +1712,73 @@ export function startTelegramPoller(): void {
             helpHtml += getWatermarkHtml();
             await sendTelegramMessage(chatId, helpHtml, { reply_markup: keyboard });
             return;
+          }
+
+          // Command: /check <reg_no>, /lookup <reg_no>, /student <reg_no>, /progress <reg_no>, or /status <reg_no>
+          if (
+            text.startsWith('/check') ||
+            text.startsWith('/lookup') ||
+            text.startsWith('/student') ||
+            (text.startsWith('/progress') && text.split(/\s+/).length > 1) ||
+            (text.startsWith('/status') && text.split(/\s+/).length > 1)
+          ) {
+            const parts = text.split(/\s+/);
+            const regQuery = parts.slice(1).join(' ').trim();
+            if (regQuery) {
+              const card = await getComprehensiveStudentProgressCard(regQuery);
+              await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
+              return;
+            } else {
+              await sendTelegramMessage(
+                chatId,
+                `ℹ️ <b>Usage:</b> <code>/check &lt;Register_Number&gt;</code>\n\n<i>Example:</i> <code>/check 922524205001</code>\n${getWatermarkHtml()}`
+              );
+              return;
+            }
+          }
+
+          // ── Class & Year Analysis Reports ───────────────────────────────────
+          // Supports: /3ita, /3itb, /3itc, /2ita, /2itb, /2itc, /year3, /year2, /class 3ita, etc.
+          const cleanNoMention = text.replace(/@\w+/g, '').trim();
+          const cleanCandidate = text.replace(/[@#]/g, '').trim();
+
+          const isClassOrYearShortcut =
+            text.startsWith('/class') ||
+            text.startsWith('/year') ||
+            /^\/(?:[1-4]\s*(?:it)?[a-d]|[1-4]\s*year|year\s*[1-4])$/i.test(cleanNoMention) ||
+            /^(?:[1-4]\s*it[a-d]|[1-4]\s*year|year\s*[1-4])$/i.test(cleanCandidate);
+
+          if (isClassOrYearShortcut) {
+            let classQuery = cleanNoMention;
+            if (text.startsWith('/class') || text.startsWith('/year')) {
+              const parts = cleanNoMention.split(/\s+/);
+              classQuery = parts.slice(1).join(' ').trim() || parts[0];
+            }
+            const card = await getClassOrYearAnalysisCard(classQuery);
+            await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
+            return;
+          }
+
+          // ── Automatic Register Number / Username Lookup ──────────────────
+          // If anyone in a group or private DM simply types a Register Number
+          if (!text.startsWith('/') && cleanCandidate.length >= 4 && cleanCandidate.length <= 25) {
+            const studentCheck = await pool.query(`
+              SELECT id FROM users 
+              WHERE (REPLACE(LOWER(register_number), ' ', '') = $1 
+                 OR LOWER(register_number) = $2 
+                 OR REPLACE(LOWER(username), ' ', '') = $1
+                 OR LOWER(username) = $2)
+                AND role = 'STUDENT'
+              LIMIT 1
+            `, [cleanCandidate.toLowerCase().replace(/\s+/g, ''), cleanCandidate.toLowerCase()]);
+
+            if (studentCheck.rows.length > 0) {
+              const card = await getComprehensiveStudentProgressCard(cleanCandidate);
+              if (card.found) {
+                await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
+                return;
+              }
+            }
           }
 
           // Command: /leetcode or /lc

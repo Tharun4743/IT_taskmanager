@@ -1,323 +1,233 @@
-# IT Task Manager & Academic Management System
-### Enterprise Academic Task Verification, Live Coding Progress Tracking & Automated Telegram Notification Platform
+<div align="center">
 
-**IT Task Manager** is a complete, enterprise-grade academic management platform engineered for educational institutions, faculty coordinators, and IT departments. The system integrates **Academic Task Assignment & Verification**, **Team Collaboration**, **Live Coding Progress Tracking (LeetCode & GitHub)**, **Department Notice Boards**, and an **Automated Telegram Notification & Bot Engine**.
+# 🎓 IT TASK MANAGER & ACADEMIC MANAGEMENT SYSTEM
+### *Enterprise Academic Governance, Live Coding Analytics & Automated Telegram Bot Engine*
+
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-18.x-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-5.x-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Express](https://img.shields.io/badge/Express-4.x-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14+-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![ExcelJS](https://img.shields.io/badge/ExcelJS-OpenXML-217346?style=for-the-badge&logo=microsoft-excel&logoColor=white)](https://github.com/exceljs/exceljs)
+[![Telegram Bot](https://img.shields.io/badge/Telegram_Bot-Automated-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://core.telegram.org/bots/api)
+
+<p align="center">
+  <b>Department of Information Technology</b> • <b>VSB Engineering College, Karur</b>
+</p>
 
 ---
 
-## 👨‍💻 Developer & Maintainer
-- **Lead Developer**: [Tharunkumar K](https://tharunkumark4743.netlify.app/)
-- **Department**: Department of Information Technology
-- **Institution**: VSB Engineering College
+</div>
+
+## 📌 Executive Summary
+
+**IT Task Manager** is an enterprise-grade academic task tracking and coding analytics platform engineered for educational institutions, faculty coordinators, department leadership (HODs), and students.
+
+### Core Capabilities:
+1. **Academic Task Governance**: Precision scope assignments (Individual, Class Section, Batch Year, Department), team submissions, and multi-tier verification workflows.
+2. **Live Coding Analytics (LeetCode & GitHub)**: Real-time synchronization of problem velocity, commit history, multi-level target inheritance, and defaulter tracking.
+3. **Automated Telegram Bot Engine (`@IT_TaskManager_Alerts_bot`)**: Register Number instant lookup, class/year analysis shortcuts (`/3ita`, `/2it`, `/year3`) with section breakdowns, private deadline reminders, and daily department briefs.
+4. **Institutional Reporting Suite**: Direct OpenXML `.xlsx` generation across 9 specialized formats with dynamic boundary trimming and zero file corruption.
+5. **Automated Cloud Sync & Snapshots**: 11:55 PM IST daily LeetCode CSV auto-export pushed to GitHub, alongside daily 29-table JSON snapshot backups with 7-day rolling retention.
 
 ---
 
-## 🚀 System Architecture
+## 🏛️ High-Level System Architecture
 
 ```mermaid
-graph TD
-    subgraph Frontend["💻 Frontend Dashboard Layer (React 18 + TypeScript + Vite + TailwindCSS)"]
-        AdminUI["Supreme Admin / Admin Portal"]
-        HODUI["HOD Portal"]
-        YearCoordUI["Year Coordinator Portal"]
-        AdvisorUI["Class Advisor Portal"]
-        ClassCoordUI["Class Coordinator Portal"]
-        StudentUI["Student Portal"]
+flowchart TD
+    subgraph UI["🖥️ Client Layer (React 18 + Vite + TailwindCSS)"]
+        A1["🛡️ HOD & Admin Portal"]
+        A2["👨‍🏫 Faculty & Advisor Workspace"]
+        A3["🎓 Student Learning Dashboard"]
     end
 
-    subgraph Backend["⚡ Backend API Gateway (Node.js + Express + TypeScript)"]
-        AuthModule["JWT Authentication & RBAC Middleware"]
-        TaskEngine["Academic Task & Verification Engine"]
-        CodingEngine["Coding Progress & Target Resolver"]
-        TelegramService["🤖 Telegram Bot Poller & Notification Engine"]
-        RAMCache["🚀 In-Memory RAM Directory Cache (studentDirectoryService)"]
-        ExcelService["📊 Automated Excel Export Generator (XLSX)"]
+    subgraph API["⚡ Backend Gateway (Node.js + Express + TypeScript)"]
+        B1["🔐 Auth & RBAC Security"]
+        B2["📝 Task & Verification Engine"]
+        B3["💻 LeetCode & GitHub Sync Engine"]
+        B4["🤖 Telegram Bot Service"]
+        B5["📊 ExcelJS Report Builder"]
+        B6["🚀 RAM Directory Cache"]
     end
 
-    subgraph External["☁️ External Cloud Services & Databases"]
-        PostgresDB[("PostgreSQL Database (Supabase / Neon)")]
-        TelegramAPI["📱 Telegram Bot API (@IT_TaskManager_Alerts_bot)"]
-        LeetCodeAPI["☁️ LeetCode GraphQL API"]
-        GitHubAPI["☁️ GitHub REST / GraphQL API"]
-        CloudinaryAPI["🖼️ Cloudinary CDN (Media & Proofs)"]
+    subgraph Storage["💾 Persistence & Cloud Services"]
+        C1[("🗄️ PostgreSQL Database")]
+        C2["📱 Telegram API"]
+        C3["☁️ LeetCode GraphQL & GitHub API"]
+        C4["🖼️ Cloudinary CDN"]
     end
 
-    Frontend <-->|REST Requests + JWT Bearer Auth| AuthModule
-    AuthModule --> TaskEngine
-    AuthModule --> CodingEngine
-    TaskEngine <--> PostgresDB
-    CodingEngine <-->|RAM Student Directory Lookups 0.01ms| RAMCache
-    CodingEngine <-->|Compound Indexed Queries| PostgresDB
-    CodingEngine -->|Batch Async Sync| LeetCodeAPI
-    CodingEngine -->|Batch Async Sync| GitHubAPI
-    CodingEngine --> ExcelService
-    TelegramService <-->|Long Polling & Webhook Dispatch| TelegramAPI
-    TelegramService <--> PostgresDB
-    TaskEngine --> CloudinaryAPI
+    UI --> API
+    API --> Storage
 ```
 
 ---
 
-## 📋 Table of Contents
-1. [Key Capabilities & Modules](#-key-capabilities--modules)
-2. [🤖 Telegram Bot & Automated Notifications](#-telegram-bot--automated-notifications)
-3. [Academic Task Verification Workflow](#-academic-task-verification-workflow)
-4. [Coding Progress & Target Management Engine](#-coding-progress--target-management-engine)
-5. [User Roles & Access Control Matrix](#-user-roles--access-control-matrix)
-6. [Complete Database Schema Reference](#-complete-database-schema-reference)
-7. [Comprehensive API Endpoint Documentation](#-comprehensive-api-endpoint-documentation)
-8. [Installation & Local Setup Guide](#-installation--local-setup-guide)
-9. [Deployment Configuration (Render & Cloud)](#-deployment-configuration-render--cloud)
+## 🔄 Core Workflows
 
----
-
-## 🌟 Key Capabilities & Modules
-
-### 1. 📝 Academic Task Management Module
-- **Multi-Scope Task Assignment**: Create tasks targeted to **Individual Students**, **Class Sections**, **Academic Years**, or **Department-Wide**.
-- **Submission Formats**: Supports text responses, external links (Google Drive, GitHub, Figma, etc.), and file/screenshot attachments (via Cloudinary).
-- **Team Tasks & Collaboration**: Students can form teams, invite peers, assign team leaders, and submit joint assignments.
-
-### 2. 🛡️ Multi-Tier Verification & Audit Workflow
-- **Verification Pipeline**: Submitted tasks pass through review by **Class Advisors** and **Class Coordinators**.
-- **Review Actions**: Staff can **Verify**, **Reject** (with mandatory feedback comments), or mark submissions as **Pending Re-submission**.
-- **Audit Dashboards**: HODs and Year Coordinators inspect real-time verification rates across sections and batches.
-
-### 3. ⚡ Live Coding Progress Monitor (LeetCode & GitHub)
-- **LeetCode Tracker**: Total solved problems, daily status (`COMPLETED` / `NOT COMPLETED`), remaining problems to target, and weekly progress.
-- **GitHub Tracker**: Daily commit volume, new repository creations, daily commit status, and weekly commit aggregates.
-- **Combined Progress View**: Side-by-side comparative table for both platforms.
-- **Day 1–Day 7 Breakdown**: Detailed day-by-day problem and commit counts across the current week.
-
-### 4. 🎯 Multi-Level Target Management Engine
-- Set daily and weekly target thresholds for **Individual Students**, **Classes**, **Academic Years**, or **Departments**.
-- 4-level target priority resolution (**Student** $\rightarrow$ **Class** $\rightarrow$ **Year** $\rightarrow$ **Department** $\rightarrow$ **Default**).
-- Automated recalculation of student status upon target update.
-
-### 5. 📊 Excel Reports & Analytics Export
-- One-click export of beautifully formatted Excel `.xlsx` reports:
-  - **Daily Progress Report**: Live daily problem/commit status.
-  - **Weekly Progress Report**: Weekly progress totals & target completion percentages.
-  - **Weekly Detailed Report**: Day-by-day Day 1 through Day 7 breakdown.
-  - **Defaulters / Incomplete Report**: Targeted list of students missing daily/weekly goals.
-  - **Combined Progress Report**: Unified LeetCode + GitHub progress export.
-
----
-
-## 🤖 Telegram Bot & Automated Notifications
-
-The platform includes an automated Telegram notification engine powered by [`telegramService.ts`](file:///telegramService.ts) and the official bot **`@IT_TaskManager_Alerts_bot`**.
-
-### 🌟 Key Telegram Capabilities:
-1. **1-Click Student Account Linking**:
-   - Students tap **"Connect Telegram in 1-Click"** in their portal settings (`t.me/IT_TaskManager_Alerts_bot?start=<reg_no>`).
-   - The bot automatically links their Telegram chat ID to their college profile.
-2. **⏰ Automated Daily 8:00 PM IST 1-to-1 Private Reminders**:
-   - The background scheduler identifies students with pending deadlines and sends private direct messages with interactive **`[ 🌐 Submit Proof on Portal ]`** buttons.
-3. **⏰ Automated Daily 9:00 PM IST Department Group Summary**:
-   - Posts a structured daily report with ASCII progress bars (`[██████░░░░] 60%`) and class completion stats to your department group.
-4. **🤖 Self-Service Student Bot Commands**:
-   - `/tasks` or `/pending`: Direct database lookup of active assignments assigned to the student.
-   - `/status`: View connected student profile information.
-   - `/summary`: Instant department summary.
-   - `/unlink`: Disconnect account with 1 command.
-   - `/id`: Prints group and personal chat IDs.
-5. **⚡ Anti-Flood Rate Limiting**:
-   - Throttled queue dispatch (40ms interval) to guarantee zero Telegram `429 Too Many Requests` errors during mass notifications.
-
----
-
-## 🔄 Academic Task Verification Workflow
+### 1. Academic Task Lifecycle
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    participant Student as Student / Team Leader
-    participant System as IT Task Manager Backend
-    participant Advisor as Class Advisor / Coordinator
-    participant HOD as HOD / Supreme Admin
+flowchart LR
+    Create["📝 Staff Creates Task"] --> Submit["📤 Student Submits Proof"]
+    Submit --> Review{"🔍 Staff Review"}
+    Review -->|Approved| Verified["✅ Task Verified"]
+    Review -->|Needs Work| Rejection["⚠️ Rejected with Feedback"]
+    Rejection --> Reupload["🔄 Student Re-uploads Proof"]
+    Reupload --> Review
+```
 
-    Student->>System: Submit Task (Text, Links, Attachments)
-    System->>System: Update Status to PENDING_REVIEW
-    Advisor->>System: Review Task Submission
-    alt Submission Accepted
-        Advisor->>System: Mark as VERIFIED
-        System->>Student: Send Verification Notification & Update Progress
-    else Submission Rejected
-        Advisor->>System: Mark as REJECTED with Feedback
-        System->>Student: Require Revision & Re-submission
-    end
-    HOD->>System: Audit Department & Class Verification Rates
+### 2. Multi-Level Target Priority Resolver
+
+```mermaid
+flowchart LR
+    S["Student Target"] -->|Overrides| C["Class Target"]
+    C -->|Overrides| Y["Year Target"]
+    Y -->|Overrides| D["Department Baseline"]
+    D -->|Fallback| G["System Default"]
 ```
 
 ---
 
-## 👥 User Roles & Access Control Matrix
+## 🌟 Feature Modules
 
-| Feature / Action | Supreme Admin | HOD | Year Coordinator | Class Advisor | Class Coordinator | Student |
+### Module 1: Academic Task Governance & Teams
+- **Granular Scoping**: Assign tasks to individuals, class sections (e.g. IT-A, IT-B), academic years, or the entire department.
+- **Team-Based Submissions**: Configurable group sizes (2–5 members), interactive invitation banners, leader/member role badges, and single consolidated proof submission.
+- **Review & Resubmission**: Instant rejection alert banners with detailed staff feedback and 1-click proof re-upload.
+
+### Module 2: Coding Competency Tracking
+- **LeetCode Engine**: Live tracking of total solved problems, daily solve velocity, Easy/Medium/Hard breakdown, and daily/weekly target completion status.
+- **GitHub Engine**: Real-time commit velocity tracking, repository creation monitoring, and 7-day Monday–Sunday timeline breakdown.
+- **Combined Dashboard**: Side-by-side progress monitor for all enrolled students with class, year, and target status filtering.
+
+### Module 3: Automated Telegram Bot & Analysis Engine
+- **Bot Username**: `@IT_TaskManager_Alerts_bot`
+- **Instant Student Lookup**: Anyone can send a student's Register Number (e.g., `922524205001`) or `/check <reg_no>` for a full performance scorecard.
+- **Class & Year Shortcuts**:
+  - `/3ita`, `/3itb`, `/3itc`, `/2ita`, `/2itb` $\rightarrow$ Class section report with active assignments and incomplete student lists.
+  - `/2it`, `/3it`, `/year2`, `/year3` $\rightarrow$ Academic year batch report with **Section-Wise Breakdown** (IT-A, IT-B, IT-C overview).
+- **Scheduled Automated Reminders**:
+  - `20:00 IST`: Private 1-to-1 alert sent to students with pending deadlines due within 24 hours.
+  - `21:00 IST`: Formatted department group summary with ASCII completion gauges (`[██████░░] 75%`).
+  - PostgreSQL persistent locks (`system_settings`) prevent duplicate dispatches on server restarts.
+
+### Module 4: Professional Excel Reporting Suite
+- Pure **ExcelJS** OpenXML generator eliminating XML formatting errors and blank space.
+- Official institutional header with auto-calculated column widths and print area pinning.
+- Supported formats: HOD Master Task Report, LeetCode Daily & Weekly Reports, GitHub Activity Reports, Combined Coding Matrices, and Department Defaulters Lists.
+
+### Module 5: Automated Cloud Sync & Database Snapshots
+- **11:55 PM IST Daily LeetCode CSV Auto-Push**: Generates datewise master and section-wise CSV reports (`leetcode/LeetCode_Daily_Report_YYYY-MM-DD.csv`, `leetcode/YYYY-MM-DD/Section_*.csv`) and automatically commits and pushes them to GitHub.
+- **Automated Database Snapshots**: Every 24 hours, captures all 29 PostgreSQL tables in `backups/db_backup_*.json` and pushes snapshots to GitHub with a 7-day rolling retention policy.
+- **RAM Directory Auto-Sync**: In-memory student cache (< 0.01ms lookups) with auto-push to GitHub on profile updates.
+
+---
+
+## 👥 Role-Based Access Control (RBAC) Matrix
+
+| Capability / Resource | Supreme Admin | HOD | Year Coordinator | Class Advisor | Class Coordinator | Student |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **All Departments Access** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Department Scope Access** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Year Scope Access** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **Class Scope Access** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Create & Verify Tasks** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Manage Coding Targets** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Trigger Telegram Reminders** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Configure Telegram Group ID** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **Export Excel Reports** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Submit Tasks & Connect Bot** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| **All Departments Administration** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Department-Wide Scope** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Academic Year Scope** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **Class Section Scope** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Create & Assign Tasks** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Verify / Reject Submissions** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Manage Coding Target Thresholds** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Trigger Telegram Broadcasts** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Export Official Excel Reports** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Submit Task Proofs & Link Bot** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| **Create & Manage Project Teams** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 
 ---
 
-## 🗄️ Database Schema Reference
+## 📡 API Endpoint Reference
 
-```mermaid
-erDiagram
-    departments ||--o{ classes : contains
-    departments ||--o{ users : belongs_to
-    classes ||--o{ users : contains
-    users ||--o{ tasks : creates
-    users ||--o{ submissions : submits
-    tasks ||--o{ submissions : receives
-    users ||--o{ leetcode_daily_progress : tracks
-    users ||--o{ github_daily_progress : tracks
+### 🔐 Authentication & Profile
+| Method | Endpoint | Description | Access |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/auth/login` | Authenticate user credentials and return JWT token | Public |
+| `GET` | `/api/auth/me` | Fetch logged-in user profile & connection status | Authenticated |
+| `PUT` | `/api/settings/change-password` | Update current account security credentials | Authenticated |
+| `DELETE` | `/api/student/unlink-telegram` | Disconnect Telegram bot from student account | Student |
 
-    users {
-        uuid id PK
-        string register_number
-        string full_name
-        string email
-        string password
-        string role
-        string telegram_chat_id
-        string telegram_username
-        timestamp telegram_linked_at
-        uuid class_id FK
-        uuid department_id FK
-    }
+### 🤖 Telegram Bot & Automation
+| Method | Endpoint | Description | Access |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/telegram/status` | Retrieve Telegram bot statistics & linked student count | Staff / Admin |
+| `POST` | `/api/telegram/set-group-chat` | Configure department Telegram group chat ID | HOD / Admin |
+| `POST` | `/api/telegram/send-reminders` | Trigger 1-to-1 Telegram alerts to pending students | Staff / Admin |
+| `POST` | `/api/telegram/send-group-summary` | Broadcast formatted daily progress summary to group | Staff / Admin |
 
-    system_settings {
-        string key PK
-        text value
-        timestamp updated_at
-    }
+### 📝 Academic Task Management
+| Method | Endpoint | Description | Access |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/tasks` | Fetch tasks within user scope | Authenticated |
+| `POST` | `/api/tasks` | Create and assign a new academic task | Staff / Admin |
+| `GET` | `/api/submissions` | Fetch task submission queue with status filters | Staff / Admin |
+| `POST` | `/api/submissions` | Submit task response (Link, Text, or Attachment) | Student |
+| `PUT` | `/api/submissions/:id/verify` | Mark submission as `VERIFIED` | Staff / Admin |
+| `PUT` | `/api/submissions/:id/reject` | Reject submission with required revision feedback | Staff / Admin |
 
-    tasks {
-        uuid id PK
-        string title
-        string description
-        string category
-        date deadline
-        string status
-        uuid created_by FK
-    }
+### 💻 Coding Competency & Analytics
+| Method | Endpoint | Description | Access |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/leetcode/stats` | Fetch summary KPI statistics for LeetCode | Authenticated |
+| `GET` | `/api/leetcode/progress/daily` | Fetch daily LeetCode progress records | Authenticated |
+| `GET` | `/api/github/stats` | Fetch summary KPI statistics for GitHub | Authenticated |
+| `GET` | `/api/github/progress/daily` | Fetch daily GitHub commit records | Authenticated |
+| `POST` | `/api/leetcode/sync` | Trigger on-demand sync for LeetCode | Staff / Admin |
+| `POST` | `/api/github/sync` | Trigger on-demand sync for GitHub | Staff / Admin |
 
-    submissions {
-        uuid id PK
-        uuid task_id FK
-        uuid user_id FK
-        string submission_url
-        string status
-        text feedback
-        timestamp created_at
-    }
-```
+### 📊 Excel Reports & Exports
+| Method | Endpoint | Description | Access |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/coding/export-excel` | Export combined LeetCode & GitHub progress `.xlsx` | Staff / Admin |
+| `GET` | `/api/leetcode/export/daily` | Export daily LeetCode progress report `.xlsx` | Staff / Admin |
+| `GET` | `/api/leetcode/export/weekly` | Export weekly LeetCode progress report `.xlsx` | Staff / Admin |
+| `GET` | `/api/leetcode/export/incomplete` | Export LeetCode defaulters & incomplete report | Staff / Admin |
+| `GET` | `/api/github/export/daily` | Export daily GitHub commit report `.xlsx` | Staff / Admin |
+| `GET` | `/api/github/export/weekly` | Export weekly GitHub commit report `.xlsx` | Staff / Admin |
 
 ---
 
-## 📡 Comprehensive API Endpoint Documentation
-
-### Authentication & User Management
-- `POST /api/auth/login`: Authenticate user and issue JWT token.
-- `GET /api/auth/me`: Get current logged-in user profile with Telegram link status.
-- `POST /api/users`: Create user account.
-- `PUT /api/users/profile`: Update profile, handles, and settings.
-
-### Telegram Automation Endpoints
-- `GET /api/telegram/status`: Retrieve Telegram bot connection stats & student linking counts.
-- `POST /api/telegram/set-group-chat`: Configure Telegram Department Group Chat ID.
-- `POST /api/telegram/send-group-summary`: Manually trigger department summary dispatch.
-- `POST /api/telegram/send-reminders`: Manually trigger 1-to-1 pending task reminders.
-- `POST /api/telegram/test`: Send a test notification to verify bot connectivity.
-- `DELETE /api/student/unlink-telegram`: Disconnect student Telegram account.
-
-### Academic Task Management
-- `GET /api/tasks`: Fetch assigned tasks.
-- `POST /api/tasks`: Create academic task.
-- `DELETE /api/tasks/:id`: Delete academic task.
-- `GET /api/submissions`: Fetch task submissions.
-- `POST /api/submissions`: Submit task response (Student).
-- `PUT /api/submissions/:id/verify`: Verify submission status (Staff).
-- `PUT /api/submissions/:id/reject`: Reject submission with feedback.
-
-### LeetCode & GitHub Tracking
-- `GET /api/leetcode/stats`: Fetch summary statistics cards for LeetCode tracker.
-- `GET /api/leetcode/progress/daily`: Fetch daily LeetCode progress table.
-- `GET /api/leetcode/progress/weekly`: Fetch weekly LeetCode progress table.
-- `GET /api/github/stats`: Fetch summary statistics cards for GitHub tracker.
-- `GET /api/github/progress/daily`: Fetch daily GitHub progress table.
-- `GET /api/github/progress/weekly`: Fetch weekly GitHub progress table.
-- `POST /api/leetcode/sync`: Trigger manual sync for LeetCode.
-- `POST /api/github/sync`: Trigger manual sync for GitHub.
-
----
-
-## 🚀 Installation & Local Setup Guide
+## 🚀 Quick Start Guide
 
 ### 1. Prerequisites
-- **Node.js**: v18.x or higher
-- **PostgreSQL**: v14.x or higher (or Supabase / Neon connection)
+- **Node.js**: v18.0.0 or higher
+- **npm**: v9.0.0 or higher
+- **PostgreSQL**: v14.0 or higher
 
-### 2. Configure Environment Variables
-Copy `.env.example` to `.env`:
-
-```env
-PORT=3000
-DATABASE_URL=postgresql://user:password@localhost:5432/it_taskmanager
-JWT_SECRET=your_jwt_secret_key
-
-# Cloudinary
-CLOUDINARY_CLOUD_NAME=your_cloud_name
-CLOUDINARY_API_KEY=your_api_key
-CLOUDINARY_API_SECRET=your_api_secret
-
-# Telegram Bot
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-TELEGRAM_ADMIN_CHAT_ID=your_admin_chat_id
-TELEGRAM_GROUP_CHAT_ID=your_group_chat_id
-```
-
-### 3. Installation & Run Commands
-
+### 2. Installation
 ```bash
-# 1. Install Node.js dependencies
+# Clone the repository
+git clone https://github.com/Tharun4743/IT_taskmanager.git
+cd IT_taskmanager
+
+# Install dependencies
 npm install
 
-# 2. Run Database Setup & Table Migrations
+# Configure environment variables
+cp .env.example .env
+
+# Initialize database schema
 npx tsx db.ts
 
-# 3. Start Backend Server
-npx tsx server.ts
-
-# 4. Start Frontend Development Server
+# Start development server
 npm run dev
 ```
 
 ---
 
-## ☁️ Deployment Configuration (Render)
+<div align="center">
 
-1. Connect your repository to **Render** as a **Web Service**.
-2. **Build Command**: `npm install && npx vite build && npx tsc -p tsconfig.server.json`
-3. **Start Command**: `npx tsx server.ts`
-4. Set your private environment variables in the Render Dashboard:
-   - `DATABASE_URL`
-   - `JWT_SECRET`
-   - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
-   - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID`, `TELEGRAM_GROUP_CHAT_ID`
+### 🏛️ Department of Information Technology
+**VSB Engineering College, Karur – 639111, Tamil Nadu, India**  
+*An Autonomous Institution • Accredited by NAAC with 'A' Grade • Approved by AICTE*
 
----
+Made with ❤️ by **[Tharunkumar K](https://tharunkumark4743.netlify.app/)**
 
-## 📄 License & Attribution
-Developed with ❤️ by **[Tharunkumar K](https://tharunkumark4743.netlify.app/)**  
-Department of Information Technology, VSB Engineering College.
+</div>

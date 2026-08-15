@@ -1,10 +1,15 @@
 import { pool } from './db.js';
 import fs from 'fs';
 import path from 'path';
+import { exec } from 'child_process';
+import util from 'util';
+import { updateGitHubFileViaAPI, deleteGitHubFileViaAPI } from './studentDirectoryService.js';
+
+const execPromise = util.promisify(exec);
 
 /**
- * Creates a complete JSON data snapshot of all core tables in PostgreSQL.
- * Useful for daily automated backups, manual emergency exports, and offline archival.
+ * Creates a complete JSON data snapshot of all 29 tables in PostgreSQL
+ * and automatically commits and pushes the backup snapshot to GitHub.
  */
 export async function generateDatabaseSnapshot() {
   console.log('[DB Backup] Starting database snapshot creation...');
@@ -16,7 +21,29 @@ export async function generateDatabaseSnapshot() {
       'tasks',
       'task_classes',
       'task_submissions',
-      'submission_reviews'
+      'submission_reviews',
+      'notices',
+      'task_discussions',
+      'teams',
+      'team_members',
+      'team_invitations',
+      'team_submissions',
+      'leetcode_targets',
+      'leetcode_daily_progress',
+      'github_targets',
+      'github_daily_progress',
+      'student_profiles',
+      'student_skills',
+      'student_projects',
+      'student_internships',
+      'student_certifications',
+      'student_coding_profiles',
+      'student_resumes',
+      'student_achievements',
+      'student_languages',
+      'student_career_preferences',
+      'system_settings',
+      'notifications'
     ];
 
     const snapshotData: Record<string, any[]> = {};
@@ -40,7 +67,7 @@ export async function generateDatabaseSnapshot() {
     }
 
     const backupPayload = {
-      version: '1.0',
+      version: '2.0',
       exported_at: new Date().toISOString(),
       record_counts: Object.fromEntries(Object.entries(snapshotData).map(([k, v]) => [k, v.length])),
       data: snapshotData
@@ -63,11 +90,39 @@ export async function generateDatabaseSnapshot() {
       .filter(f => f.startsWith('db_backup_') && f.endsWith('.json'))
       .sort();
 
+    const deletedFiles: string[] = [];
     if (existingBackups.length > 7) {
       const toDelete = existingBackups.slice(0, existingBackups.length - 7);
       for (const oldFile of toDelete) {
         fs.unlinkSync(path.join(backupDir, oldFile));
+        deletedFiles.push(`backups/${oldFile}`);
       }
+    }
+
+    // ── Auto-Push Database Snapshot to GitHub ───────────────────────────────
+    const commitMsg = `chore(backup): auto-snapshot database backup for ${filename}`;
+
+    // 1. Push new backup via GitHub Contents REST API
+    if (process.env.GITHUB_TOKEN) {
+      await updateGitHubFileViaAPI(filePath, commitMsg);
+
+      // Also clean up removed backups on GitHub
+      for (const oldRelPath of deletedFiles) {
+        await deleteGitHubFileViaAPI(oldRelPath, `chore(backup): prune old snapshot ${oldRelPath}`).catch(() => {});
+      }
+    }
+
+    // 2. Also push via local Git CLI if available
+    try {
+      await execPromise('git add backups/');
+      const statusRes = await execPromise('git status --porcelain backups/');
+      if (statusRes.stdout.trim()) {
+        await execPromise(`git commit -m "${commitMsg}"`);
+        await execPromise('git push origin main');
+        console.log(`[DB Backup] 🚀 Auto-pushed database snapshot to GitHub via Git CLI: ${filename}`);
+      }
+    } catch {
+      // Handled via GitHub API above if CLI authentication is absent
     }
 
     return { filePath, backupPayload };
