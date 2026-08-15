@@ -5084,7 +5084,7 @@ async function startServer() {
             const solvedYesterday = yesterdayRes.rowCount > 0 ? Number(yesterdayRes.rows[0].solved_today) : 0;
 
             const status = activeTarget.id !== null
-              ? (solvedToday >= activeTarget.daily_target ? 'COMPLETED' : 'NOT_COMPLETED')
+              ? (solvedToday >= activeTarget.daily_target ? 'COMPLETED' : 'INCOMPLETE')
               : 'COMPLETED';
 
             await pool.query(`
@@ -5176,7 +5176,7 @@ async function startServer() {
             if (progressRow.total_solved === null) {
               status = 'DATA_UNAVAILABLE';
             } else if (activeTarget.id !== null) {
-              status = solvedToday >= activeTarget.daily_target ? 'COMPLETED' : 'NOT_COMPLETED';
+              status = solvedToday >= activeTarget.daily_target ? 'COMPLETED' : 'INCOMPLETE';
             }
             await pool.query(
               'UPDATE leetcode_daily_progress SET daily_target = $1, status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
@@ -5477,7 +5477,7 @@ async function startServer() {
 
       let dailyStatus = 'NO_TARGET';
       if (activeTarget.id !== null) {
-        dailyStatus = dailyRow?.status || (solvedToday >= activeTarget.daily_target ? 'COMPLETED' : 'NOT_COMPLETED');
+        dailyStatus = dailyRow?.status || (solvedToday >= activeTarget.daily_target ? 'COMPLETED' : 'INCOMPLETE');
       }
 
       const remainingDaily = activeTarget.id !== null
@@ -5499,7 +5499,7 @@ async function startServer() {
         } else if (syncsCount === 0) {
           weeklyStatus = 'DATA_UNAVAILABLE';
         } else {
-          weeklyStatus = 'NOT_COMPLETED';
+          weeklyStatus = 'INCOMPLETE';
         }
       }
 
@@ -5554,12 +5554,12 @@ async function startServer() {
       if (item.dailyStatus === 'COMPLETED') {
         metDaily++;
         dailyCompleted++;
-      } else if (item.dailyStatus === 'NOT_COMPLETED' || item.dailyStatus === 'DATA_UNAVAILABLE') {
+      } else if (item.dailyStatus === 'INCOMPLETE' || item.dailyStatus === 'DATA_UNAVAILABLE') {
         if (item.solvedToday > 0) inProgressDaily++;
         dailyNotCompleted++;
       }
       if (item.weeklyStatus === 'COMPLETED') weeklyCompleted++;
-      else if (item.weeklyStatus === 'NOT_COMPLETED') weeklyNotCompleted++;
+      else if (item.weeklyStatus === 'INCOMPLETE') weeklyNotCompleted++;
     }
 
     const completionDailyRate = totalStudents > 0 ? Math.round((metDaily / totalStudents) * 100) : 0;
@@ -5953,7 +5953,7 @@ async function startServer() {
     let filtered = enrichedList.filter(row => {
       const matchSearch = row.fullName.toLowerCase().includes(search) || row.registerNumber.toLowerCase().includes(search);
       if (!matchSearch) return false;
-      return row.dailyStatus === 'NOT_COMPLETED' || row.weeklyStatus === 'NOT_COMPLETED';
+      return row.dailyStatus === 'INCOMPLETE' || row.weeklyStatus === 'INCOMPLETE';
     });
 
     const excelData = filtered.map(row => ({

@@ -532,7 +532,7 @@ export async function initDB() {
         solved_today INT NOT NULL DEFAULT 0,
         solved_yesterday INT NOT NULL DEFAULT 0,
         daily_target INT NOT NULL DEFAULT 0,
-        status VARCHAR(50) NOT NULL, -- 'COMPLETED', 'NOT_COMPLETED', 'DATA_UNAVAILABLE'
+        status VARCHAR(50) NOT NULL, -- 'COMPLETED', 'INCOMPLETE', 'DATA_UNAVAILABLE'
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (user_id, date)

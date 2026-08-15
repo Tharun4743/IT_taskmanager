@@ -7653,9 +7653,9 @@ export default function App() {
                     onChange={(e) => setLeetcodeStatusFilter(e.target.value)}
                     className="text-xs font-bold text-zinc-700 bg-transparent border-none outline-none p-0 pr-6 cursor-pointer"
                   >
-                    <option value="ALL">All Statuses</option>
+<option value="ALL">All Statuses</option>
                     <option value="COMPLETED">Completed</option>
-                    <option value="NOT_COMPLETED">Pending / Incomplete</option>
+                    <option value="INCOMPLETE">Incomplete</option>
                     <option value="DATA_UNAVAILABLE">No Sync Data</option>
                   </select>
                 </div>
@@ -7689,24 +7689,24 @@ export default function App() {
                   <table className="w-full min-w-[850px] text-left border-collapse">
                     <thead>
                       <tr className="bg-zinc-50 border-b border-zinc-200 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                        <th onClick={() => handleSortHeader('registerNumber')} className="px-6 py-4 cursor-pointer select-none">
-                          Register No {leetcodeSortColumn === 'registerNumber' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+<th onClick={() => handleSortHeader('registerNumber')} className="px-6 py-4 cursor-pointer select-none">
+                          REGISTER NO {leetcodeSortColumn === 'registerNumber' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
                         </th>
                         <th onClick={() => handleSortHeader('fullName')} className="px-6 py-4 cursor-pointer select-none">
-                          Student Name {leetcodeSortColumn === 'fullName' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                          STUDENT NAME {leetcodeSortColumn === 'fullName' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
                         </th>
                         <th onClick={() => handleSortHeader('className')} className="px-6 py-4 cursor-pointer select-none">
-                          Section / Class {leetcodeSortColumn === 'className' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                          SECTION /CLASS {leetcodeSortColumn === 'className' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
                         </th>
-                        <th className="px-6 py-4">LeetCode Profile</th>
+                        <th className="px-6 py-4">LEETCODE PROFILE</th>
                         <th className="px-6 py-4 text-center">
-                          {leetcodeViewType === 'DAILY' ? 'Today / Target' : 'This Week / Target'}
+                          {leetcodeViewType === 'DAILY' ? 'TODAY' : 'THIS WEEK'}
                         </th>
                         {leetcodeViewType === 'DAILY' && (
-                          <th className="px-6 py-4 text-center">Yesterday</th>
+                          <th className="px-6 py-4 text-center">YESTERDAY</th>
                         )}
                         <th onClick={() => handleSortHeader('status')} className="px-6 py-4 text-center cursor-pointer select-none">
-                          Status {leetcodeSortColumn === 'status' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                          TARGET (completed / Incomplete) {leetcodeSortColumn === 'status' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
                         </th>
 
                       </tr>
@@ -7723,10 +7723,13 @@ export default function App() {
                           const isDaily = leetcodeViewType === 'DAILY';
                           const solved = isDaily ? (row.solvedToday ?? 0) : (row.solvedThisWeek ?? 0);
                           const target = isDaily ? (row.dailyTarget ?? 0) : (row.weeklyTarget ?? 0);
-                          const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
+const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                           const profileUrl = row.leetcodeUsername
                             ? (row.leetcodeUsername.startsWith('http') ? row.leetcodeUsername : `https://leetcode.com/u/${row.leetcodeUsername}/`)
                             : null;
+
+                          const displayStatus = status === 'COMPLETED' ? 'COMPLETED' :
+                                                status === 'NO_TARGET' ? 'NO TARGET' : 'INCOMPLETE';
 
                           return (
                             <tr key={row.studentId} className="hover:bg-zinc-50 transition-colors">
@@ -7763,14 +7766,13 @@ export default function App() {
                                   {row.solvedYesterday ?? 0}
                                 </td>
                               )}
-                              <td className="px-6 py-4 text-center">
+<td className="px-6 py-4 text-center">
                                 <span className={cn(
                                   "inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full",
-                                  status === 'COMPLETED' ? "bg-emerald-100 text-emerald-800" :
-                                    status === 'DATA_UNAVAILABLE' ? "bg-zinc-100 text-zinc-800" :
-                                      status === 'NO_TARGET' ? "bg-zinc-50 text-zinc-400" : "bg-orange-100 text-orange-800"
+                                  displayStatus === 'COMPLETED' ? "bg-emerald-100 text-emerald-800" :
+                                    displayStatus === 'NO TARGET' ? "bg-zinc-50 text-zinc-400" : "bg-orange-100 text-orange-800"
                                 )}>
-                                  {(status || 'PENDING').replace('_', ' ')}
+                                  {displayStatus}
                                 </span>
                               </td>
 
@@ -7987,28 +7989,28 @@ export default function App() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[850px] text-left border-collapse">
                   <thead>
-                    <tr className="bg-zinc-50 border-b border-zinc-200 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+<tr className="bg-zinc-50 border-b border-zinc-200 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                       <th onClick={() => handleSortHeader('registerNumber')} className="px-6 py-4 cursor-pointer select-none">
-                        Register No {leetcodeSortColumn === 'registerNumber' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                        REGISTER NO {leetcodeSortColumn === 'registerNumber' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
                       </th>
                       <th onClick={() => handleSortHeader('fullName')} className="px-6 py-4 cursor-pointer select-none">
-                        Student Name {leetcodeSortColumn === 'fullName' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                        STUDENT NAME {leetcodeSortColumn === 'fullName' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
                       </th>
                       <th onClick={() => handleSortHeader('className')} className="px-6 py-4 cursor-pointer select-none">
-                        Section / Class {leetcodeSortColumn === 'className' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                        SECTION/CLASS {leetcodeSortColumn === 'className' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
                       </th>
-                      <th className="px-6 py-4">GitHub Profile</th>
+                      <th className="px-6 py-4">GITHUB PROFILE</th>
                       {leetcodeViewType === 'DAILY' ? (
                         <th onClick={() => handleSortHeader('commitsToday')} className="px-6 py-4 text-center cursor-pointer select-none">
-                          Commits Today {leetcodeSortColumn === 'commitsToday' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                          COMMITS TODAY {leetcodeSortColumn === 'commitsToday' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
                         </th>
                       ) : (
                         <th onClick={() => handleSortHeader('commitsThisWeek')} className="px-6 py-4 text-center cursor-pointer select-none">
-                          Commits This Week {leetcodeSortColumn === 'commitsThisWeek' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                          COMMITS THIS WEEK {leetcodeSortColumn === 'commitsThisWeek' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
                         </th>
                       )}
                       <th onClick={() => handleSortHeader('syncStatus')} className="px-6 py-4 text-center cursor-pointer select-none">
-                        Sync Status {leetcodeSortColumn === 'syncStatus' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                        SYNC STATUS {leetcodeSortColumn === 'syncStatus' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
                       </th>
                     </tr>
                   </thead>
