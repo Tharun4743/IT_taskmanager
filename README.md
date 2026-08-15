@@ -194,31 +194,22 @@ flowchart LR
 
 ---
 
-## 🚀 Quick Start Guide
+## 🔒 Intellectual Property & Proprietary License
 
-### 1. Prerequisites
-- **Node.js**: v18.0.0 or higher
-- **npm**: v9.0.0 or higher
-- **PostgreSQL**: v14.0 or higher
-
-### 2. Installation
-```bash
-# Clone the repository
-git clone https://github.com/Tharun4743/IT_taskmanager.git
-cd IT_taskmanager
-
-# Install dependencies
-npm install
-
-# Configure environment variables
-cp .env.example .env
-
-# Initialize database schema
-npx tsx db.ts
-
-# Start development server
-npm run dev
 ```
+Copyright (c) 2024–2026 Tharunkumar K. All Rights Reserved.
+Department of Information Technology, VSB Engineering College.
+```
+
+### Terms & Restrictions of Use:
+- **Strictly Proprietary**: This software, including its source code, database architectures, user interface assets, analytics pipelines, and documentation, is the exclusive intellectual property of **Tharunkumar K** and the Department of Information Technology at VSB Engineering College.
+- **Unauthorized Copying Prohibited**: No individual or entity may clone, copy, distribute, modify, decompile, reverse-engineer, sublicense, publicly host, or commercially exploit this software or its source code, in whole or in part, without prior express written permission from the copyright owner.
+- **Institutional Exclusivity**: Engineered exclusively for internal academic governance and student coding analytics within VSB Engineering College.
+- **Legal Enforcement**: Any unauthorized use, reproduction, or infringement of these proprietary assets is strictly prohibited and subject to legal remedies under applicable intellectual property and copyright laws.
+
+For permissions, authorized deployment inquiries, or official institutional requests:
+- **Lead Architect & Developer**: [Tharunkumar K](https://tharunkumark4743.netlify.app/)
+- **Department**: Department of Information Technology, VSB Engineering College, Karur, Tamil Nadu, India.
 
 ---
 
