@@ -36,7 +36,8 @@ import {
   notifyNewTaskCreated,
   notifyTaskSubmissionReceived,
   notifySubmissionVerifiedOrRejected,
-  notifySubmissionBatchVerified
+  notifySubmissionBatchVerified,
+  linkStudentTelegram
 } from './telegramService.js';
 import * as XLSX from 'xlsx';
 
@@ -675,10 +676,68 @@ async function startServer() {
     }
   }));
 
-  // 6. Unlink Telegram from Student Profile
+  // 6. Link Telegram Account from Student Web Profile
+  app.post('/api/student/link-telegram', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const { chatId, telegramUsername } = req.body;
+    if (!chatId) {
+      return res.status(400).json({ error: 'Telegram Chat ID is required.' });
+    }
+
+    const userRes = await pool.query('SELECT id, full_name, register_number, username FROM users WHERE id = $1 LIMIT 1', [req.user.id]);
+    const user = userRes.rows[0];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const linkRes = await linkStudentTelegram(user.register_number || user.username, chatId, telegramUsername);
+    if (!linkRes.success) {
+      return res.status(400).json({ error: linkRes.message });
+    }
+
+    // Send a confirmation ping to the linked Telegram Chat
+    const confirmMsg = `🎉 <b>TELEGRAM ACCOUNT LINKED SUCCESSFULLY!</b>\n\nHello <b>${user.full_name}</b> (<code>${user.register_number || user.username}</code>),\nYour Telegram account has been linked to the IT TaskManager portal!\nYou will now receive instant task updates, verification notices, and deadline alerts directly here. 🚀`;
+    sendTelegramMessage(chatId, confirmMsg).catch(() => {});
+
+    res.json({ success: true, message: 'Telegram account linked successfully!', studentName: user.full_name });
+  }));
+
+  // 7. Unlink Telegram from Student Profile
   app.delete('/api/student/unlink-telegram', authenticate, asyncHandler(async (req: any, res: Response) => {
     await pool.query('UPDATE users SET telegram_chat_id = NULL, telegram_username = NULL, telegram_linked_at = NULL WHERE id = $1', [req.user.id]);
     res.json({ success: true, message: 'Telegram account unlinked successfully.' });
+  }));
+
+  // 8. Admin/Staff Broadcast Message via Telegram
+  app.post('/api/telegram/broadcast', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR', 'STAFF']), asyncHandler(async (req: any, res: Response) => {
+    const { message, targetClassIds } = req.body;
+    if (!message || !message.trim()) {
+      return res.status(400).json({ error: 'Broadcast message is required.' });
+    }
+
+    let query = `SELECT telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL AND role = 'STUDENT'`;
+    const params: any[] = [];
+
+    if (Array.isArray(targetClassIds) && targetClassIds.length > 0) {
+      params.push(targetClassIds);
+      query += ` AND class_id = ANY($1::uuid[])`;
+    } else if (req.user.role === 'CLASS_ADVISOR' && req.user.class_id) {
+      params.push(req.user.class_id);
+      query += ` AND class_id = $1`;
+    } else if (req.user.role === 'HOD' && req.user.department_id) {
+      params.push(req.user.department_id);
+      query += ` AND department_id = $1`;
+    }
+
+    const studentsRes = await pool.query(query, params);
+    const chatIds = studentsRes.rows.map(r => r.telegram_chat_id).filter(Boolean);
+
+    const broadcastHtml = `📢 <b>DEPARTMENT ANNOUNCEMENT</b>\n\n${message.trim()}\n\n— <i>Sent by ${req.user.username} (${req.user.role})</i>`;
+
+    let sentCount = 0;
+    for (const cid of chatIds) {
+      sendTelegramMessage(cid, broadcastHtml).catch(() => {});
+      sentCount++;
+    }
+
+    res.json({ success: true, sentCount, totalTargeted: chatIds.length });
   }));
 
   // ── Auth ──────────────────────────────────────────────────────────────────
@@ -7075,6 +7134,16 @@ async function startServer() {
   if (process.env.GITHUB_TOKEN) {
     syncGitHubProgressForScope().catch(err => console.error('[GitHub Sync] Startup sync error:', err));
     scheduleGitHubDailySync();
+  }
+
+  // Telegram Bot startup poller
+  if (process.env.TELEGRAM_BOT_TOKEN) {
+    try {
+      startTelegramPoller();
+      console.log('[Telegram Bot] Background poller started successfully.');
+    } catch (err) {
+      console.error('[Telegram Bot] Failed to start poller:', err);
+    }
   }
 
   // ── Protected Cron Webhook (Render / External Cron Support) ─────────────────
