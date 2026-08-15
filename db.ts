@@ -14,11 +14,11 @@ if (!databaseUrl) {
 
 export const pool = new Pool({
   connectionString: databaseUrl,
-  max: 10,
+  max: 20,
   min: 2,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
-  statement_timeout: 6000,
+  connectionTimeoutMillis: 10000,
+  statement_timeout: 15000,
   keepAlive: true,
   ssl: databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1')
     ? false
@@ -586,8 +586,12 @@ export async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_github_daily_commits_student_date ON github_daily_commits(student_id, date);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_github_daily_commits_date ON github_daily_commits(date);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_github_daily_commits_username ON github_daily_commits(github_username);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_github_daily_commits_date_commits ON github_daily_commits(date, daily_commit_count);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_leetcode_progress_status_date ON leetcode_daily_progress(status, date);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_leetcode_daily_user_date_status ON leetcode_daily_progress(user_id, date, status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_leetcode_daily_progress_date_solved ON leetcode_daily_progress(date, solved_today);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_users_class_dept_role ON users(class_id, department_id, role);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_users_regno_username ON users(register_number, username);`);
 
     // Clean up duplicate target configuration rows if any exist
     await client.query(`
