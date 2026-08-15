@@ -3244,28 +3244,29 @@ function StaffStudentProfileModal({
             </div>
           </div>
 
-          <button onClick={onClose} className="p-2 hover:bg-zinc-100 rounded-full text-zinc-400 hover:text-zinc-900 transition-colors">
-            <XCircle size={24} />
+          <button onClick={onClose} className="p-1.5 hover:bg-zinc-100 rounded-lg text-zinc-400 hover:text-zinc-800 transition-colors border border-transparent hover:border-zinc-200 cursor-pointer">
+            <X size={18} />
           </button>
         </div>
 
         {/* Section Pill Selectors */}
-        <div className="flex items-center gap-1.5 overflow-x-auto max-w-full py-3 custom-scrollbar shrink-0 border-b border-zinc-100">
+        <div className="flex items-center gap-1.5 overflow-x-auto max-w-full py-3 custom-scrollbar shrink-0 border-b border-zinc-200">
           {sections.map(s => {
             const SIcon = s.icon;
+            const isActive = activeSection === s.id;
             return (
               <button
                 key={s.id}
                 type="button"
                 onClick={() => setActiveSection(s.id)}
                 className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 shrink-0",
-                  activeSection === s.id
-                    ? "bg-black text-white shadow-sm"
-                    : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                  "px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 shrink-0 border cursor-pointer",
+                  isActive
+                    ? "bg-zinc-900 text-white border-zinc-900 shadow-sm scale-[1.01]"
+                    : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50 hover:text-zinc-900"
                 )}
               >
-                <SIcon size={13} />
+                <SIcon size={13} className={cn(isActive ? "text-white" : "text-zinc-400")} />
                 <span>{s.label}</span>
               </button>
             );
@@ -3288,43 +3289,71 @@ function StaffStudentProfileModal({
               {activeSection === 'personal' && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase">College Email</p>
-                      <p className="text-xs font-bold text-zinc-900 truncate">{acad.email || 'N/A'}</p>
+                    <div className="p-3 bg-zinc-50/50 rounded-xl border border-zinc-200/60 flex gap-2.5 items-center">
+                      <Mail size={16} className="text-zinc-400 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">College Email</p>
+                        <p className="text-xs font-bold text-zinc-900 truncate" title={acad.email}>{acad.email || 'N/A'}</p>
+                      </div>
                     </div>
-                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Gender</p>
-                      <p className="text-xs font-bold text-zinc-900 truncate">{acad.gender || 'N/A'}</p>
+                    <div className="p-3 bg-zinc-50/50 rounded-xl border border-zinc-200/60 flex gap-2.5 items-center">
+                      <User size={16} className="text-zinc-400 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Gender</p>
+                        <p className="text-xs font-bold text-zinc-900 truncate">{acad.gender || 'N/A'}</p>
+                      </div>
                     </div>
-                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Mobile Number</p>
-                      <p className="text-xs font-bold text-zinc-900 truncate">{profile.personal?.mobile_number || 'N/A'}</p>
+                    <div className="p-3 bg-zinc-50/50 rounded-xl border border-zinc-200/60 flex gap-2.5 items-center">
+                      <Phone size={16} className="text-zinc-400 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Mobile Number</p>
+                        <p className="text-xs font-bold text-zinc-900 truncate">{profile.personal?.mobile_number || 'N/A'}</p>
+                      </div>
                     </div>
-                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Date of Birth</p>
-                      <p className="text-xs font-bold text-zinc-900 truncate">{profile.personal?.date_of_birth || 'N/A'}</p>
+                    <div className="p-3 bg-zinc-50/50 rounded-xl border border-zinc-200/60 flex gap-2.5 items-center">
+                      <Calendar size={16} className="text-zinc-400 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Date of Birth</p>
+                        <p className="text-xs font-bold text-zinc-900 truncate">{profile.personal?.date_of_birth || 'N/A'}</p>
+                      </div>
                     </div>
-                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Semester</p>
-                      <p className="text-xs font-bold text-zinc-900 truncate">{profile.personal?.semester ? `Semester ${profile.personal.semester}` : 'N/A'}</p>
+                    <div className="p-3 bg-zinc-50/50 rounded-xl border border-zinc-200/60 flex gap-2.5 items-center">
+                      <BookOpen size={16} className="text-zinc-400 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Semester</p>
+                        <p className="text-xs font-bold text-zinc-900 truncate">{profile.personal?.semester ? `Semester ${profile.personal.semester}` : 'N/A'}</p>
+                      </div>
                     </div>
-                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase">CGPA</p>
-                      <p className="text-xs font-bold text-emerald-600 truncate">{profile.personal?.cgpa || 'N/A'}</p>
+                    <div className="p-3 bg-zinc-50/50 rounded-xl border border-zinc-200/60 flex gap-2.5 items-center">
+                      <GraduationCap size={16} className="text-emerald-500 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">CGPA</p>
+                        <p className="text-xs font-bold text-emerald-600 truncate">{profile.personal?.cgpa || 'N/A'}</p>
+                      </div>
                     </div>
-                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase">Current Arrears</p>
-                      <p className="text-xs font-bold text-rose-600 truncate">{profile.personal?.current_arrears ?? 0}</p>
+                    <div className="p-3 bg-zinc-50/50 rounded-xl border border-zinc-200/60 flex gap-2.5 items-center">
+                      <AlertTriangle size={16} className={cn("shrink-0", (profile.personal?.current_arrears > 0) ? "text-rose-500" : "text-emerald-500")} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Current Arrears</p>
+                        <p className={cn("text-xs font-bold truncate", (profile.personal?.current_arrears > 0) ? "text-rose-600" : "text-emerald-600")}>
+                          {profile.personal?.current_arrears ?? 0}
+                        </p>
+                      </div>
                     </div>
-                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase">History of Arrears</p>
-                      <p className="text-xs font-bold text-zinc-900 truncate">{profile.personal?.history_of_arrears ?? 0}</p>
+                    <div className="p-3 bg-zinc-50/50 rounded-xl border border-zinc-200/60 flex gap-2.5 items-center">
+                      <RotateCcw size={16} className={cn("shrink-0", (profile.personal?.history_of_arrears > 0) ? "text-amber-500" : "text-zinc-400")} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">History of Arrears</p>
+                        <p className={cn("text-xs font-bold truncate", (profile.personal?.history_of_arrears > 0) ? "text-amber-600" : "text-zinc-600")}>
+                          {profile.personal?.history_of_arrears ?? 0}
+                        </p>
+                      </div>
                     </div>
                   </div>
 
                   {profile.personal?.about_me && (
-                    <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase mb-1">About Student</p>
+                    <div className="p-4 bg-zinc-50/50 rounded-2xl border border-zinc-200/60">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase mb-1.5 tracking-wider">About Student</p>
                       <p className="text-xs text-zinc-700 leading-relaxed">{profile.personal.about_me}</p>
                     </div>
                   )}
@@ -3332,33 +3361,82 @@ function StaffStudentProfileModal({
               )}
 
               {activeSection === 'skills' && (
-                <div className="flex flex-wrap gap-2">
-                  {(profile.skills || []).length === 0 ? (
-                    <p className="text-xs text-zinc-400 py-4">No skills recorded.</p>
-                  ) : (
-                    profile.skills.map((sk: any) => (
-                      <div key={sk.id} className="px-3 py-1.5 bg-zinc-100 rounded-xl border border-zinc-200 text-xs font-semibold flex items-center gap-2">
-                        <span>{sk.skill_name}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 text-zinc-700 font-bold uppercase">{sk.level}</span>
+                <div className="space-y-4">
+                  {(() => {
+                    const grouped: Record<string, any[]> = {};
+                    (profile.skills || []).forEach((sk: any) => {
+                      const cat = sk.category || 'Other';
+                      if (!grouped[cat]) grouped[cat] = [];
+                      grouped[cat].push(sk);
+                    });
+                    const categories = Object.keys(grouped).sort();
+                    if (categories.length === 0) {
+                      return <p className="text-xs text-zinc-400 py-8 text-center">No skills recorded.</p>;
+                    }
+                    return categories.map(cat => (
+                      <div key={cat} className="p-4 bg-zinc-50/50 rounded-2xl border border-zinc-200/60 shadow-2xs">
+                        <h4 className="text-xs font-black text-zinc-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                          <Code size={13} className="text-zinc-500" /> {cat}
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          {grouped[cat].map((sk: any) => {
+                            const isLvlAdvanced = sk.level?.toLowerCase() === 'advanced';
+                            const isLvlIntermediate = sk.level?.toLowerCase() === 'intermediate';
+                            return (
+                              <div key={sk.id} className="px-3 py-1.5 bg-white rounded-xl border border-zinc-200/80 text-xs font-semibold flex items-center gap-2 hover:border-zinc-400 transition-colors">
+                                <span className="text-zinc-800">{sk.skill_name}</span>
+                                <span className={cn(
+                                  "text-[9px] px-1.5 py-0.5 rounded font-bold uppercase",
+                                  isLvlAdvanced ? "bg-emerald-50 text-emerald-600 border border-emerald-100" :
+                                  isLvlIntermediate ? "bg-blue-50 text-blue-600 border border-blue-100" : "bg-zinc-100 text-zinc-600"
+                                )}>
+                                  {sk.level || 'Unknown'}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    ))
-                  )}
+                    ));
+                  })()}
                 </div>
               )}
 
               {activeSection === 'projects' && (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {(profile.projects || []).length === 0 ? (
-                    <p className="text-xs text-zinc-400 py-4 text-center">No projects recorded.</p>
+                    <p className="text-xs text-zinc-400 py-8 text-center">No projects recorded.</p>
                   ) : (
                     profile.projects.map((p: any) => (
-                      <div key={p.id} className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl space-y-1">
-                        <h4 className="text-sm font-bold text-zinc-900">{p.project_name}</h4>
-                        {p.tech_stack && <p className="text-xs text-indigo-600 font-semibold">{p.tech_stack}</p>}
-                        {p.description && <p className="text-xs text-zinc-600">{p.description}</p>}
+                      <div key={p.id} className="p-5 bg-zinc-50/50 border border-zinc-200/60 rounded-2xl shadow-2xs hover:shadow-xs transition-shadow space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <h4 className="text-sm font-bold text-zinc-900 flex items-center gap-1.5">
+                              <Layers size={14} className="text-zinc-500" /> {p.project_name}
+                            </h4>
+                            {p.tech_stack && (
+                              <div className="flex flex-wrap gap-1.5 pt-1">
+                                {p.tech_stack.split(',').map((tech: string, tIdx: number) => (
+                                  <span key={tIdx} className="px-2 py-0.5 rounded-md bg-indigo-50/50 border border-indigo-100 text-[10px] font-bold text-indigo-600">
+                                    {tech.trim()}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {p.description && <p className="text-xs text-zinc-600 leading-relaxed">{p.description}</p>}
                         <div className="flex gap-3 pt-1 text-xs">
-                          {p.github_url && <a href={p.github_url} target="_blank" rel="noreferrer" className="text-blue-600 font-bold hover:underline flex items-center gap-1"><Github size={12} /> GitHub</a>}
-                          {p.live_demo_url && <a href={p.live_demo_url} target="_blank" rel="noreferrer" className="text-emerald-600 font-bold hover:underline flex items-center gap-1"><Globe size={12} /> Live Demo</a>}
+                          {p.github_url && (
+                            <a href={p.github_url} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-white border border-zinc-200 hover:border-zinc-400 text-zinc-700 font-bold rounded-xl flex items-center gap-1.5 transition-colors">
+                              <Github size={13} /> Code Repository
+                            </a>
+                          )}
+                          {p.live_demo_url && (
+                            <a href={p.live_demo_url} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-emerald-50 border border-emerald-200 hover:border-emerald-300 text-emerald-700 font-bold rounded-xl flex items-center gap-1.5 transition-colors">
+                              <Globe size={13} /> Live Preview
+                            </a>
+                          )}
                         </div>
                       </div>
                     ))
@@ -3367,17 +3445,26 @@ function StaffStudentProfileModal({
               )}
 
               {activeSection === 'internships' && (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {(profile.internships || []).length === 0 ? (
-                    <p className="text-xs text-zinc-400 py-4 text-center">No internships recorded.</p>
+                    <p className="text-xs text-zinc-400 py-8 text-center">No internships recorded.</p>
                   ) : (
                     profile.internships.map((intern: any) => (
-                      <div key={intern.id} className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl">
-                        <h4 className="text-sm font-bold text-zinc-900">{intern.company}</h4>
-                        <p className="text-xs font-semibold text-zinc-600">{intern.role} • {intern.duration} ({intern.mode})</p>
+                      <div key={intern.id} className="p-5 bg-zinc-50/50 border border-zinc-200/60 rounded-2xl shadow-2xs hover:shadow-xs transition-shadow flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-bold text-zinc-900 flex items-center gap-1.5">
+                            <Briefcase size={14} className="text-zinc-500" /> {intern.company}
+                          </h4>
+                          <p className="text-xs font-bold text-zinc-600">
+                            {intern.role}
+                          </p>
+                          <p className="text-[11px] text-zinc-400 font-semibold">
+                            {intern.duration} • <span className="uppercase text-[10px] bg-zinc-100 border border-zinc-200 px-1.5 py-0.5 rounded text-zinc-500 font-bold">{intern.mode}</span>
+                          </p>
+                        </div>
                         {intern.certificate_url && (
-                          <a href={intern.certificate_url} target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-600 hover:underline flex items-center gap-1 mt-1">
-                            <ExternalLink size={12} /> View Certificate
+                          <a href={intern.certificate_url} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-white border border-zinc-200 hover:border-zinc-400 text-indigo-600 hover:text-indigo-800 font-bold rounded-xl flex items-center gap-1.5 transition-colors shrink-0 text-xs shadow-2xs">
+                            <ExternalLink size={13} /> View Certificate
                           </a>
                         )}
                       </div>
@@ -3387,17 +3474,23 @@ function StaffStudentProfileModal({
               )}
 
               {activeSection === 'certifications' && (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {(profile.certifications || []).length === 0 ? (
-                    <p className="text-xs text-zinc-400 py-4 text-center">No certifications recorded.</p>
+                    <p className="text-xs text-zinc-400 py-8 text-center">No certifications recorded.</p>
                   ) : (
                     profile.certifications.map((c: any) => (
-                      <div key={c.id} className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl">
-                        <h4 className="text-sm font-bold text-zinc-900">{c.certificate_name}</h4>
-                        <p className="text-xs font-semibold text-zinc-600">{c.provider} {c.issue_date ? `• Issued ${c.issue_date}` : ''}</p>
+                      <div key={c.id} className="p-5 bg-zinc-50/50 border border-zinc-200/60 rounded-2xl shadow-2xs hover:shadow-xs transition-shadow flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-bold text-zinc-900 flex items-center gap-1.5">
+                            <Award size={14} className="text-zinc-500" /> {c.certificate_name}
+                          </h4>
+                          <p className="text-xs font-semibold text-zinc-600">
+                            {c.provider} {c.issue_date ? `• Issued ${c.issue_date}` : ''}
+                          </p>
+                        </div>
                         {c.certificate_url && (
-                          <a href={c.certificate_url} target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-600 hover:underline flex items-center gap-1 mt-1">
-                            <ExternalLink size={12} /> View Credential
+                          <a href={c.certificate_url} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-white border border-zinc-200 hover:border-zinc-400 text-indigo-600 hover:text-indigo-800 font-bold rounded-xl flex items-center gap-1.5 transition-colors shrink-0 text-xs shadow-2xs">
+                            <ExternalLink size={13} /> View Credential
                           </a>
                         )}
                       </div>
@@ -3408,47 +3501,94 @@ function StaffStudentProfileModal({
 
               {activeSection === 'coding' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {profile.coding_profiles?.github && <a href={profile.coding_profiles.github} target="_blank" rel="noreferrer" className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-blue-600 flex items-center gap-2"><Github size={16} /> GitHub Profile</a>}
-                  {profile.coding_profiles?.leetcode && <a href={profile.coding_profiles.leetcode} target="_blank" rel="noreferrer" className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-amber-600 flex items-center gap-2"><Globe size={16} /> LeetCode Profile</a>}
-                  {profile.coding_profiles?.hackerrank && <a href={profile.coding_profiles.hackerrank} target="_blank" rel="noreferrer" className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-emerald-600 flex items-center gap-2"><Globe size={16} /> HackerRank Profile</a>}
-                  {profile.coding_profiles?.codechef && <a href={profile.coding_profiles.codechef} target="_blank" rel="noreferrer" className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-purple-600 flex items-center gap-2"><Globe size={16} /> CodeChef Profile</a>}
-                  {profile.coding_profiles?.geeksforgeeks && <a href={profile.coding_profiles.geeksforgeeks} target="_blank" rel="noreferrer" className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-green-600 flex items-center gap-2"><Globe size={16} /> GeeksforGeeks Profile</a>}
-                  {profile.coding_profiles?.linkedin && <a href={profile.coding_profiles.linkedin} target="_blank" rel="noreferrer" className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-blue-700 flex items-center gap-2"><Linkedin size={16} /> LinkedIn Profile</a>}
-                  {profile.coding_profiles?.portfolio && <a href={profile.coding_profiles.portfolio} target="_blank" rel="noreferrer" className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-indigo-600 flex items-center gap-2"><Globe size={16} /> Portfolio Website</a>}
+                  {profile.coding_profiles?.github && (
+                    <a href={profile.coding_profiles.github} target="_blank" rel="noreferrer" className="p-4 bg-zinc-900 border border-zinc-950 text-xs font-bold text-white rounded-2xl flex items-center justify-between hover:scale-[1.01] active:scale-[0.99] transition-all group">
+                      <span className="flex items-center gap-2.5">
+                        <Github size={18} />
+                        <span>GitHub Profile</span>
+                      </span>
+                      <ExternalLink size={13} className="opacity-60 group-hover:opacity-100" />
+                    </a>
+                  )}
+                  {profile.coding_profiles?.leetcode && (
+                    <a href={profile.coding_profiles.leetcode} target="_blank" rel="noreferrer" className="p-4 bg-amber-50 border border-amber-200 text-xs font-bold text-amber-800 rounded-2xl flex items-center justify-between hover:scale-[1.01] active:scale-[0.99] transition-all group">
+                      <span className="flex items-center gap-2.5">
+                        <Globe size={18} className="text-amber-600" />
+                        <span>LeetCode Profile</span>
+                      </span>
+                      <ExternalLink size={13} className="opacity-60 group-hover:opacity-100" />
+                    </a>
+                  )}
+                  {profile.coding_profiles?.linkedin && (
+                    <a href={profile.coding_profiles.linkedin} target="_blank" rel="noreferrer" className="p-4 bg-blue-50 border border-blue-200 text-xs font-bold text-blue-800 rounded-2xl flex items-center justify-between hover:scale-[1.01] active:scale-[0.99] transition-all group">
+                      <span className="flex items-center gap-2.5">
+                        <Linkedin size={18} className="text-blue-600" />
+                        <span>LinkedIn Profile</span>
+                      </span>
+                      <ExternalLink size={13} className="opacity-60 group-hover:opacity-100" />
+                    </a>
+                  )}
+                  {profile.coding_profiles?.geeksforgeeks && (
+                    <a href={profile.coding_profiles.geeksforgeeks} target="_blank" rel="noreferrer" className="p-4 bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800 rounded-2xl flex items-center justify-between hover:scale-[1.01] active:scale-[0.99] transition-all group">
+                      <span className="flex items-center gap-2.5">
+                        <Globe size={18} className="text-emerald-600" />
+                        <span>GeeksforGeeks Profile</span>
+                      </span>
+                      <ExternalLink size={13} className="opacity-60 group-hover:opacity-100" />
+                    </a>
+                  )}
+                  {profile.coding_profiles?.portfolio && (
+                    <a href={profile.coding_profiles.portfolio} target="_blank" rel="noreferrer" className="p-4 bg-indigo-50 border border-indigo-200 text-xs font-bold text-indigo-800 rounded-2xl flex items-center justify-between hover:scale-[1.01] active:scale-[0.99] transition-all group">
+                      <span className="flex items-center gap-2.5">
+                        <Globe size={18} className="text-indigo-600" />
+                        <span>Portfolio Website</span>
+                      </span>
+                      <ExternalLink size={13} className="opacity-60 group-hover:opacity-100" />
+                    </a>
+                  )}
                 </div>
               )}
 
               {activeSection === 'resume' && (
                 <div>
                   {profile.resume ? (
-                    <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200 flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-bold text-zinc-900">{profile.resume.file_name || 'Resume.pdf'}</p>
-                        <p className="text-[10px] text-zinc-400">Last updated: {new Date(profile.resume.last_updated).toLocaleString()}</p>
+                    <div className="p-5 bg-zinc-50/50 rounded-2xl border border-zinc-200/60 flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 shrink-0">
+                          <FileText size={24} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-zinc-900">{profile.resume.file_name || 'Resume.pdf'}</p>
+                          <p className="text-[10px] text-zinc-400 font-semibold">Last updated: {new Date(profile.resume.last_updated).toLocaleString()}</p>
+                        </div>
                       </div>
-                      <a href={profile.resume.resume_url} target="_blank" rel="noreferrer" className="px-4 py-2 bg-black text-white text-xs font-bold rounded-xl flex items-center gap-1">
-                        <ExternalLink size={14} /> Open Resume PDF
+                      <a href={profile.resume.resume_url} target="_blank" rel="noreferrer" className="px-4 py-2 bg-zinc-900 hover:bg-black text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors shrink-0 shadow-sm shadow-black/10">
+                        <ExternalLink size={13} /> Open PDF
                       </a>
                     </div>
                   ) : (
-                    <p className="text-xs text-zinc-400 py-4 text-center">No resume uploaded.</p>
+                    <p className="text-xs text-zinc-400 py-8 text-center">No resume uploaded.</p>
                   )}
                 </div>
               )}
 
               {activeSection === 'achievements' && (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {(profile.achievements || []).length === 0 ? (
-                    <p className="text-xs text-zinc-400 py-4 text-center">No achievements recorded.</p>
+                    <p className="text-xs text-zinc-400 py-8 text-center">No achievements recorded.</p>
                   ) : (
                     profile.achievements.map((ach: any) => (
-                      <div key={ach.id} className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl">
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-bold text-zinc-900">{ach.title}</h4>
-                          <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-extrabold uppercase">{ach.category}</span>
+                      <div key={ach.id} className="p-5 bg-zinc-50/50 border border-zinc-200/60 rounded-2xl shadow-2xs hover:shadow-xs transition-shadow space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="text-sm font-bold text-zinc-900 flex items-center gap-1.5">
+                            <Trophy size={14} className="text-amber-500" /> {ach.title}
+                          </h4>
+                          <span className="px-2 py-0.5 rounded bg-indigo-50 border border-indigo-100 text-[9px] font-black text-indigo-600 uppercase">
+                            {ach.category}
+                          </span>
                         </div>
-                        {ach.event_date && <p className="text-[11px] text-zinc-400">{ach.event_date}</p>}
-                        {ach.description && <p className="text-xs text-zinc-600 mt-1">{ach.description}</p>}
+                        {ach.event_date && <p className="text-[10px] text-zinc-400 font-semibold">{ach.event_date}</p>}
+                        {ach.description && <p className="text-xs text-zinc-600 mt-2 leading-relaxed">{ach.description}</p>}
                       </div>
                     ))
                   )}
@@ -3456,14 +3596,15 @@ function StaffStudentProfileModal({
               )}
 
               {activeSection === 'languages' && (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2.5">
                   {(profile.languages || []).length === 0 ? (
-                    <p className="text-xs text-zinc-400 py-4">No languages recorded.</p>
+                    <p className="text-xs text-zinc-400 py-8 text-center">No languages recorded.</p>
                   ) : (
                     profile.languages.map((l: any) => (
-                      <div key={l.id} className="px-3 py-1.5 bg-zinc-100 rounded-xl border border-zinc-200 text-xs font-semibold flex items-center gap-2">
-                        <span>{l.language}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 text-zinc-700 font-bold uppercase">{l.proficiency}</span>
+                      <div key={l.id} className="px-3 py-2 bg-zinc-50 rounded-xl border border-zinc-200/80 text-xs font-semibold flex items-center gap-2">
+                        <Languages size={13} className="text-zinc-500" />
+                        <span className="text-zinc-800">{l.language}</span>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-200/60 text-zinc-600 font-bold uppercase">{l.proficiency}</span>
                       </div>
                     ))
                   )}
@@ -3472,21 +3613,35 @@ function StaffStudentProfileModal({
 
               {activeSection === 'career' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
-                    <p className="text-[10px] font-bold text-zinc-400 uppercase">Preferred Role</p>
-                    <p className="text-xs font-bold text-zinc-900">{profile.career_preferences?.preferred_role || 'N/A'}</p>
+                  <div className="p-4 bg-zinc-50/50 rounded-2xl border border-zinc-200/60 flex gap-3 items-center">
+                    <Briefcase size={16} className="text-zinc-400 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Preferred Role</p>
+                      <p className="text-xs font-bold text-zinc-900 truncate">{profile.career_preferences?.preferred_role || 'N/A'}</p>
+                    </div>
                   </div>
-                  <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
-                    <p className="text-[10px] font-bold text-zinc-400 uppercase">Preferred Domain</p>
-                    <p className="text-xs font-bold text-zinc-900">{profile.career_preferences?.preferred_domain || 'N/A'}</p>
+                  <div className="p-4 bg-zinc-50/50 rounded-2xl border border-zinc-200/60 flex gap-3 items-center">
+                    <Compass size={16} className="text-zinc-400 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Preferred Domain</p>
+                      <p className="text-xs font-bold text-zinc-900 truncate">{profile.career_preferences?.preferred_domain || 'N/A'}</p>
+                    </div>
                   </div>
-                  <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
-                    <p className="text-[10px] font-bold text-zinc-400 uppercase">Preferred Location</p>
-                    <p className="text-xs font-bold text-zinc-900">{profile.career_preferences?.preferred_location || 'N/A'}</p>
+                  <div className="p-4 bg-zinc-50/50 rounded-2xl border border-zinc-200/60 flex gap-3 items-center">
+                    <MapPin size={16} className="text-zinc-400 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Preferred Location</p>
+                      <p className="text-xs font-bold text-zinc-900 truncate">{profile.career_preferences?.preferred_location || 'N/A'}</p>
+                    </div>
                   </div>
-                  <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-100">
-                    <p className="text-[10px] font-bold text-zinc-400 uppercase">Work Mode & Relocation</p>
-                    <p className="text-xs font-bold text-zinc-900">{profile.career_preferences?.work_mode || 'Hybrid'} • {profile.career_preferences?.willing_to_relocate ? 'Willing to Relocate' : 'No Relocation'}</p>
+                  <div className="p-4 bg-zinc-50/50 rounded-2xl border border-zinc-200/60 flex gap-3 items-center">
+                    <Globe size={16} className="text-zinc-400 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Work Mode & Relocation</p>
+                      <p className="text-xs font-bold text-zinc-900 truncate">
+                        {profile.career_preferences?.work_mode || 'Hybrid'} • {profile.career_preferences?.willing_to_relocate ? 'Willing to Relocate' : 'No Relocation'}
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}
