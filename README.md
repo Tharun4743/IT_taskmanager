@@ -144,56 +144,6 @@ flowchart LR
 
 ---
 
-## 📡 API Endpoint Reference
-
-### 🔐 Authentication & Profile
-| Method | Endpoint | Description | Access |
-| :--- | :--- | :--- | :--- |
-| `POST` | `/api/auth/login` | Authenticate user credentials and return JWT token | Public |
-| `GET` | `/api/auth/me` | Fetch logged-in user profile & connection status | Authenticated |
-| `PUT` | `/api/settings/change-password` | Update current account security credentials | Authenticated |
-| `DELETE` | `/api/student/unlink-telegram` | Disconnect Telegram bot from student account | Student |
-
-### 🤖 Telegram Bot & Automation
-| Method | Endpoint | Description | Access |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/api/telegram/status` | Retrieve Telegram bot statistics & linked student count | Staff / Admin |
-| `POST` | `/api/telegram/set-group-chat` | Configure department Telegram group chat ID | HOD / Admin |
-| `POST` | `/api/telegram/send-reminders` | Trigger 1-to-1 Telegram alerts to pending students | Staff / Admin |
-| `POST` | `/api/telegram/send-group-summary` | Broadcast formatted daily progress summary to group | Staff / Admin |
-
-### 📝 Academic Task Management
-| Method | Endpoint | Description | Access |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/api/tasks` | Fetch tasks within user scope | Authenticated |
-| `POST` | `/api/tasks` | Create and assign a new academic task | Staff / Admin |
-| `GET` | `/api/submissions` | Fetch task submission queue with status filters | Staff / Admin |
-| `POST` | `/api/submissions` | Submit task response (Link, Text, or Attachment) | Student |
-| `PUT` | `/api/submissions/:id/verify` | Mark submission as `VERIFIED` | Staff / Admin |
-| `PUT` | `/api/submissions/:id/reject` | Reject submission with required revision feedback | Staff / Admin |
-
-### 💻 Coding Competency & Analytics
-| Method | Endpoint | Description | Access |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/api/leetcode/stats` | Fetch summary KPI statistics for LeetCode | Authenticated |
-| `GET` | `/api/leetcode/progress/daily` | Fetch daily LeetCode progress records | Authenticated |
-| `GET` | `/api/github/stats` | Fetch summary KPI statistics for GitHub | Authenticated |
-| `GET` | `/api/github/progress/daily` | Fetch daily GitHub commit records | Authenticated |
-| `POST` | `/api/leetcode/sync` | Trigger on-demand sync for LeetCode | Staff / Admin |
-| `POST` | `/api/github/sync` | Trigger on-demand sync for GitHub | Staff / Admin |
-
-### 📊 Excel Reports & Exports
-| Method | Endpoint | Description | Access |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/api/coding/export-excel` | Export combined LeetCode & GitHub progress `.xlsx` | Staff / Admin |
-| `GET` | `/api/leetcode/export/daily` | Export daily LeetCode progress report `.xlsx` | Staff / Admin |
-| `GET` | `/api/leetcode/export/weekly` | Export weekly LeetCode progress report `.xlsx` | Staff / Admin |
-| `GET` | `/api/leetcode/export/incomplete` | Export LeetCode defaulters & incomplete report | Staff / Admin |
-| `GET` | `/api/github/export/daily` | Export daily GitHub commit report `.xlsx` | Staff / Admin |
-| `GET` | `/api/github/export/weekly` | Export weekly GitHub commit report `.xlsx` | Staff / Admin |
-
----
-
 ## 🔒 Intellectual Property & Proprietary License
 
 ```
