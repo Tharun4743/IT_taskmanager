@@ -688,15 +688,26 @@ export async function getClassOrYearAnalysisCard(queryText: string): Promise<{ f
   let targetSection: string | null = null;
   let isYearOnly = false;
 
+  // Convert Roman numerals if present
+  let normalized = clean
+    .replace(/^iii\s*it/, '3it')
+    .replace(/^ii\s*it/, '2it')
+    .replace(/^iv\s*it/, '4it')
+    .replace(/^i\s*it/, '1it')
+    .replace(/^iii/, '3')
+    .replace(/^ii/, '2')
+    .replace(/^iv/, '4')
+    .replace(/^i/, '1');
+
   // Pattern 1: Year-only e.g. '2it', '3it', '4it', '1it', 'year3', '3year', 'link2it', 'link3it', 'y3', 'year 3'
-  const yearMatch = clean.match(/^(?:link)?\s*(?:year|y)?\s*([1-4])\s*(?:it|year|yr)?$/i) || clean.match(/^([1-4])\s*(?:it|year|yr)$/i);
+  const yearMatch = normalized.match(/^(?:link)?\s*(?:year|y)?\s*([1-4])\s*(?:it|year|yr)?$/i) || normalized.match(/^([1-4])\s*(?:it|year|yr)$/i);
   if (yearMatch) {
     targetYear = parseInt(yearMatch[1], 10);
     isYearOnly = true;
   }
 
   // Pattern 2: Specific Class with section e.g. '3ita', '3itb', '3itc', '2ita', '2itb', '2itc', 'link2ita', 'link3itc', '3a', '3b', '2a', '2b'
-  const classMatch = clean.match(/^(?:link)?\s*([1-4])\s*(?:it)?\s*([a-d])$/i) || clean.match(/^(?:link)?\s*(?:it)?\s*([1-4])\s*([a-d])$/i) || clean.match(/^(?:class)?\s*([1-4])\s*(?:it)?\s*([a-d])$/i);
+  const classMatch = normalized.match(/^(?:link)?\s*([1-4])\s*(?:it)?\s*([a-d])$/i) || normalized.match(/^(?:link)?\s*(?:it)?\s*([1-4])\s*([a-d])$/i) || normalized.match(/^(?:class)?\s*([1-4])\s*(?:it)?\s*([a-d])$/i);
   if (classMatch) {
     targetYear = parseInt(classMatch[1], 10);
     targetSection = classMatch[2].toUpperCase();
@@ -737,7 +748,7 @@ export async function getClassOrYearAnalysisCard(queryText: string): Promise<{ f
   if (classesRes.rows.length === 0) {
     return {
       found: false,
-      html: `⚠️ <b>Class Not Found</b>\n\nNo active class found matching: <code>${escapeHtml(queryText)}</code>\n\n<i>Available helper shortcuts:</i>\n• <code>/3ita</code>, <code>/3itb</code>, <code>/3itc</code> (III Year Sections)\n• <code>/2ita</code>, <code>/2itb</code>, <code>/2itc</code> (II Year Sections)\n• <code>/3it</code>, <code>/2it</code>, <code>/year3</code> (Full Year Section Breakdown)\n${getWatermarkHtml()}`
+      html: `⚠️ <b>Class Not Found</b>\n\nNo active class found matching: <code>${escapeHtml(queryText)}</code>\n\n<i>Available helper shortcuts:</i>\n• <code>/check 3itc</code>, <code>/check 3ita</code>, <code>/check 3itb</code> (III Year Sections)\n• <code>/check 2ita</code>, <code>/check 2itb</code>, <code>/check 2itc</code> (II Year Sections)\n• <code>/check 3it</code>, <code>/check 2it</code>, <code>/check dept</code> (Year & Department Breakdown)\n${getWatermarkHtml()}`
     };
   }
 
@@ -892,33 +903,43 @@ export async function getClassOrYearAnalysisCard(queryText: string): Promise<{ f
   } else if (lcTargetedCount > 0) {
     html += `• ✨ <i>All targeted students met their LeetCode goal today!</i> 🎉\n`;
   }
+  html += `• 💻 <b>GitHub:</b> <b>${ghTotalCommits}</b> commits pushed (${ghActiveCommitters} active committers)\n\n`;
 
-  // Top LeetCode Solvers
-  const lcTopSolvers = lcRes.rows
-    .filter(r => (Number(r.solved_today) || 0) > 0)
-    .sort((a, b) => Number(b.solved_today) - Number(a.solved_today));
-  if (lcTopSolvers.length > 0) {
-    const topLcList = lcTopSolvers.slice(0, 3).map((r, idx) => {
-      const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
-      return `   ${medal} <b>${escapeHtml(r.full_name)}</b>: <code>${r.solved_today}</code> solved`;
-    }).join('\n');
-    html += `• 🌟 <b>Top LeetCode Solvers:</b>\n${topLcList}\n`;
-  }
-
-  html += `• 💻 <b>GitHub:</b> <b>${ghTotalCommits}</b> commits pushed (${ghActiveCommitters} active committers)\n`;
+  // ── Prominent Coding Leaderboard Section ──────────────────────────────────
+  html += `─────────────────────────\n`;
+  html += `🏆 <b>TODAY'S CODING LEADERBOARDS:</b>\n\n`;
 
   // Top GitHub Committers Leaderboard
   const ghTopCommitters = ghRes.rows
     .filter(r => (Number(r.commits_today) || 0) > 0)
     .sort((a, b) => Number(b.commits_today) - Number(a.commits_today));
-  if (ghTopCommitters.length > 0) {
-    const topGhList = ghTopCommitters.slice(0, 3).map((r, idx) => {
-      const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
-      return `   ${medal} <b>${escapeHtml(r.full_name)}</b>: <code>${r.commits_today}</code> commits`;
-    }).join('\n');
-    html += `• 🏆 <b>Top GitHub Committers:</b>\n${topGhList}\n`;
+
+  html += `💻 <b>GitHub Top Committers:</b>\n`;
+  if (ghTopCommitters.length === 0) {
+    html += `   <i>No commits recorded today yet.</i>\n\n`;
+  } else {
+    ghTopCommitters.slice(0, 5).forEach((r, idx) => {
+      const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🎖️';
+      html += `   ${medal} <b>${escapeHtml(r.full_name)}</b>: <code>${r.commits_today}</code> commits\n`;
+    });
+    html += `\n`;
   }
-  html += `\n`;
+
+  // Top LeetCode Solvers Leaderboard
+  const lcTopSolvers = lcRes.rows
+    .filter(r => (Number(r.solved_today) || 0) > 0)
+    .sort((a, b) => Number(b.solved_today) - Number(a.solved_today));
+
+  html += `🧩 <b>LeetCode Top Solvers:</b>\n`;
+  if (lcTopSolvers.length === 0) {
+    html += `   <i>No problems solved today yet.</i>\n\n`;
+  } else {
+    lcTopSolvers.slice(0, 5).forEach((r, idx) => {
+      const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🎖️';
+      html += `   ${medal} <b>${escapeHtml(r.full_name)}</b>: <code>${r.solved_today}</code> solved\n`;
+    });
+    html += `\n`;
+  }
 
   // Active Tasks for this class
   html += `─────────────────────────\n`;
@@ -1857,7 +1878,7 @@ helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
             return;
           }
 
-          // Command: /check <reg_no>, /lookup <reg_no>, /student <reg_no>, /progress <reg_no>, or /status <reg_no>
+          // Command: /check <query>, /lookup <query>, /student <query>, /progress <query>, or /status <query>
           if (
             text.startsWith('/check') ||
             text.startsWith('/lookup') ||
@@ -1866,30 +1887,62 @@ helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
             (text.startsWith('/status') && text.split(/\s+/).length > 1)
           ) {
             const parts = text.split(/\s+/);
-            const regQuery = parts.slice(1).join(' ').trim();
-            if (regQuery) {
-              const card = await getComprehensiveStudentProgressCard(regQuery);
+            const query = parts.slice(1).join(' ').trim();
+            if (query) {
+              const cleanQ = query.toLowerCase().replace(/[@#/_]/g, '').trim();
+
+              // 1. Check if department / group summary requested
+              if (cleanQ === 'dept' || cleanQ === 'department' || cleanQ === 'summary' || cleanQ === 'all' || cleanQ === 'group') {
+                await sendGroupSummary(String(chatId));
+                return;
+              }
+
+              // 2. Check if query is class or year (e.g. 3itc, 2ita, 3ita, 2itb, 3it, 2it, year3, year2, 3it a, ii it c)
+              const isClassOrYear =
+                /^(?:link)?\s*(?:year|y)?\s*([1-4])\s*(?:it|year|yr)?$/i.test(cleanQ) ||
+                /^(?:link)?\s*([1-4])\s*(?:it)?\s*([a-d])$/i.test(cleanQ) ||
+                /^(?:link)?\s*(?:it)?\s*([1-4])\s*([a-d])$/i.test(cleanQ) ||
+                /^(?:class)?\s*([1-4])\s*(?:it)?\s*([a-d])$/i.test(cleanQ) ||
+                /^(?:iii|ii|iv|i)\s*(?:it)?\s*([a-d])?$/i.test(cleanQ) ||
+                cleanQ.startsWith('year') ||
+                cleanQ.startsWith('class');
+
+              if (isClassOrYear) {
+                const card = await getClassOrYearAnalysisCard(query);
+                await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
+                return;
+              }
+
+              // 3. Otherwise treat as student query (reg no or name/username)
+              const card = await getComprehensiveStudentProgressCard(query);
               await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
               return;
             } else {
               await sendTelegramMessage(
                 chatId,
-                `ℹ️ <b>Usage:</b> <code>/check &lt;Register_Number&gt;</code>\n\n<i>Example:</i> <code>/check 922524205001</code>\n${getWatermarkHtml()}`
+                `ℹ️ <b>Usage:</b>\n• Student: <code>/check 922524205171</code>\n• Class: <code>/check 3itc</code> or <code>/check 2ita</code>\n• Year: <code>/check 3it</code> or <code>/check 2it</code>\n• Department: <code>/check dept</code>\n${getWatermarkHtml()}`
               );
               return;
             }
           }
 
-          // ── Class & Year Analysis Reports ───────────────────────────────────
+          // ── Class & Year Analysis Reports (Direct Commands & Text) ─────────
           // Supports: /3ita, /3itb, /3itc, /2ita, /2itb, /2itc, /year3, /year2, /class 3ita, etc.
           const cleanNoMention = text.replace(/@\w+/g, '').trim();
           const cleanCandidate = text.replace(/[@#]/g, '').trim();
+          const cleanDirectQ = text.toLowerCase().replace(/[@#/_]/g, '').trim();
 
           const isClassOrYearShortcut =
             text.startsWith('/class') ||
             text.startsWith('/year') ||
             /^\/(?:[1-4]\s*(?:it)?[a-d]|[1-4]\s*year|year\s*[1-4])$/i.test(cleanNoMention) ||
-            /^(?:[1-4]\s*it[a-d]|[1-4]\s*year|year\s*[1-4])$/i.test(cleanCandidate);
+            /^(?:[1-4]\s*it[a-d]|[1-4]\s*year|year\s*[1-4])$/i.test(cleanCandidate) ||
+            /^(?:[1-4]\s*(?:it)?[a-d]|[1-4]\s*it|[1-4]\s*year|year\s*[1-4])$/i.test(cleanDirectQ) ||
+            /^(?:iii|ii|iv|i)\s*it\s*[a-d]$/i.test(cleanDirectQ) ||
+            cleanDirectQ === '3ita' || cleanDirectQ === '3itb' || cleanDirectQ === '3itc' ||
+            cleanDirectQ === '2ita' || cleanDirectQ === '2itb' || cleanDirectQ === '2itc' ||
+            cleanDirectQ === '1ita' || cleanDirectQ === '1itb' || cleanDirectQ === '1itc' ||
+            cleanDirectQ === '4ita' || cleanDirectQ === '4itb' || cleanDirectQ === '4itc';
 
           if (isClassOrYearShortcut) {
             let classQuery = cleanNoMention;
@@ -1898,8 +1951,10 @@ helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
               classQuery = parts.slice(1).join(' ').trim() || parts[0];
             }
             const card = await getClassOrYearAnalysisCard(classQuery);
-            await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
-            return;
+            if (card.found || text.startsWith('/')) {
+              await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
+              return;
+            }
           }
 
           // ── Automatic Register Number / Username Lookup ──────────────────
