@@ -1374,16 +1374,6 @@ const Skeleton = ({ className }: { className?: string }) => (
   <div className={cn("animate-pulse bg-zinc-200 rounded-lg", className)} />
 );
 
-const EmptyState = ({ icon: Icon, title, description }: { icon: any, title: string, description: string }) => (
-  <div className="flex flex-col items-center justify-center py-16 text-center border-2 border-dashed border-zinc-200 rounded-3xl bg-zinc-50/50">
-    <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-zinc-400 mb-4 shadow-sm">
-      <Icon size={32} />
-    </div>
-    <h3 className="text-xl font-bold text-zinc-900 mb-2">{title}</h3>
-    <p className="text-zinc-500 max-w-sm">{description}</p>
-  </div>
-);
-
 function StudentProfileView({
   user,
   token,
@@ -2711,7 +2701,6 @@ function SettingsView({
   };
 
   const [telegramStats, setTelegramStats] = useState<any>(null);
-  const [loadingTelegram, setLoadingTelegram] = useState(false);
   const [groupChatIdInput, setGroupChatIdInput] = useState('');
   const [savingGroupChat, setSavingGroupChat] = useState(false);
   const [sendingSummary, setSendingSummary] = useState(false);
@@ -2721,7 +2710,6 @@ function SettingsView({
   const fetchTelegramStatus = async () => {
     if (!token) return;
     try {
-      setLoadingTelegram(true);
       const res = await fetch(`${API_URL}/api/telegram/status`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -2732,8 +2720,6 @@ function SettingsView({
       }
     } catch (err) {
       console.error('Error fetching Telegram status:', err);
-    } finally {
-      setLoadingTelegram(false);
     }
   };
 
@@ -3780,8 +3766,6 @@ export default function App() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [reportFilters, setReportFilters] = useState<{ classIds: string[]; taskId: string; status: string }>({ classIds: [], taskId: '', status: 'ALL' });
-  const [expandedClass, setExpandedClass] = useState<number | null>(null);
-  const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
 
   // LeetCode Target Tracking State
   const [myLeetcodeProgress, setMyLeetcodeProgress] = useState<any>(null);
@@ -4044,17 +4028,6 @@ const githubTop3 = useMemo(() => {
   // Forms
   const [newDept, setNewDept] = useState('');
   const [newClass, setNewClass] = useState({ name: '', department_id: '', year: '', batch: '' });
-  const [newUser, setNewUser] = useState({
-    username: '',
-    password: '',
-    full_name: '',
-    department_id: '',
-    class_id: '',
-    email: '',
-    register_number: '',
-    is_year_coordinator: false,
-    year_scope: ''
-  });
   const [newTask, setNewTask] = useState({
     title: '',
     description: '',
@@ -4070,7 +4043,6 @@ const githubTop3 = useMemo(() => {
     max_team_size: 5
   });
   const [uploading, setUploading] = useState<number | null>(null);
-  const [hodCreationRole, setHodCreationRole] = useState<'CLASS_ADVISOR' | 'STUDENT'>('CLASS_ADVISOR');
   const [showTaskPreview, setShowTaskPreview] = useState(false);
   const [verificationFilter, setVerificationFilter] = useState<'PENDING' | 'VERIFIED' | 'REJECTED' | 'ALL'>('PENDING');
   const [verificationDeptFilter, setVerificationDeptFilter] = useState('');
@@ -4103,7 +4075,6 @@ const githubTop3 = useMemo(() => {
   const [adminDeptFilter, setAdminDeptFilter] = useState('');
   const [customFieldValue, setCustomFieldValue] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<Record<number, File>>({});
-  const [isDraggingExcel, setIsDraggingExcel] = useState(false);
   const [isDraggingScreenshot, setIsDraggingScreenshot] = useState<number | null>(null);
   const [notParticipating, setNotParticipating] = useState<Record<number, boolean>>({});
   const [notParticipatingReason, setNotParticipatingReason] = useState<Record<number, string>>({});
@@ -4295,7 +4266,6 @@ const githubTop3 = useMemo(() => {
   const [isUploadingPoster, setIsUploadingPoster] = useState(false);
   const [selectedPosterModal, setSelectedPosterModal] = useState<string | null>(null);
   const [studentTaskFilter, setStudentTaskFilter] = useState<'ALL' | 'PENDING_ACTION' | 'UNDER_REVIEW' | 'VERIFIED' | 'OVERDUE'>('ALL');
-  const [selectedBatchSubmissions, setSelectedBatchSubmissions] = useState<string[]>([]);
   const [sharedTaskModal, setSharedTaskModal] = useState<Task | null>(null);
   const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
   const [highlightedNoticeId, setHighlightedNoticeId] = useState<string | null>(null);
@@ -4863,67 +4833,6 @@ const githubTop3 = useMemo(() => {
     }
   };
 
-  const handleBulkImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'array' });
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws) as any[];
-
-        // Map columns: Register Number, Name, Email
-        const students = data.map(row => {
-          const findKey = (variations: string[]) => {
-            const key = Object.keys(row).find(k => {
-              const normalizedKey = String(k).toLowerCase().replace(/[^a-z0-9]/g, '');
-              const normalizedVariations = variations.map(v => v.toLowerCase().replace(/[^a-z0-9]/g, ''));
-              return normalizedVariations.includes(normalizedKey);
-            });
-            return key ? row[key] : null;
-          };
-
-          return {
-            register_number: findKey(['register number', 'reg no', 'register_number', 'reg_no', 'roll no', 'regnumber']),
-            name: findKey(['name', 'student name', 'full name', 'fullname', 'student_name']),
-            email: findKey(['email', 'email address', 'email_address', 'mail'])
-          };
-        }).filter(s => s.register_number && s.name);
-
-        if (students.length === 0) {
-          alert('No valid student data found in Excel! Ensure columns are named "Register Number" and "Name".');
-          return;
-        }
-
-        const res = await fetch(`${API_URL}/api/students/bulk`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ students })
-        });
-
-        if (res.ok) {
-          const result = await res.json();
-          addToast(`Imported ${result.success} students. Failed/Duplicates: ${result.failed}`, 'success');
-          fetchInitialData();
-        } else {
-          const err = await res.json();
-          addToast(`Server error: ${err.error || 'Failed to import students'}`, 'error');
-        }
-      } catch (err) {
-        console.error("Excel parse error", err);
-        addToast('Invalid Excel file format.', 'error');
-      } finally {
-        // Reset file input to allow re-uploading the same file if needed
-        e.target.value = '';
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  };
-
   const fetchStudentStats = async () => {
     try {
       const res = await fetch(`${API_URL}/api/stats/student`, { headers: { Authorization: `Bearer ${token}` } });
@@ -5319,65 +5228,6 @@ const githubTop3 = useMemo(() => {
     }
   };
 
-  const createUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    let role = 'STUDENT';
-    if (user?.role === 'SUPREME_ADMIN') {
-      role = 'HOD';
-    } else if (user?.role === 'HOD') {
-      role = studentFilter === 'STUDENT' ? 'STUDENT' : (studentFilter === 'CLASS_ADVISOR' ? 'CLASS_ADVISOR' : hodCreationRole);
-    } else if (user?.role === 'CLASS_ADVISOR') {
-      role = 'STUDENT';
-    }
-
-    let url = `${API_URL}/api/users`;
-    let bodyData: any = {};
-
-    if (role === 'STUDENT') {
-      url = `${API_URL}/api/users/students`;
-      bodyData = {
-        fullName: newUser.full_name,
-        registrationNumber: newUser.username,
-        password: newUser.password,
-        classId: newUser.class_id || (user?.role === 'CLASS_ADVISOR' ? user.class_id : null)
-      };
-    } else if (role === 'CLASS_ADVISOR') {
-      url = `${API_URL}/api/users/advisors`;
-      bodyData = {
-        fullName: newUser.full_name,
-        username: newUser.username,
-        password: newUser.password,
-        classId: newUser.class_id || null,
-        is_year_coordinator: newUser.is_year_coordinator,
-        year_scope: newUser.year_scope ? parseInt(newUser.year_scope) : null
-      };
-    } else {
-      // HOD or generic
-      bodyData = {
-        ...newUser,
-        role,
-        department_id: newUser.department_id || null,
-        class_id: newUser.class_id || null,
-        register_number: newUser.register_number || null,
-        email: newUser.email || null,
-      };
-    }
-
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(bodyData)
-    });
-    if (res.ok) {
-      setNewUser({ username: '', password: '', full_name: '', department_id: '', class_id: '', email: '', register_number: '', is_year_coordinator: false, year_scope: '' });
-      fetchInitialData();
-      addToast(`${role === 'HOD' ? 'HOD' : role === 'CLASS_ADVISOR' ? 'Advisor' : 'Student'} account created successfully!`, 'success');
-    } else {
-      const data = await res.json();
-      addToast(data.error || 'Failed to create user', 'error');
-    }
-  };
-
   const handlePosterSelect = (file: File | null) => {
     if (!file) {
       setPosterFile(null);
@@ -5617,20 +5467,6 @@ const githubTop3 = useMemo(() => {
     setShowRejectionModal(null);
     // Only refresh submissions after verify/reject
     fetchSubmissions();
-  };
-
-  const unlockSubmission = async (id: number) => {
-    const res = await fetch(`${API_URL}/api/submissions/${id}/unlock`, {
-      method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (res.ok) {
-      addToast('Submission unlocked for student resubmission', 'success');
-      fetchSubmissions();
-    } else {
-      const data = await res.json();
-      addToast(data.error || 'Failed to unlock submission', 'error');
-    }
   };
 
   const handleFileUpload = (taskId: number, file: File | null) => {
@@ -7154,27 +6990,6 @@ const githubTop3 = useMemo(() => {
     }
   };
 
-  const handleDeleteTarget = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this target?')) return;
-    try {
-      const res = await fetch(`${API_URL}/api/leetcode/targets/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        addToast('LeetCode target deleted successfully', 'success');
-        fetchLeetcodeTargets();
-        fetchLeetcodeProgress();
-        fetchLeetcodeStats();
-      } else {
-        const data = await res.json();
-        addToast(data.error || 'Failed to delete LeetCode target', 'error');
-      }
-    } catch (err) {
-      addToast('Network error deleting LeetCode target', 'error');
-    }
-  };
-
   const handleSyncProgress = async () => {
     setSyncingLeetcode(true);
     try {
@@ -7269,53 +7084,6 @@ const githubTop3 = useMemo(() => {
                 <circle cx={x + barWidth / 2} cy={targetY} r={2} fill="#ef4444" />
               )}
               <title>{codingPlatformTab === 'GITHUB' ? `Date: ${d.date}\nCommits: ${d.actual}` : `Date: ${d.date}\nSolved: ${d.actual}\nTarget: ${d.target}`}</title>
-            </g>
-          );
-        })}
-      </svg>
-    );
-  };
-
-  const renderWeeklyChart = () => {
-    const data = studentHistoryData?.weekly || [];
-    if (data.length === 0) return <div className="text-center text-xs py-10 text-zinc-400 font-bold">No progress data logged yet</div>;
-    const maxVal = Math.max(...data.map((d: any) => Math.max(d.actual, d.target)), 10);
-    const height = 120;
-    const width = 500;
-    const paddingLeft = 30;
-    const paddingRight = 10;
-    const paddingTop = 10;
-    const paddingBottom = 20;
-    const chartHeight = height - paddingTop - paddingBottom;
-    const chartWidth = width - paddingLeft - paddingRight;
-
-    const points = data.map((d: any, i: number) => {
-      const x = paddingLeft + (i * (chartWidth / Math.max(1, data.length - 1)));
-      const y = height - paddingBottom - (d.actual / maxVal) * chartHeight;
-      return `${x},${y}`;
-    }).join(' ');
-
-    const areaPoints = `${paddingLeft},${height - paddingBottom} ${points} ${paddingLeft + chartWidth},${height - paddingBottom}`;
-
-    return (
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-40">
-        <line x1={paddingLeft} y1={paddingTop} x2={width - paddingRight} y2={paddingTop} stroke="#e4e4e7" strokeDasharray="3,3" />
-        <line x1={paddingLeft} y1={height - paddingBottom} x2={width - paddingRight} y2={height - paddingBottom} stroke="#e4e4e7" />
-
-        <polygon points={areaPoints} fill="rgba(99, 102, 241, 0.1)" />
-        <polyline points={points} fill="none" stroke="#6366f1" strokeWidth={2} />
-
-        {data.map((d: any, i: number) => {
-          const x = paddingLeft + (i * (chartWidth / Math.max(1, data.length - 1)));
-          const y = height - paddingBottom - (d.actual / maxVal) * chartHeight;
-          const targetY = height - paddingBottom - (d.target / maxVal) * chartHeight;
-
-          return (
-            <g key={i}>
-              <circle cx={x} cy={y} r={4} fill="#6366f1" />
-              <line x1={x} y1={targetY} x2={x + 10} y2={targetY} stroke="#dc2626" strokeWidth={1} strokeDasharray="2,2" />
-              <text x={x} y={height - 5} textAnchor="middle" className="text-[8px] font-semibold text-zinc-400">{d.week}</text>
-              <title>{`Week: ${d.start} to ${d.end}\nSolved: ${d.actual}\nTarget: ${d.target}`}</title>
             </g>
           );
         })}
