@@ -86,7 +86,62 @@ export function makeProgressBar(completed: number, total: number, size = 10): st
 }
 
 /**
- * Low-level message sender using Telegram Bot API with HTML mode & error recovery
+ * Splits long HTML text into safe Telegram-compliant chunks (<= 3900 chars)
+ */
+export function splitTelegramHtml(text: string, maxLength = 3900): string[] {
+  if (!text || text.length <= maxLength) return [text || ''];
+
+  const chunks: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLength) {
+      chunks.push(remaining);
+      break;
+    }
+
+    // Try finding split points in order of preference
+    let splitIndex = -1;
+
+    // 1. Double newline
+    const doubleNewline = remaining.lastIndexOf('\n\n', maxLength);
+    if (doubleNewline > maxLength * 0.4) {
+      splitIndex = doubleNewline + 2;
+    } else {
+      // 2. Single newline
+      const singleNewline = remaining.lastIndexOf('\n', maxLength);
+      if (singleNewline > maxLength * 0.4) {
+        splitIndex = singleNewline + 1;
+      } else {
+        // 3. Comma followed by space (e.g., student name lists)
+        const commaSpace = remaining.lastIndexOf(', ', maxLength);
+        if (commaSpace > maxLength * 0.3) {
+          splitIndex = commaSpace + 2;
+        } else {
+          // 4. Space
+          const space = remaining.lastIndexOf(' ', maxLength);
+          if (space > maxLength * 0.2) {
+            splitIndex = space + 1;
+          } else {
+            // Hard cut
+            splitIndex = maxLength;
+          }
+        }
+      }
+    }
+
+    const chunk = remaining.slice(0, splitIndex).trimEnd();
+    if (chunk) {
+      chunks.push(chunk);
+    }
+    remaining = remaining.slice(splitIndex).trimStart();
+  }
+
+  return chunks;
+}
+
+/**
+ * Low-level message sender using Telegram Bot API with HTML mode, error recovery & automatic chunking
  */
 export async function sendTelegramMessage(
   chatId: string | number,
@@ -98,13 +153,42 @@ export async function sendTelegramMessage(
     return { ok: false, description: 'No bot token configured in environment variables.' };
   }
 
+  const chunks = splitTelegramHtml(htmlText, 3900);
+  if (chunks.length > 1) {
+    let lastResult: any = { ok: true };
+    for (let i = 0; i < chunks.length; i++) {
+      const isLast = i === chunks.length - 1;
+      const res = await sendSingleTelegramMessage(chatId, chunks[i], {
+        ...options,
+        reply_markup: isLast ? options.reply_markup : undefined
+      });
+      if (!res.ok) {
+        return res;
+      }
+      lastResult = res;
+      if (!isLast) {
+        await new Promise(r => setTimeout(r, 60));
+      }
+    }
+    return lastResult;
+  }
+
+  return sendSingleTelegramMessage(chatId, htmlText, options);
+}
+
+async function sendSingleTelegramMessage(
+  chatId: string | number,
+  text: string,
+  options: { parse_mode?: 'Markdown' | 'HTML'; reply_markup?: any; disable_web_page_preview?: boolean } = {}
+): Promise<{ ok: boolean; description?: string; result?: any }> {
+  const token = getBotToken();
   try {
     const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: htmlText,
+        text,
         parse_mode: options.parse_mode || 'HTML',
         disable_web_page_preview: options.disable_web_page_preview ?? true,
         reply_markup: options.reply_markup
@@ -282,33 +366,13 @@ export async function getStudentGitHubCard(user: any): Promise<{ html: string; k
   const dateStr = getISTDateStr();
   const week = getWeekRange(dateStr);
 
-  const [dailyRes, weeklyRes, targetRes] = await Promise.all([
-    pool.query(`SELECT commits_today, new_repos_today, total_repos, sync_status FROM github_daily_progress WHERE user_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
-    pool.query(`SELECT SUM(commits_today) as commits_week, SUM(new_repos_today) as repos_week FROM github_daily_progress WHERE user_id = $1 AND date >= $2 AND date <= $3`, [user.id, week.start, week.end]),
-    pool.query(`
-      SELECT daily_commit_target, weekly_commit_target, daily_repo_target, weekly_repo_target FROM github_targets
-      WHERE start_date <= $1 AND end_date >= $1 AND (user_id = $2 OR class_id = $3 OR class_id IS NULL)
-      ORDER BY CASE WHEN user_id IS NOT NULL THEN 1 WHEN class_id IS NOT NULL THEN 2 ELSE 3 END ASC
-      LIMIT 1
-    `, [dateStr, user.id, user.class_id])
+  const [dailyRes, weeklyRes] = await Promise.all([
+    pool.query(`SELECT daily_commit_count FROM github_daily_commits WHERE student_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
+    pool.query(`SELECT SUM(daily_commit_count) as commits_week FROM github_daily_commits WHERE student_id = $1 AND date >= $2 AND date <= $3`, [user.id, week.start, week.end])
   ]);
 
-  const daily = dailyRes.rows[0];
+  const commitsToday = Number(dailyRes.rows[0]?.daily_commit_count) || 0;
   const commitsWeek = Number(weeklyRes.rows[0]?.commits_week) || 0;
-  const target = targetRes.rows[0] || { daily_commit_target: 0, weekly_commit_target: 0, daily_repo_target: 0, weekly_repo_target: 0 };
-
-  const commitsToday = daily?.sync_status === 'SUCCESS' ? Number(daily.commits_today) : 0;
-  const newReposToday = daily?.sync_status === 'SUCCESS' ? Number(daily.new_repos_today) : 0;
-  const totalRepos = daily?.total_repos ? Number(daily.total_repos) : 0;
-
-  const commitTarget = Number(target.daily_commit_target) || 0;
-  const weeklyCommitTarget = Number(target.weekly_commit_target) || 0;
-
-  const commitProgress = commitTarget > 0 ? makeProgressBar(commitsToday, commitTarget, 8) : 'No Target Set';
-  const weeklyCommitProgress = weeklyCommitTarget > 0 ? makeProgressBar(commitsWeek, weeklyCommitTarget, 8) : 'No Target Set';
-
-  const isCompleted = commitTarget > 0 && commitsToday >= commitTarget;
-  const statusEmoji = isCompleted ? '✅ <b>COMPLETED</b> 🎉' : (commitTarget > 0 ? '⏳ <b>IN PROGRESS</b>' : '⚪ <i>No Target</i>');
 
   let html = `💻 <b>GITHUB PERFORMANCE CARD</b>\n`;
   html += `👤 <b>${escapeHtml(user.full_name)}</b> (<code>${escapeHtml(user.register_number)}</code>)\n`;
@@ -316,18 +380,9 @@ export async function getStudentGitHubCard(user: any): Promise<{ html: string; k
   html += `📅 <b>Date:</b> <i>${dateStr} (IST)</i>\n`;
   html += `─────────────────────────\n\n`;
 
-  html += `🎯 <b>Daily Commit Target:</b> ${commitTarget} commit(s)\n`;
-  html += `⚡ <b>Commits Today:</b> <b>${commitsToday}</b> / ${commitTarget}\n`;
-  html += `📈 <b>Commit Progress:</b> ${commitProgress}\n`;
-  html += `📌 <b>Commit Status:</b> ${statusEmoji}\n\n`;
+  html += `⚡ <b>Commits Today:</b> <b>${commitsToday}</b> commit(s)\n`;
+  html += `📊 <b>Commits This Week:</b> <b>${commitsWeek}</b> commit(s)\n\n`;
 
-  html += `🗓️ <b>Weekly Commit Target:</b> ${weeklyCommitTarget} commit(s)\n`;
-  html += `📊 <b>Commits This Week:</b> <b>${commitsWeek}</b> / ${weeklyCommitTarget}\n`;
-  html += `📉 <b>Weekly Progress:</b> ${weeklyCommitProgress}\n\n`;
-
-  if (totalRepos > 0 || newReposToday > 0) {
-    html += `📦 <b>Total Repositories:</b> <b>${totalRepos}</b> (<b>+${newReposToday}</b> today)\n`;
-  }
   if (user.github_url) {
     html += `🔗 <a href="${escapeHtml(user.github_url)}">View Profile on GitHub</a>\n`;
   }
@@ -358,7 +413,7 @@ export async function getStudentStatsCard(user: any): Promise<{ html: string; ke
 
   const [lcRes, ghRes, tasksRes] = await Promise.all([
     pool.query(`SELECT solved_today, total_solved FROM leetcode_daily_progress WHERE user_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
-    pool.query(`SELECT commits_today, total_repos FROM github_daily_progress WHERE user_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
+    pool.query(`SELECT daily_commit_count FROM github_daily_commits WHERE student_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
     pool.query(`
       SELECT 
         COUNT(t.id) as total_assigned,
@@ -372,8 +427,7 @@ export async function getStudentStatsCard(user: any): Promise<{ html: string; ke
 
   const lcSolved = lcRes.rows[0]?.total_solved ? Number(lcRes.rows[0].solved_today) : 0;
   const lcTotal = lcRes.rows[0]?.total_solved ? Number(lcRes.rows[0].total_solved) : 0;
-  const ghCommits = Number(ghRes.rows[0]?.commits_today) || 0;
-  const ghRepos = Number(ghRes.rows[0]?.total_repos) || 0;
+  const ghCommits = Number(ghRes.rows[0]?.daily_commit_count) || 0;
   const totalTasks = Number(tasksRes.rows[0]?.total_assigned) || 0;
   const completedTasks = Number(tasksRes.rows[0]?.completed_tasks) || 0;
   const pendingTasks = Math.max(0, totalTasks - completedTasks);
@@ -389,8 +443,7 @@ export async function getStudentStatsCard(user: any): Promise<{ html: string; ke
   html += `   • Total Solved: <b>${lcTotal}</b> problems\n\n`;
 
   html += `💻 <b>GitHub Activity:</b>\n`;
-  html += `   • Commits Today: <b>${ghCommits}</b> commits\n`;
-  html += `   • Total Repositories: <b>${ghRepos}</b>\n\n`;
+  html += `   • Commits Today: <b>${ghCommits}</b> commits\n\n`;
 
   html += `📋 <b>Assignments & Tasks:</b>\n`;
   html += `   • Completed: <b>${completedTasks}</b> / ${totalTasks}\n`;
@@ -462,7 +515,7 @@ export async function getComprehensiveStudentProgressCard(identifierOrUser: stri
   const dateStr = getISTDateStr();
   const week = getWeekRange(dateStr);
 
-  const [lcDailyRes, lcWeeklyRes, lcTargetRes, ghDailyRes, ghWeeklyRes, ghTargetRes, tasksAssignedRes, activePendingTasksRes] = await Promise.all([
+  const [lcDailyRes, lcWeeklyRes, lcTargetRes, ghDailyRes, ghWeeklyRes, tasksAssignedRes, activePendingTasksRes] = await Promise.all([
     pool.query(`SELECT solved_today, solved_yesterday, total_solved, status FROM leetcode_daily_progress WHERE user_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
     pool.query(`SELECT SUM(solved_today) as solved_week FROM leetcode_daily_progress WHERE user_id = $1 AND date >= $2 AND date <= $3`, [user.id, week.start, week.end]),
     pool.query(`
@@ -472,14 +525,8 @@ export async function getComprehensiveStudentProgressCard(identifierOrUser: stri
       LIMIT 1
     `, [dateStr, user.id, user.class_id]),
 
-    pool.query(`SELECT commits_today, new_repos_today, total_repos, sync_status FROM github_daily_progress WHERE user_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
-    pool.query(`SELECT SUM(commits_today) as commits_week, SUM(new_repos_today) as repos_week FROM github_daily_progress WHERE user_id = $1 AND date >= $2 AND date <= $3`, [user.id, week.start, week.end]),
-    pool.query(`
-      SELECT daily_commit_target, weekly_commit_target, daily_repo_target, weekly_repo_target FROM github_targets
-      WHERE start_date <= $1 AND end_date >= $1 AND (user_id = $2 OR class_id = $3 OR class_id IS NULL)
-      ORDER BY CASE WHEN user_id IS NOT NULL THEN 1 WHEN class_id IS NOT NULL THEN 2 ELSE 3 END ASC
-      LIMIT 1
-    `, [dateStr, user.id, user.class_id]),
+    pool.query(`SELECT daily_commit_count FROM github_daily_commits WHERE student_id = $1 AND date = $2 LIMIT 1`, [user.id, dateStr]),
+    pool.query(`SELECT SUM(daily_commit_count) as commits_week FROM github_daily_commits WHERE student_id = $1 AND date >= $2 AND date <= $3`, [user.id, week.start, week.end]),
 
     pool.query(`
       SELECT 
@@ -518,16 +565,8 @@ export async function getComprehensiveStudentProgressCard(identifierOrUser: stri
     : '⚪ No Target';
 
   // GitHub calculations
-  const ghDaily = ghDailyRes.rows[0];
-  const ghCommitsToday = ghDaily?.sync_status === 'SUCCESS' ? Number(ghDaily.commits_today) : 0;
-  const ghTotalRepos = ghDaily?.total_repos ? Number(ghDaily.total_repos) : 0;
+  const ghCommitsToday = Number(ghDailyRes.rows[0]?.daily_commit_count) || 0;
   const ghCommitsWeek = Number(ghWeeklyRes.rows[0]?.commits_week) || 0;
-  const ghDailyTarget = Number(ghTargetRes.rows[0]?.daily_commit_target) || 0;
-  const ghWeeklyTarget = Number(ghTargetRes.rows[0]?.weekly_commit_target) || 0;
-
-  const ghDailyStatus = ghDailyTarget > 0
-    ? (ghCommitsToday >= ghDailyTarget ? '✅ Completed' : '⏳ In Progress')
-    : '⚪ No Target';
 
   // Tasks calculations
   const totalTasks = Number(tasksAssignedRes.rows[0]?.total_assigned) || 0;
@@ -567,9 +606,8 @@ export async function getComprehensiveStudentProgressCard(identifierOrUser: stri
   html += `\n`;
 
   html += `💻 <b>GitHub Progress:</b>\n`;
-  html += `• Today's Commits: <b>${ghCommitsToday}</b> / ${ghDailyTarget} (${ghDailyStatus})\n`;
-  html += `• This Week: <b>${ghCommitsWeek}</b> / ${ghWeeklyTarget} commits\n`;
-  html += `• Repositories: <b>${ghTotalRepos}</b> repos\n`;
+  html += `• Today's Commits: <b>${ghCommitsToday}</b> commits\n`;
+  html += `• This Week: <b>${ghCommitsWeek}</b> commits\n`;
   if (user.github_url) {
     html += `• 🔗 <a href="${escapeHtml(user.github_url)}">GitHub Profile</a>\n`;
   }
@@ -701,11 +739,10 @@ export async function getClassOrYearAnalysisCard(queryText: string): Promise<{ f
     `, [dateStr, studentIds]),
 
     pool.query(`
-      SELECT u.id, COALESCE(gp.commits_today, 0) as commits_today
-      FROM users u
-      LEFT JOIN github_daily_progress gp ON gp.user_id = u.id AND gp.date = $1
-      WHERE u.id = ANY($2)
-    `, [dateStr, studentIds]),
+      SELECT student_id as id, COALESCE(daily_commit_count, 0) as commits_today
+      FROM github_daily_commits
+      WHERE student_id = ANY($1) AND date = $2
+    `, [studentIds, dateStr]),
 
     pool.query(`
       SELECT DISTINCT t.id, t.title, t.category, t.deadline
@@ -797,10 +834,8 @@ export async function getClassOrYearAnalysisCard(queryText: string): Promise<{ f
     html += `• 🎯 <b>Target Status:</b> ${lcMetCount}/${lcTargetedCount} met target ${lcProgress}\n`;
   }
   if (lcDefaulters.length > 0) {
-    const limit = 8;
-    const defaulterNames = lcDefaulters.slice(0, limit).map(d => `${escapeHtml(d.name)} (<code>${d.solved}/${d.target}</code>)`).join(', ');
-    const moreText = lcDefaulters.length > limit ? ` <i>...and ${lcDefaulters.length - limit} more</i>` : '';
-    html += `• ⚠️ <b>Incomplete Solvers (${lcDefaulters.length}):</b>\n   ${defaulterNames}${moreText}\n`;
+    const defaulterNames = lcDefaulters.map(d => `${escapeHtml(d.name)} (<code>${d.solved}/${d.target}</code>)`).join(', ');
+    html += `• ⚠️ <b>Incomplete Solvers (${lcDefaulters.length}):</b>\n   ${defaulterNames}\n`;
   } else if (lcTargetedCount > 0) {
     html += `• ✨ <i>All targeted students met their LeetCode goal today!</i> 🎉\n`;
   }
@@ -840,10 +875,8 @@ export async function getClassOrYearAnalysisCard(queryText: string): Promise<{ f
       if (pendingCount === 0) {
         html += `   ✨ <i>Status: 100% Complete! All students submitted!</i> 🎉\n\n`;
       } else {
-        const limit = 8;
-        const pendingNames = taskSubmissionsRes.rows.slice(0, limit).map(p => escapeHtml(p.full_name)).join(', ');
-        const more = pendingCount > limit ? ` <i>...and ${pendingCount - limit} more</i>` : '';
-        html += `   ⏳ <b>Incomplete (${pendingCount}):</b> ${pendingNames}${more}\n\n`;
+        const pendingNames = taskSubmissionsRes.rows.map(p => escapeHtml(p.full_name)).join(', ');
+        html += `   ⏳ <b>Incomplete (${pendingCount}):</b> ${pendingNames}\n\n`;
       }
     }
   }
@@ -870,15 +903,11 @@ export async function getDefaultersCard(scopeText?: string): Promise<{ html: str
   let query = `
     SELECT u.full_name, u.register_number, c.name as class_name,
            COALESCE(lp.solved_today, 0) as solved_today,
-           COALESCE(lt.daily_target, 0) as leetcode_target,
-           COALESCE(gp.commits_today, 0) as commits_today,
-           COALESCE(gt.daily_commit_target, 0) as github_target
+           COALESCE(lt.daily_target, 0) as leetcode_target
     FROM users u
     LEFT JOIN classes c ON u.class_id = c.id
     LEFT JOIN leetcode_daily_progress lp ON lp.user_id = u.id AND lp.date = $1
     LEFT JOIN leetcode_targets lt ON lt.start_date <= $1 AND lt.end_date >= $1 AND (lt.class_id = u.class_id OR lt.class_id IS NULL)
-    LEFT JOIN github_daily_progress gp ON gp.user_id = u.id AND gp.date = $1
-    LEFT JOIN github_targets gt ON gt.start_date <= $1 AND gt.end_date >= $1 AND (gt.class_id = u.class_id OR gt.class_id IS NULL)
     WHERE u.role = 'STUDENT'
   `;
   const params: any[] = [dateStr];
@@ -895,20 +924,16 @@ export async function getDefaultersCard(scopeText?: string): Promise<{ html: str
 
   for (const row of res.rows) {
     const lcTarget = Number(row.leetcode_target) || 0;
-    const ghTarget = Number(row.github_target) || 0;
     const lcSolved = Number(row.solved_today) || 0;
-    const ghCommits = Number(row.commits_today) || 0;
 
     const lcPending = lcTarget > 0 && lcSolved < lcTarget;
-    const ghPending = ghTarget > 0 && ghCommits < ghTarget;
 
-    if (lcPending || ghPending) {
+    if (lcPending) {
       defaulters.push({
         name: row.full_name,
         regNo: row.register_number,
         className: row.class_name || 'Unassigned',
-        lcStatus: lcTarget > 0 ? `${lcSolved}/${lcTarget} LC` : '',
-        ghStatus: ghTarget > 0 ? `${ghCommits}/${ghTarget} GH` : ''
+        lcStatus: `${lcSolved}/${lcTarget} LC`
       });
     }
   }
@@ -922,15 +947,11 @@ export async function getDefaultersCard(scopeText?: string): Promise<{ html: str
   if (defaulters.length === 0) {
     html += `🎉 <b>Awesome! All students have completed their daily targets today!</b>\n`;
   } else {
-    defaulters.slice(0, 25).forEach((d, i) => {
+    defaulters.forEach((d, i) => {
       const statusParts = [d.lcStatus, d.ghStatus].filter(Boolean).join(' | ');
       html += `${i + 1}. <b>${escapeHtml(d.name)}</b> (<code>${escapeHtml(d.regNo)}</code>) [${escapeHtml(d.className)}]\n`;
       html += `   ⏳ Pending: <code>${escapeHtml(statusParts)}</code>\n`;
     });
-
-    if (defaulters.length > 25) {
-      html += `\n<i>...and ${defaulters.length - 25} more students.</i>\n`;
-    }
   }
 
   html += getWatermarkHtml();
@@ -1202,7 +1223,7 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
       `),
       pool.query(`SELECT COUNT(*) as total_students, COUNT(telegram_chat_id) as linked_telegram_count FROM users WHERE role = 'STUDENT'`),
       pool.query(`SELECT COUNT(DISTINCT user_id) as active_solvers, SUM(solved_today) as total_problems_solved FROM leetcode_daily_progress WHERE date = $1 AND solved_today > 0`, [dateStr]),
-      pool.query(`SELECT COUNT(DISTINCT user_id) as active_committers, SUM(commits_today) as total_commits FROM github_daily_progress WHERE date = $1 AND commits_today > 0 AND sync_status = 'SUCCESS'`, [dateStr]),
+      pool.query(`SELECT COUNT(DISTINCT student_id) as active_committers, SUM(daily_commit_count) as total_commits FROM github_daily_commits WHERE date = $1 AND daily_commit_count > 0`, [dateStr]),
       pool.query(`
         SELECT u.full_name, u.register_number, c.name as class_name,
                COALESCE(lp.solved_today, 0) as solved_today,
@@ -1242,13 +1263,10 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
     // LeetCode Incomplete / Defaulters
     if (lcIncompleteRes.rows.length > 0) {
       const lcPendingCount = lcIncompleteRes.rows.length;
-      const lcLimit = 8;
       const lcPendingNames = lcIncompleteRes.rows
-        .slice(0, lcLimit)
         .map(p => `${escapeHtml(p.full_name)} (<code>${p.solved_today}/${p.daily_target}</code>)`)
         .join(', ');
-      const lcMore = lcPendingCount > lcLimit ? ` <i>...and ${lcPendingCount - lcLimit} more</i>` : '';
-      html += `• ⚠️ <b>LeetCode Incomplete (${lcPendingCount}):</b>\n   ${lcPendingNames}${lcMore}\n\n`;
+      html += `• ⚠️ <b>LeetCode Incomplete (${lcPendingCount}):</b>\n   ${lcPendingNames}\n\n`;
     } else {
       html += `• ✨ <b>LeetCode Status:</b> All targeted students met today's goal! 🎉\n\n`;
     }
@@ -1290,13 +1308,10 @@ export async function sendGroupSummary(targetChatId?: string): Promise<{ success
         if (pendingCount === 0) {
           html += `   ✨ <i>Status: All assigned students completed!</i> 🎉\n\n`;
         } else {
-          const displayLimit = 8;
           const pendingNames = pendingStudentsRes.rows
-            .slice(0, displayLimit)
             .map(p => escapeHtml(p.full_name))
             .join(', ');
-          const moreText = pendingCount > displayLimit ? ` <i>...and ${pendingCount - displayLimit} more</i>` : '';
-          html += `   ⏳ <b>Incomplete (${pendingCount}):</b> ${pendingNames}${moreText}\n\n`;
+          html += `   ⏳ <b>Incomplete (${pendingCount}):</b> ${pendingNames}\n\n`;
         }
       }
     }

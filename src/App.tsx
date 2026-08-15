@@ -3674,23 +3674,12 @@ export default function App() {
   }, [user, classes]);
 
   // GitHub & Combined Progress Tracking State
-  const [codingPlatformTab, setCodingPlatformTab] = useState<'COMBINED' | 'LEETCODE' | 'GITHUB'>('LEETCODE');
+  const [codingPlatformTab, setCodingPlatformTab] = useState<'LEETCODE' | 'GITHUB'>('LEETCODE');
   const [myGithubProgress, setMyGithubProgress] = useState<any>(null);
   const [githubStats, setGithubStats] = useState<any>(null);
   const [githubProgressList, setGithubProgressList] = useState<any[]>([]);
-  const [githubTargets, setGithubTargets] = useState<any[]>([]);
   const [combinedProgressList, setCombinedProgressList] = useState<any[]>([]);
   const [syncingGithub, setSyncingGithub] = useState(false);
-  const [showAssignGithubTargetModal, setShowAssignGithubTargetModal] = useState(false);
-  const [githubActiveTab, setGithubActiveTab] = useState<'MONITOR' | 'TARGETS'>('MONITOR');
-  const [assignGithubTargetForm, setAssignGithubTargetForm] = useState({
-    dailyTarget: '1',
-    weeklyTarget: '7',
-    startDate: new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0],
-    endDate: new Date(Date.now() + 5.5 * 60 * 60 * 1000 + 6 * 86400000).toISOString().split('T')[0],
-    scopeType: 'CLASS',
-    targetValue: ''
-  });
 
   const sortedLeetcodeProgressList = useMemo(() => {
     return [...leetcodeProgressList].sort((a, b) => {
@@ -3766,21 +3755,17 @@ export default function App() {
           valA = a.githubUsername ? 1 : 0;
           valB = b.githubUsername ? 1 : 0;
           break;
-        case 'target':
-          valA = leetcodeViewType === 'DAILY' ? a.dailyTarget : a.weeklyTarget;
-          valB = leetcodeViewType === 'DAILY' ? b.dailyTarget : b.weeklyTarget;
+        case 'commitsToday':
+          valA = a.commitsToday ?? 0;
+          valB = b.commitsToday ?? 0;
           break;
-        case 'solved':
-          valA = leetcodeViewType === 'DAILY' ? a.newReposToday : a.newReposThisWeek;
-          valB = leetcodeViewType === 'DAILY' ? b.newReposToday : b.newReposThisWeek;
+        case 'commitsThisWeek':
+          valA = a.commitsThisWeek ?? 0;
+          valB = b.commitsThisWeek ?? 0;
           break;
-        case 'completionPct':
-          valA = leetcodeViewType === 'DAILY' ? a.completionDailyPct : a.completionWeeklyPct;
-          valB = leetcodeViewType === 'DAILY' ? b.completionDailyPct : b.completionWeeklyPct;
-          break;
-        case 'status':
-          valA = leetcodeViewType === 'DAILY' ? a.dailyStatus : a.weeklyStatus;
-          valB = leetcodeViewType === 'DAILY' ? b.dailyStatus : b.weeklyStatus;
+        case 'syncStatus':
+          valA = a.syncStatus || '';
+          valB = b.syncStatus || '';
           break;
         default:
           valA = a.registerNumber || '';
@@ -4350,28 +4335,16 @@ export default function App() {
 
   const fetchGithubProgress = async () => {
     try {
-      const endpoint = leetcodeViewType === 'DAILY' ? 'daily' : 'weekly';
       const deptParam = selectedLeetcodeDeptId !== 'ALL' ? `&departmentId=${selectedLeetcodeDeptId}` : '';
       const yearParam = selectedLeetcodeYear !== 'ALL' ? `&year=${selectedLeetcodeYear}` : '';
       const classParam = selectedLeetcodeClassId !== 'ALL' ? `&classId=${selectedLeetcodeClassId}` : '';
       const searchParam = leetcodeSearch ? `&search=${encodeURIComponent(leetcodeSearch)}` : '';
-      const res = await fetch(`${API_URL}/api/github/progress/${endpoint}?date=${leetcodeDate}&status=${leetcodeStatusFilter}${searchParam}${deptParam}${yearParam}${classParam}`, {
+      const res = await fetch(`${API_URL}/api/github/daily-commits?date=${leetcodeDate}&status=${leetcodeStatusFilter}${searchParam}${deptParam}${yearParam}${classParam}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) setGithubProgressList(await res.json());
     } catch (err) {
       console.error('Error fetching GitHub progress:', err);
-    }
-  };
-
-  const fetchGithubTargets = async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/github/targets`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) setGithubTargets(await res.json());
-    } catch (err) {
-      console.error('Error fetching GitHub targets:', err);
     }
   };
 
@@ -4411,26 +4384,7 @@ export default function App() {
     }
   };
 
-  const handleDeleteGithubTarget = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this GitHub target?')) return;
-    try {
-      const res = await fetch(`${API_URL}/api/github/targets/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        addToast('GitHub target deleted successfully', 'success');
-        fetchGithubTargets();
-        fetchGithubProgress();
-        fetchGithubStats();
-      } else {
-        const data = await res.json();
-        addToast(data.error || 'Failed to delete GitHub target', 'error');
-      }
-    } catch (err) {
-      addToast('Error deleting GitHub target', 'error');
-    }
-  };
+
 
   useEffect(() => {
     runHealthCheckWithRetries();
@@ -4473,7 +4427,6 @@ export default function App() {
         Promise.all([
           fetchGithubStats(),
           fetchGithubProgress(),
-          fetchGithubTargets(),
           ...(user?.role === 'STUDENT' ? [fetchMyGithubProgress()] : [])
         ]);
       } else {
@@ -4484,7 +4437,6 @@ export default function App() {
           fetchLeetcodeTargets(),
           fetchGithubStats(),
           fetchGithubProgress(),
-          fetchGithubTargets(),
           ...(user?.role === 'STUDENT' ? [fetchMyLeetcodeProgress(), fetchMyGithubProgress()] : [])
         ]);
       }
@@ -6901,7 +6853,7 @@ export default function App() {
   const handleSyncGithubProgress = async () => {
     setSyncingGithub(true);
     try {
-      const res = await fetch(`${API_URL}/api/github/sync`, {
+      const res = await fetch(`${API_URL}/api/github/sync/daily-commits`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -6911,48 +6863,17 @@ export default function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        addToast(`GitHub sync finished: Synced ${data.synced} profiles, ${data.failed} failed.`, 'success');
+        addToast(data.message || 'GitHub daily commits sync completed', 'success');
         fetchGithubProgress();
         fetchGithubStats();
         fetchCombinedProgress();
       } else {
-        addToast('Failed to sync GitHub progress', 'error');
+        addToast('Failed to sync GitHub daily commits', 'error');
       }
     } catch (err) {
-      addToast('Network error syncing GitHub progress', 'error');
+      addToast('Network error syncing GitHub daily commits', 'error');
     } finally {
       setSyncingGithub(false);
-    }
-  };
-
-  const handleCreateGithubTarget = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (submittingTarget) return;
-    setSubmittingTarget(true);
-    try {
-      const res = await fetch(`${API_URL}/api/github/targets`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(assignGithubTargetForm)
-      });
-      if (res.ok) {
-        addToast('GitHub target created successfully', 'success');
-        setShowAssignGithubTargetModal(false);
-        fetchGithubTargets();
-        fetchGithubProgress();
-        fetchGithubStats();
-        fetchCombinedProgress();
-      } else {
-        const data = await res.json();
-        addToast(data.error || 'Failed to create GitHub target', 'error');
-      }
-    } catch (err) {
-      addToast('Network error creating GitHub target', 'error');
-    } finally {
-      setSubmittingTarget(false);
     }
   };
 
@@ -7089,7 +7010,10 @@ export default function App() {
     setSelectedStudentHistory(student);
     setShowHistoryModal(true);
     try {
-      const res = await fetch(`${API_URL}/api/leetcode/progress/student/${student.studentId}`, {
+      const endpoint = codingPlatformTab === 'GITHUB'
+        ? `${API_URL}/api/github/daily-commits/${student.studentId}`
+        : `${API_URL}/api/leetcode/progress/student/${student.studentId}`;
+      const res = await fetch(endpoint, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -7102,7 +7026,17 @@ export default function App() {
   };
 
   const renderDailyChart = () => {
-    const data = studentHistoryData?.daily || [];
+    let data: any[] = [];
+    if (codingPlatformTab === 'GITHUB') {
+      const historyList = studentHistoryData?.history || [];
+      data = historyList.map((h: any) => ({
+        date: h.date,
+        actual: h.commits ?? h.daily_commit_count ?? 0,
+        target: 0
+      }));
+    } else {
+      data = studentHistoryData?.daily || [];
+    }
     if (data.length === 0) return <div className="text-center text-xs py-10 text-zinc-400 font-bold">No progress data logged yet</div>;
     const maxVal = Math.max(...data.map((d: any) => Math.max(d.actual, d.target)), 5);
     const height = 120;
@@ -7133,13 +7067,13 @@ export default function App() {
                 y={height - paddingBottom - barHeight}
                 width={barWidth}
                 height={barHeight}
-                fill="#f97316"
+                fill={codingPlatformTab === 'GITHUB' ? "#4f46e5" : "#f97316"}
                 rx={1}
               />
               {d.target > 0 && (
                 <circle cx={x + barWidth / 2} cy={targetY} r={2} fill="#ef4444" />
               )}
-              <title>{`Date: ${d.date}\nSolved: ${d.actual}\nTarget: ${d.target}`}</title>
+              <title>{codingPlatformTab === 'GITHUB' ? `Date: ${d.date}\nCommits: ${d.actual}` : `Date: ${d.date}\nSolved: ${d.actual}\nTarget: ${d.target}`}</title>
             </g>
           );
         })}
@@ -7242,28 +7176,25 @@ export default function App() {
             <Card className="flex flex-col justify-between border-l-4 border-l-zinc-900 bg-white">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5"><Github size={16} className="text-zinc-900" /> GitHub Daily</span>
-                  {myGithubProgress?.dailyStatus === 'COMPLETED' ? (
-                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">MET</span>
-                  ) : myGithubProgress?.dailyStatus === 'DATA_UNAVAILABLE' ? (
-                    <span className="bg-zinc-100 text-zinc-800 text-[10px] font-bold px-2 py-0.5 rounded-full">NO SYNC</span>
+                  <span className="text-sm font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5"><Github size={16} className="text-zinc-900" /> GitHub Daily Commits</span>
+                  {myGithubProgress?.commitsToday > 0 ? (
+                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">ACTIVE</span>
                   ) : (
-                    <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full">PENDING</span>
+                    <span className="bg-zinc-100 text-zinc-600 text-[10px] font-bold px-2 py-0.5 rounded-full">NO COMMITS</span>
                   )}
                 </div>
-                <div className="flex items-baseline gap-2 mb-4">
-                  <span className="text-5xl font-black text-zinc-900">{myGithubProgress?.newReposToday ?? 0}</span>
-                  <span className="text-zinc-400 font-bold">/ {myGithubProgress?.dailyTarget ?? 0} repos today</span>
+                <div className="flex items-baseline gap-2 mb-2">
+                  <span className="text-5xl font-black text-zinc-900">{myGithubProgress?.commitsToday ?? 0}</span>
+                  <span className="text-zinc-500 font-bold">commits pushed today</span>
                 </div>
               </div>
-              <div>
-                <div className="w-full bg-zinc-100 rounded-full h-2 mb-2">
-                  <div
-                    className="bg-zinc-900 h-2 rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min(100, myGithubProgress?.completionDailyPct ?? 0)}%` }}
-                  />
-                </div>
-                <span className="text-xs text-zinc-500 font-bold">{myGithubProgress?.completionDailyPct ?? 0}% completed today</span>
+              <div className="pt-3 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-500 font-semibold">
+                <span>Total this week: <strong className="text-zinc-900 font-bold">{myGithubProgress?.commitsThisWeek ?? 0}</strong> commits</span>
+                {myGithubProgress?.githubUrl && (
+                  <a href={myGithubProgress.githubUrl} target="_blank" rel="noreferrer" className="text-blue-600 font-bold hover:underline flex items-center gap-1">
+                    Profile <ExternalLink size={11} />
+                  </a>
+                )}
               </div>
             </Card>
           </div>
@@ -7369,30 +7300,15 @@ export default function App() {
             )}
 
             {codingPlatformTab === 'GITHUB' && (
-              <>
-                <Button
-                  onClick={handleSyncGithubProgress}
-                  disabled={syncingGithub}
-                  variant="outline"
-                  className="border-zinc-300 hover:bg-zinc-100 text-zinc-700 font-bold px-3 py-1.5 text-xs rounded-xl flex items-center gap-1.5 bg-white cursor-pointer"
-                >
-                  {syncingGithub ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
-                  <span>Sync GitHub</span>
-                </Button>
-
-                <Button
-                  onClick={() => {
-                    setAssignGithubTargetForm(prev => ({
-                      ...prev,
-                      targetValue: classes[0]?.id || ''
-                    }));
-                    setShowAssignGithubTargetModal(true);
-                  }}
-                  className="bg-zinc-900 hover:bg-zinc-800 text-white font-bold px-3 py-1.5 text-xs rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer"
-                >
-                  <Plus size={14} /> GitHub Target
-                </Button>
-              </>
+              <Button
+                onClick={handleSyncGithubProgress}
+                disabled={syncingGithub}
+                variant="outline"
+                className="border-zinc-300 hover:bg-zinc-100 text-zinc-700 font-bold px-3 py-1.5 text-xs rounded-xl flex items-center gap-1.5 bg-white cursor-pointer"
+              >
+                {syncingGithub ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                <span>Sync GitHub</span>
+              </Button>
             )}
           </div>
         </div>
@@ -7736,35 +7652,17 @@ export default function App() {
             {/* GitHub Stat Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <StatCard title="Total Students" value={githubStats?.totalStudents || githubProgressList.length || 0} color="purple" icon={<Zap />} />
-              <StatCard title="Target Met Today" value={githubStats?.metDaily || 0} color="emerald" icon={<Target />} />
-              <StatCard title="Active Committers" value={githubStats?.inProgressDaily || 0} color="blue" icon={<Terminal />} />
-              <StatCard title="Completion Rate" value={`${githubStats?.completionDailyRate || 0}%`} color="indigo" icon={<TrendingUp />} />
+              <StatCard title="Active Committers Today" value={githubStats?.activeCommitters || 0} color="emerald" icon={<Terminal />} />
+              <StatCard title="Total Commits Today" value={githubStats?.commitsToday || 0} color="blue" icon={<TrendingUp />} />
+              <StatCard title="Total Commits This Week" value={githubStats?.commitsThisWeek || 0} color="indigo" icon={<Activity />} />
             </div>
 
-            {/* Row 1: Sub-navigation Tabs & View Controls */}
+            {/* Row 1: View Controls & Date */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-              {/* Sub-tab: Monitor vs Targets */}
-              <div className="flex bg-zinc-100/80 rounded-xl p-1 border border-zinc-200/80 shadow-2xs">
-                <button
-                  type="button"
-                  onClick={() => setGithubActiveTab('MONITOR')}
-                  className={cn(
-                    "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
-                    githubActiveTab === 'MONITOR' ? "bg-white shadow-xs text-indigo-600 font-extrabold" : "text-zinc-500 hover:text-zinc-900"
-                  )}
-                >
-                  Live Progress Monitor
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setGithubActiveTab('TARGETS')}
-                  className={cn(
-                    "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
-                    githubActiveTab === 'TARGETS' ? "bg-white shadow-xs text-indigo-600 font-extrabold" : "text-zinc-500 hover:text-zinc-900"
-                  )}
-                >
-                  Target Configurations ({githubTargets.length})
-                </button>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-zinc-600 bg-zinc-100 px-3 py-1.5 rounded-xl border border-zinc-200">
+                  Daily Commit Tracker
+                </span>
               </div>
 
               {/* View type & Date selection */}
@@ -7876,21 +7774,6 @@ export default function App() {
                     </select>
                   </div>
                 )}
-
-                {/* Status Filter */}
-                <div className="flex items-center gap-1.5 border border-zinc-200 rounded-xl px-3 py-1.5 bg-zinc-50/50">
-                  <Filter size={14} className="text-zinc-400" />
-                  <select
-                    value={leetcodeStatusFilter}
-                    onChange={(e) => setLeetcodeStatusFilter(e.target.value)}
-                    className="text-xs font-bold text-zinc-700 bg-transparent border-none outline-none p-0 pr-6 cursor-pointer"
-                  >
-                    <option value="ALL">All Statuses</option>
-                    <option value="COMPLETED">Completed</option>
-                    <option value="NOT_COMPLETED">Pending / Incomplete</option>
-                    <option value="DATA_UNAVAILABLE">No Sync Data</option>
-                  </select>
-                </div>
               </div>
 
               {/* Search Box */}
@@ -7915,142 +7798,102 @@ export default function App() {
             </div>
 
             {/* GitHub Live Progress Monitor Table */}
-            {githubActiveTab === 'MONITOR' ? (
-              <Card className="p-0 overflow-hidden border border-zinc-200 bg-white shadow-xs">
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[850px] text-left border-collapse">
-                    <thead>
-                      <tr className="bg-zinc-50 border-b border-zinc-200 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                        <th onClick={() => handleSortHeader('registerNumber')} className="px-6 py-4 cursor-pointer select-none">
-                          Register No {leetcodeSortColumn === 'registerNumber' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
-                        </th>
-                        <th onClick={() => handleSortHeader('fullName')} className="px-6 py-4 cursor-pointer select-none">
-                          Student Name {leetcodeSortColumn === 'fullName' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
-                        </th>
-                        <th onClick={() => handleSortHeader('className')} className="px-6 py-4 cursor-pointer select-none">
-                          Section / Class {leetcodeSortColumn === 'className' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
-                        </th>
-                        <th className="px-6 py-4">GitHub Profile</th>
-                        <th className="px-6 py-4 text-center">Active Repositories / Target</th>
-                        <th onClick={() => handleSortHeader('status')} className="px-6 py-4 text-center cursor-pointer select-none">
-                          Status {leetcodeSortColumn === 'status' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
-                        </th>
-
+            <Card className="p-0 overflow-hidden border border-zinc-200 bg-white shadow-xs">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[850px] text-left border-collapse">
+                  <thead>
+                    <tr className="bg-zinc-50 border-b border-zinc-200 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                      <th onClick={() => handleSortHeader('registerNumber')} className="px-6 py-4 cursor-pointer select-none">
+                        Register No {leetcodeSortColumn === 'registerNumber' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                      <th onClick={() => handleSortHeader('fullName')} className="px-6 py-4 cursor-pointer select-none">
+                        Student Name {leetcodeSortColumn === 'fullName' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                      <th onClick={() => handleSortHeader('className')} className="px-6 py-4 cursor-pointer select-none">
+                        Section / Class {leetcodeSortColumn === 'className' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                      <th className="px-6 py-4">GitHub Profile</th>
+                      <th onClick={() => handleSortHeader('commitsToday')} className="px-6 py-4 text-center cursor-pointer select-none">
+                        Commits Today {leetcodeSortColumn === 'commitsToday' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                      <th onClick={() => handleSortHeader('commitsThisWeek')} className="px-6 py-4 text-center cursor-pointer select-none">
+                        Commits This Week {leetcodeSortColumn === 'commitsThisWeek' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                      <th onClick={() => handleSortHeader('syncStatus')} className="px-6 py-4 text-center cursor-pointer select-none">
+                        Sync Status {leetcodeSortColumn === 'syncStatus' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-200 text-sm">
+                    {sortedGithubProgressList.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-12 text-center text-zinc-400 font-semibold">
+                          No GitHub student records match the selected filters.
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-200 text-sm">
-                      {sortedGithubProgressList.length === 0 ? (
-                        <tr>
-                          <td colSpan={7} className="px-6 py-12 text-center text-zinc-400 font-semibold">
-                            No GitHub student records match the selected filters.
-                          </td>
-                        </tr>
-                      ) : (
-                        sortedGithubProgressList.map((row) => {
-                          const isDaily = leetcodeViewType === 'DAILY';
-                          const solved = isDaily ? (row.dailyRepos ?? row.reposToday ?? 0) : (row.weeklyRepos ?? row.reposThisWeek ?? 0);
-                          const target = isDaily ? (row.dailyTarget ?? 0) : (row.weeklyTarget ?? 0);
-                          const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
-                          const profileUrl = row.githubUsername
-                            ? (row.githubUsername.startsWith('http') ? row.githubUsername : `https://github.com/${row.githubUsername}`)
-                            : null;
+                    ) : (
+                      sortedGithubProgressList.map((row) => {
+                        const commitsToday = row.commitsToday ?? row.dailyCommitCount ?? 0;
+                        const commitsThisWeek = row.commitsThisWeek ?? 0;
+                        const profileUrl = row.githubUsername
+                          ? (row.githubUsername.startsWith('http') ? row.githubUsername : `https://github.com/${row.githubUsername}`)
+                          : (row.githubUrl || null);
 
-                          return (
-                            <tr key={row.studentId} className="hover:bg-zinc-50 transition-colors">
-                              <td className="px-6 py-4 font-mono text-xs font-bold text-zinc-500">{row.registerNumber}</td>
-                              <td className="px-6 py-4 font-bold text-zinc-900">
-                                <button
-                                  type="button"
-                                  onClick={() => handleViewStudentHistory(row)}
-                                  className="hover:underline hover:text-indigo-600 text-left cursor-pointer"
+                        return (
+                          <tr key={row.studentId} className="hover:bg-zinc-50 transition-colors">
+                            <td className="px-6 py-4 font-mono text-xs font-bold text-zinc-500">{row.registerNumber}</td>
+                            <td className="px-6 py-4 font-bold text-zinc-900">
+                              <button
+                                type="button"
+                                onClick={() => handleViewStudentHistory(row)}
+                                className="hover:underline hover:text-indigo-600 text-left cursor-pointer"
+                              >
+                                {row.fullName}
+                              </button>
+                            </td>
+                            <td className="px-6 py-4 font-semibold text-zinc-600">{row.className}</td>
+                            <td className="px-6 py-4">
+                              {profileUrl ? (
+                                <a
+                                  href={profileUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs font-bold text-indigo-600 hover:underline flex items-center gap-1"
                                 >
-                                  {row.fullName}
-                                </button>
-                              </td>
-                              <td className="px-6 py-4 font-semibold text-zinc-600">{row.className}</td>
-                              <td className="px-6 py-4">
-                                {profileUrl ? (
-                                  <a
-                                    href={profileUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-xs font-bold text-indigo-600 hover:underline flex items-center gap-1"
-                                  >
-                                    <Github size={13} /> {row.githubUsername || 'GitHub Profile'} <ExternalLink size={11} />
-                                  </a>
-                                ) : (
-                                  <span className="text-xs text-zinc-400 font-medium">Not Linked</span>
-                                )}
-                              </td>
-                              <td className="px-6 py-4 text-center font-semibold">
-                                <span className="text-zinc-900 font-bold">{solved}</span> / <span className="text-zinc-400">{target}</span>
-                              </td>
-                              <td className="px-6 py-4 text-center">
-                                <span className={cn(
-                                  "inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full",
-                                  status === 'COMPLETED' ? "bg-emerald-100 text-emerald-800" :
-                                    status === 'DATA_UNAVAILABLE' ? "bg-zinc-100 text-zinc-800" :
-                                      status === 'NO_TARGET' ? "bg-zinc-50 text-zinc-400" : "bg-blue-100 text-blue-800"
-                                )}>
-                                  {(status || 'PENDING').replace('_', ' ')}
-                                </span>
-                              </td>
-
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            ) : (
-              /* GitHub Targets Configuration Table */
-              <Card className="p-0 overflow-hidden border border-zinc-200 bg-white shadow-xs">
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[700px] text-left border-collapse">
-                    <thead>
-                      <tr className="bg-zinc-50 border-b border-zinc-200 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                        <th className="px-6 py-4">Scope</th>
-                        <th className="px-6 py-4">Target Audience / Value</th>
-                        <th className="px-6 py-4 text-center">Daily Target</th>
-                        <th className="px-6 py-4 text-center">Weekly Target</th>
-                        <th className="px-6 py-4">Duration</th>
-                        <th className="px-6 py-4">Created By</th>
-                        {user?.role !== 'STUDENT' && <th className="px-6 py-4 text-center">Actions</th>}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-200 text-sm">
-                      {githubTargets.length === 0 ? (
-                        <tr>
-                          <td colSpan={user?.role !== 'STUDENT' ? 7 : 6} className="px-6 py-12 text-center text-zinc-400 font-semibold">
-                            No active GitHub target configurations found. Click "GitHub Target" to add one.
-                          </td>
-                        </tr>
-                      ) : (
-                        githubTargets.map((target) => (
-                          <tr key={target.id} className="hover:bg-zinc-50">
-                            <td className="px-6 py-4 font-bold text-zinc-800">{target.scope_type || 'CLASS'}</td>
-                            <td className="px-6 py-4 font-semibold text-zinc-900">{target.target_value_name || target.class_name || 'All Students'}</td>
-                            <td className="px-6 py-4 text-center font-bold text-orange-600">{target.daily_target} / day</td>
-                            <td className="px-6 py-4 text-center font-bold text-indigo-600">{target.weekly_target} / week</td>
-                            <td className="px-6 py-4 text-xs font-medium text-zinc-500">{target.start_date} to {target.end_date}</td>
-                            <td className="px-6 py-4 text-xs text-zinc-600">{target.creator_name || 'Staff'}</td>
-                            {user?.role !== 'STUDENT' && (
-                              <td className="px-6 py-4 text-center">
-                                <button type="button" onClick={() => handleDeleteGithubTarget(target.id)} className="text-zinc-400 hover:text-red-600 p-1" title="Delete Target">
-                                  <Trash2 size={16} />
-                                </button>
-                              </td>
-                            )}
+                                  <Github size={13} /> {row.githubUsername || 'GitHub Profile'} <ExternalLink size={11} />
+                                </a>
+                              ) : (
+                                <span className="text-xs text-zinc-400 font-medium">Not Linked</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <span className={cn(
+                                "font-bold text-sm",
+                                commitsToday > 0 ? "text-emerald-600 font-extrabold" : "text-zinc-400"
+                              )}>
+                                {commitsToday}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-center font-bold text-zinc-800">
+                              {commitsThisWeek}
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <span className={cn(
+                                "inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full",
+                                row.syncStatus === 'SUCCESS' ? "bg-emerald-100 text-emerald-800" :
+                                row.syncStatus === 'NO_PROFILE' ? "bg-zinc-100 text-zinc-600" : "bg-amber-100 text-amber-800"
+                              )}>
+                                {row.syncStatus === 'SUCCESS' ? 'SYNCED' : row.syncStatus === 'NO_PROFILE' ? 'NO HANDLE' : 'PENDING'}
+                              </span>
+                            </td>
                           </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            )}
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
           </div>
         )}
       </PageLayout>
@@ -8244,174 +8087,168 @@ export default function App() {
     );
   };
 
-  const renderAssignGithubTargetModal = () => {
-    if (!showAssignGithubTargetModal) return null;
-    const isYearCoordinator = user?.is_year_coordinator;
-    const isAdvisor = user?.role === 'CLASS_ADVISOR' || (user?.role === 'STUDENT' && user?.is_coordinator);
+
+
+  const renderHistoryDetailsModal = () => {
+    if (!showHistoryModal || !selectedStudentHistory) return null;
+
+    const student = selectedStudentHistory;
+    const isGithub = codingPlatformTab === 'GITHUB';
+    const hasData = studentHistoryData && (
+      isGithub 
+        ? (studentHistoryData.history && studentHistoryData.history.length > 0)
+        : (studentHistoryData.daily && studentHistoryData.daily.length > 0)
+    );
 
     return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-[200] animate-fade-in">
-        <Card className="w-full max-w-md bg-white shadow-xl rounded-2xl overflow-hidden p-6 border border-zinc-200">
-          <div className="flex items-center justify-between mb-4 border-b border-zinc-100 pb-3">
-            <h3 className="text-lg font-black text-zinc-900 flex items-center gap-1.5">
-              <Github size={20} className="text-zinc-900" /> Assign GitHub Target
-            </h3>
+      <div 
+        className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-[200] animate-fade-in"
+        onClick={() => setShowHistoryModal(false)}
+      >
+        <Card 
+          className="w-full max-w-2xl bg-white shadow-2xl rounded-2xl overflow-hidden border border-zinc-200 flex flex-col max-h-[85vh]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Modal Header */}
+          <div className="p-6 border-b border-zinc-100 flex items-center justify-between shrink-0">
+            <div>
+              <h3 className="text-lg font-black text-zinc-900 flex items-center gap-2">
+                {isGithub ? (
+                  <Github size={20} className="text-indigo-600" />
+                ) : (
+                  <Code size={20} className="text-orange-500" />
+                )}
+                <span>{isGithub ? 'GitHub Commit History' : 'LeetCode Progress History'}</span>
+              </h3>
+              <p className="text-xs text-zinc-500 font-bold mt-1">
+                {student.fullName || student.full_name || ''} ({student.registerNumber || student.register_number || ''}) • {student.className || 'IT'}
+              </p>
+            </div>
             <button
-              onClick={() => setShowAssignGithubTargetModal(false)}
-              className="text-zinc-400 hover:text-zinc-600 font-bold p-1 rounded-lg"
+              onClick={() => setShowHistoryModal(false)}
+              className="text-zinc-400 hover:text-zinc-600 font-bold p-1 rounded-lg transition-colors cursor-pointer"
             >
               <X size={20} />
             </button>
           </div>
 
-          <form onSubmit={handleCreateGithubTarget} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+          {/* Modal Body */}
+          <div className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
+            {/* Student Profile Info */}
+            <div className="bg-zinc-50 border border-zinc-200/80 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1">Daily Target (Repos)</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={assignGithubTargetForm.dailyTarget}
-                  onChange={(e) => setAssignGithubTargetForm(prev => ({ ...prev, dailyTarget: e.target.value }))}
-                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-bold text-zinc-900 focus:outline-none focus:border-zinc-900 bg-white"
-                  required
-                />
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Username / Handle</span>
+                <span className="text-sm font-black text-zinc-800">
+                  {isGithub ? (student.githubUsername || 'Not Configured') : (student.leetcodeUsername || 'Not Configured')}
+                </span>
               </div>
               <div>
-                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1">Weekly Target (Repos)</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={assignGithubTargetForm.weeklyTarget}
-                  onChange={(e) => setAssignGithubTargetForm(prev => ({ ...prev, weeklyTarget: e.target.value }))}
-                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-bold text-zinc-900 focus:outline-none focus:border-zinc-900 bg-white"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1">Start Date</label>
-                <input
-                  type="date"
-                  value={assignGithubTargetForm.startDate}
-                  onChange={(e) => setAssignGithubTargetForm(prev => ({ ...prev, startDate: e.target.value }))}
-                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-bold text-zinc-700 focus:outline-none focus:border-zinc-900 bg-white cursor-pointer"
-                  required
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1">End Date</label>
-                <input
-                  type="date"
-                  value={assignGithubTargetForm.endDate}
-                  onChange={(e) => setAssignGithubTargetForm(prev => ({ ...prev, endDate: e.target.value }))}
-                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-xs font-bold text-zinc-700 focus:outline-none focus:border-zinc-900 bg-white cursor-pointer"
-                  required
-                />
+                {isGithub ? (
+                  student.githubUrl && (
+                    <a
+                      href={student.githubUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-4 py-2 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-xl text-xs font-black text-indigo-600 inline-flex items-center gap-1.5 shadow-2xs transition-all"
+                    >
+                      <Github size={14} /> View Profile
+                    </a>
+                  )
+                ) : (
+                  student.leetcodeUrl && (
+                    <a
+                      href={student.leetcodeUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-4 py-2 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-xl text-xs font-black text-orange-600 inline-flex items-center gap-1.5 shadow-2xs transition-all"
+                    >
+                      <Code size={14} /> View Profile
+                    </a>
+                  )
+                )}
               </div>
             </div>
 
+            {/* Performance Stats Summaries */}
+            {isGithub ? (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl">
+                  <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider block">Commits Today</span>
+                  <span className="text-2xl font-black text-indigo-700">{studentHistoryData?.commitsToday ?? 0}</span>
+                </div>
+                <div className="p-4 bg-violet-50/50 border border-violet-100 rounded-xl">
+                  <span className="text-[10px] font-bold text-violet-500 uppercase tracking-wider block">Commits This Week</span>
+                  <span className="text-2xl font-black text-violet-700">{studentHistoryData?.commitsThisWeek ?? 0}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-orange-50/50 border border-orange-100 rounded-xl">
+                  <span className="text-[10px] font-bold text-orange-500 uppercase tracking-wider block">Solved Today</span>
+                  <span className="text-2xl font-black text-orange-700">{studentHistoryData?.solvedToday ?? 0}</span>
+                </div>
+                <div className="p-4 bg-amber-50/50 border border-amber-100 rounded-xl">
+                  <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider block">Solved This Week</span>
+                  <span className="text-2xl font-black text-amber-700">{studentHistoryData?.solvedThisWeek ?? 0}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Chart Area */}
+            <div className="border border-zinc-100 rounded-2xl p-4 bg-zinc-50/30">
+              <h4 className="text-xs font-black text-zinc-700 uppercase tracking-wider mb-4">
+                {isGithub ? '30-Day Activity History' : 'Daily Solving Progress'}
+              </h4>
+              {renderDailyChart()}
+            </div>
+
+            {/* Logs List Table */}
             <div>
-              <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1">Target Scope</label>
-              <select
-                value={assignGithubTargetForm.scopeType}
-                onChange={(e) => {
-                  const scope = e.target.value;
-                  let initialVal = '';
-                  if (scope === 'CLASS') initialVal = classes[0]?.id || '';
-                  if (scope === 'YEAR') initialVal = '1';
-                  if (scope === 'DEPARTMENT') initialVal = departments[0]?.id || user?.department_id || '';
-                  if (scope === 'STUDENT') initialVal = users.find(u => u.role === 'STUDENT')?.id || '';
-                  setAssignGithubTargetForm(prev => ({ ...prev, scopeType: scope, targetValue: initialVal }));
-                }}
-                className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white cursor-pointer"
-              >
-                {!isYearCoordinator && !isAdvisor && <option value="DEPARTMENT">Entire Department</option>}
-                {!isAdvisor && <option value="YEAR">Specific Academic Year</option>}
-                <option value="CLASS">Specific Section / Class</option>
-                <option value="STUDENT">Individual Student</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1">Select Value</label>
-              {assignGithubTargetForm.scopeType === 'DEPARTMENT' && (
-                <select
-                  value={assignGithubTargetForm.targetValue}
-                  onChange={(e) => setAssignGithubTargetForm(prev => ({ ...prev, targetValue: e.target.value }))}
-                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white cursor-pointer"
-                >
-                  {departments.map(d => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
-                </select>
-              )}
-
-              {assignGithubTargetForm.scopeType === 'YEAR' && (
-                <select
-                  value={assignGithubTargetForm.targetValue}
-                  onChange={(e) => setAssignGithubTargetForm(prev => ({ ...prev, targetValue: e.target.value }))}
-                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white cursor-pointer"
-                >
-                  <option value="1">1st Year</option>
-                  <option value="2">2nd Year</option>
-                  <option value="3">3rd Year</option>
-                  <option value="4">4th Year</option>
-                </select>
-              )}
-
-              {assignGithubTargetForm.scopeType === 'CLASS' && (
-                <select
-                  value={assignGithubTargetForm.targetValue}
-                  onChange={(e) => setAssignGithubTargetForm(prev => ({ ...prev, targetValue: e.target.value }))}
-                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white cursor-pointer"
-                >
-                  {classes.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} (Year {c.year})</option>
-                  ))}
-                </select>
-              )}
-
-              {assignGithubTargetForm.scopeType === 'STUDENT' && (
-                <select
-                  value={assignGithubTargetForm.targetValue}
-                  onChange={(e) => setAssignGithubTargetForm(prev => ({ ...prev, targetValue: e.target.value }))}
-                  className="w-full p-2.5 border border-zinc-200 rounded-xl text-sm font-semibold text-zinc-700 focus:outline-none bg-white cursor-pointer"
-                >
-                  {users.filter(u => u.role === 'STUDENT').map(u => (
-                    <option key={u.id} value={u.id}>{u.full_name} ({u.register_number})</option>
-                  ))}
-                </select>
+              <h4 className="text-xs font-black text-zinc-700 uppercase tracking-wider mb-3">Detailed History Log</h4>
+              {!hasData ? (
+                <div className="text-center text-xs py-8 text-zinc-400 font-bold border border-zinc-100 rounded-xl bg-zinc-50/20">
+                  No records logged yet.
+                </div>
+              ) : (
+                <div className="border border-zinc-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-zinc-50 text-zinc-500 font-bold uppercase tracking-wider border-b border-zinc-200">
+                      <tr>
+                        <th className="px-4 py-3">Date</th>
+                        <th className="px-4 py-3 text-right">
+                          {isGithub ? 'Commits Pushed' : 'Problems Solved'}
+                        </th>
+                        {!isGithub && <th className="px-4 py-3 text-right">Daily Target</th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100 text-zinc-700 font-semibold">
+                      {isGithub ? (
+                        studentHistoryData.history.map((row: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-zinc-50/50 transition-colors">
+                            <td className="px-4 py-3 text-zinc-500">{row.date}</td>
+                            <td className="px-4 py-3 text-right text-indigo-600 font-bold">
+                              {row.commits ?? row.daily_commit_count ?? 0}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        studentHistoryData.daily.map((row: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-zinc-50/50 transition-colors">
+                            <td className="px-4 py-3 text-zinc-500">{row.date}</td>
+                            <td className="px-4 py-3 text-right text-orange-600 font-bold">{row.actual}</td>
+                            <td className="px-4 py-3 text-right text-zinc-500">{row.target}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowAssignGithubTargetModal(false)}
-                className="border-zinc-200 text-zinc-600 font-bold px-4 rounded-xl text-xs bg-white"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={submittingTarget}
-                className="bg-zinc-900 text-white font-bold px-4 rounded-xl text-xs hover:bg-zinc-800"
-              >
-                {submittingTarget ? 'Creating...' : 'Create Target'}
-              </Button>
-            </div>
-          </form>
+          </div>
         </Card>
       </div>
     );
-  };
-
-  const renderHistoryDetailsModal = () => {
-    return null;
   };
 
   const renderSidebarContent = () => (
@@ -12737,7 +12574,6 @@ export default function App() {
           )}
 
           {renderAssignTargetModal()}
-          {renderAssignGithubTargetModal()}
           {renderHistoryDetailsModal()}
         </AnimatePresence>
       </div>

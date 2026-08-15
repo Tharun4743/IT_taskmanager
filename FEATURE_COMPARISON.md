@@ -9,9 +9,9 @@ This document provides a comprehensive technical overview highlighting the initi
 | # | Architecture Category | Base Implementation (`PratapSakthivel`) | Production Architecture (`Tharun4743`) | Enhancement Classification |
 | :---: | :--- | :--- | :--- | :---: |
 | **1** | **LeetCode Progress Tracking** | Focused on core academic coursework and curriculum task submissions. | **Integrated LeetCode Engine**: Real-time problem counts, daily & weekly progress tracking, active target inheritance, and daily completion metrics. | `Integrated Analytics` |
-| **2** | **GitHub Activity Tracking** | Standard manual repository link attachments on assignments. | **Automated GitHub Tracker**: Live commit velocity, repository creation tracking, weekly commit aggregates, and 7-day Monday–Sunday timeline breakdown. | `Integrated Analytics` |
-| **3** | **Combined Coding Monitor** | Standard individual student assignment status lists. | **Unified Coding Dashboard**: Single multi-metric monitor displaying LeetCode and GitHub statistics side-by-side with class and target filtering. | `Integrated Analytics` |
-| **4** | **Multi-Level Target Engine** | Uniform assignment due dates for all students. | **4-Level Target Resolver**: Set customized daily/weekly expectations at Student, Class, Year, or Department level with automatic priority inheritance. | `Target Management` |
+| **2** | **GitHub Activity Tracking** | Standard manual repository link attachments on assignments. | **Automated GitHub Tracker**: Tracks and syncs daily total commit counts per student with weekly aggregates. | `Integrated Analytics` |
+| **3** | **Combined Coding Monitor** | Standard individual student assignment status lists. | **Unified Coding Dashboard**: Single multi-metric monitor displaying LeetCode (solving details & target status) and GitHub (daily total commits) statistics side-by-side with class filtering. | `Integrated Analytics` |
+| **4** | **Multi-Level Target Engine** | Uniform assignment due dates for all students. | **4-Level Target Resolver**: Set customized daily/weekly LeetCode targets at Student, Class, Year, or Department level with automatic priority inheritance. | `Target Management` |
 | **5** | **Telegram Bot & Alerts** | In-app browser notifications and dashboard alerts. | **Dedicated Telegram Bot** ([`telegramService.ts`](file:///c:/Users/tharu/Downloads/IT_taskmanager-main/telegramService.ts)): Instant student status lookup by Register Number, class shortcuts (`/3ita`, `/2ita`, `/2it`, `/year3`) with section breakdown, 1-to-1 deadline reminders, and daily department briefs with deduplication locks. | `Automated Notifications` |
 | **6** | **Excel Reporting Suite** | Standard CSV tabular export for general records. | **Direct ExcelJS Reporting Suite**: 9 specialized multi-sheet OpenXML (`.xlsx`) exports with dynamic boundary trimming (no blank rows/columns), custom headers, and auto-fitted columns. | `Reporting & Analytics` |
 | **7** | **Directory & Git Auto-Sync** | Standard database relational queries per profile lookup. | **RAM Directory Cache & Dual-Mode Git Sync** ([`studentDirectoryService.ts`](file:///c:/Users/tharu/Downloads/IT_taskmanager-main/studentDirectoryService.ts)): Pre-indexed memory cache for sub-millisecond lookups and automated GitHub profile sync via Contents REST API / Git CLI. | `High-Performance Cache` |
@@ -37,7 +37,7 @@ This document provides a comprehensive technical overview highlighting the initi
 
 ### 1. Coding Competency Analytics
 * **LeetCode Profile Integration**: Connects with LeetCode GraphQL services to track daily problem counts, submission velocity, and difficulty distributions.
-* **GitHub Activity Tracking**: Ingests public commit event streams and repository records to evaluate practical software development contributions.
+* **GitHub Activity Tracking**: Syncs daily total commit counts per student and logs them directly to Supabase/PostgreSQL for dashboard reporting.
 * **Target Inheritance Hierarchy**:
   ```mermaid
   graph TD

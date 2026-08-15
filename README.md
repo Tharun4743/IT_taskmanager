@@ -26,7 +26,7 @@
 
 ### Core Capabilities:
 1. **Academic Task Governance**: Precision scope assignments (Individual, Class Section, Batch Year, Department), team submissions, and multi-tier verification workflows.
-2. **Live Coding Analytics (LeetCode & GitHub)**: Real-time synchronization of problem velocity, commit history, multi-level target inheritance, and defaulter tracking.
+2. **Live Coding Analytics (LeetCode & GitHub)**: Real-time synchronization of LeetCode problem velocity, student daily total GitHub commit counts, multi-level LeetCode target inheritance, and defaulter tracking.
 3. **Automated Telegram Bot Engine (`@IT_TaskManager_Alerts_bot`)**: Register Number instant lookup, class/year analysis shortcuts (`/3ita`, `/2it`, `/year3`) with section breakdowns, private deadline reminders, and daily department briefs.
 4. **Institutional Reporting Suite**: Direct OpenXML `.xlsx` generation across 9 specialized formats with dynamic boundary trimming and zero file corruption.
 5. **Automated Cloud Sync & Snapshots**: 11:55 PM IST daily LeetCode CSV auto-export pushed to GitHub, alongside daily 29-table JSON snapshot backups with 7-day rolling retention.
@@ -100,8 +100,8 @@ flowchart LR
 
 ### Module 2: Coding Competency Tracking
 - **LeetCode Engine**: Live tracking of total solved problems, daily solve velocity, Easy/Medium/Hard breakdown, and daily/weekly target completion status.
-- **GitHub Engine**: Real-time commit velocity tracking, repository creation monitoring, and 7-day Monday–Sunday timeline breakdown.
-- **Combined Dashboard**: Side-by-side progress monitor for all enrolled students with class, year, and target status filtering.
+- **GitHub Engine**: Real-time synchronization of daily total commit counts per student with weekly aggregate metrics.
+- **Combined Dashboard**: Side-by-side progress monitor displaying student LeetCode statistics and daily total GitHub commits with filtering.
 
 ### Module 3: Automated Telegram Bot & Analysis Engine
 - **Bot Username**: `@IT_TaskManager_Alerts_bot`

@@ -6005,7 +6005,7 @@ async function startServer() {
   syncLeetcodeProgressForScope().catch(err => console.error('[LeetCode Sync] Startup sync error:', err));
   scheduleDailySync();
 
-  // ── GitHub Targets & Progress API Module ─────────────────────────────────────
+  // ── GitHub Daily Commit Tracking Module ──────────────────────────────────────
 
   // Utility: Extract GitHub username from profile URL or raw username
   function extractGitHubUsername(urlOrUsername: string): string {
@@ -6015,8 +6015,8 @@ async function startServer() {
     return match && match[1] ? match[1] : clean;
   }
 
-  // Utility: Fetch GitHub stats (commits today + total public repos)
-  async function fetchGitHubStats(usernameOrUrl: string, dateStr: string): Promise<{ totalRepos: number; commitsToday: number } | null> {
+  // Utility: Fetch GitHub total commits for a student on a specific date (GraphQL)
+  async function fetchGitHubDailyCommits(usernameOrUrl: string, dateStr: string): Promise<number | null> {
     const username = extractGitHubUsername(usernameOrUrl);
     if (!username) return null;
 
@@ -6029,9 +6029,6 @@ async function startServer() {
     const query = `
       query($username: String!, $from: DateTime!, $to: DateTime!) {
         user(login: $username) {
-          repositories(privacy: PUBLIC, first: 1, ownerAffiliations: OWNER) {
-            totalCount
-          }
           contributionsCollection(from: $from, to: $to) {
             contributionCalendar {
               weeks {
@@ -6046,8 +6043,8 @@ async function startServer() {
       }
     `;
 
-    const fromISO = `${dateStr}T00:00:00Z`;
-    const toISO = `${dateStr}T23:59:59Z`;
+    const fromISO = new Date(`${dateStr}T00:00:00+05:30`).toISOString();
+    const toISO = new Date(`${dateStr}T23:59:59+05:30`).toISOString();
 
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
@@ -6056,15 +6053,20 @@ async function startServer() {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
-            'User-Agent': 'IT-TaskManager-CodingTracker/1.0',
+            'User-Agent': 'IT-TaskManager-DailyCommitTracker/2.0',
           },
           body: JSON.stringify({ query, variables: { username, from: fromISO, to: toISO } }),
           signal: AbortSignal.timeout(10000),
         });
 
+        const rateLimitRemaining = response.headers.get('x-ratelimit-remaining');
+        if (rateLimitRemaining && parseInt(rateLimitRemaining, 10) < 25) {
+          console.warn(`[GitHub API] Rate limit running low: ${rateLimitRemaining} calls remaining.`);
+        }
+
         if (!response.ok) {
           if (response.status === 401 || response.status === 403) {
-            console.error(`[GitHub] Auth error for ${username}: ${response.status}`);
+            console.error(`[GitHub] Auth/Permission error for ${username}: ${response.status}`);
             return null;
           }
           if (response.status === 429 && attempt < 3) {
@@ -6079,7 +6081,7 @@ async function startServer() {
           const notFound = data.errors.some((e: any) => e.type === 'NOT_FOUND' || e.message?.includes('Could not resolve'));
           if (notFound) return null;
           if (attempt < 3) {
-            await new Promise(res => setTimeout(res, 2000));
+            await new Promise(res => setTimeout(res, 1500));
             continue;
           }
           return null;
@@ -6088,115 +6090,35 @@ async function startServer() {
         const user = data?.data?.user;
         if (!user) return null;
 
-        const totalRepos = Number(user.repositories?.totalCount) || 0;
-
-        // Sum commits on the target date
-        let commitsToday = 0;
+        // Extract total commits made on the target date
+        let dailyCommitCount = 0;
         const weeks = user.contributionsCollection?.contributionCalendar?.weeks || [];
         for (const week of weeks) {
           for (const day of (week.contributionDays || [])) {
             if (day.date === dateStr) {
-              commitsToday = Number(day.contributionCount) || 0;
+              dailyCommitCount = Number(day.contributionCount) || 0;
               break;
             }
           }
         }
 
-        return { totalRepos, commitsToday };
+        return dailyCommitCount;
       } catch (err: any) {
         if (err.name === 'TimeoutError' || err.name === 'AbortError') {
-          if (attempt < 3) { await new Promise(res => setTimeout(res, 2000)); continue; }
+          if (attempt < 3) { await new Promise(res => setTimeout(res, 1500)); continue; }
           return null;
         }
-        if (attempt < 3) { await new Promise(res => setTimeout(res, 2000)); continue; }
+        if (attempt < 3) { await new Promise(res => setTimeout(res, 1500)); continue; }
         return null;
       }
     }
     return null;
   }
 
-  // Utility: Resolve active GitHub target for a student (4-level priority)
-  async function getActiveGitHubTargetForStudent(
-    client: any,
-    userId: string,
-    classId: string | null,
-    year: number | null,
-    departmentId: string | null,
-    dateStr: string
-  ) {
-    const nullTarget = { id: null, daily_commit_target: 0, weekly_commit_target: 0, daily_repo_target: 0, weekly_repo_target: 0 };
-    try {
-      // Level 1: Student-level
-      if (userId) {
-        const r = await client.query(
-          `SELECT * FROM github_targets WHERE user_id = $1 AND start_date <= $2 AND end_date >= $2 ORDER BY created_at DESC LIMIT 1`,
-          [userId, dateStr]
-        );
-        if (r.rows.length > 0) return r.rows[0];
-      }
-      // Level 2: Class-level
-      if (classId) {
-        const r = await client.query(
-          `SELECT * FROM github_targets WHERE class_id = $1 AND user_id IS NULL AND start_date <= $2 AND end_date >= $2 ORDER BY created_at DESC LIMIT 1`,
-          [classId, dateStr]
-        );
-        if (r.rows.length > 0) return r.rows[0];
-      }
-      // Level 3: Year-level
-      if (year !== null && departmentId) {
-        const r = await client.query(
-          `SELECT * FROM github_targets WHERE year = $1 AND department_id = $2 AND user_id IS NULL AND class_id IS NULL AND start_date <= $3 AND end_date >= $3 ORDER BY created_at DESC LIMIT 1`,
-          [year, departmentId, dateStr]
-        );
-        if (r.rows.length > 0) return r.rows[0];
-      }
-      // Level 4: Department-level
-      if (departmentId) {
-        const r = await client.query(
-          `SELECT * FROM github_targets WHERE department_id = $1 AND user_id IS NULL AND class_id IS NULL AND year IS NULL AND start_date <= $2 AND end_date >= $2 ORDER BY created_at DESC LIMIT 1`,
-          [departmentId, dateStr]
-        );
-        if (r.rows.length > 0) return r.rows[0];
-      }
-      return nullTarget;
-    } catch {
-      return nullTarget;
-    }
-  }
-
-  // Utility: Resolve GitHub target in-memory from a pre-fetched targets list
-  function resolveGitHubTargetInMemory(student: any, activeTargets: any[]) {
-    const nullTarget = { id: null, daily_commit_target: 0, weekly_commit_target: 0, daily_repo_target: 0, weekly_repo_target: 0 };
-
-    // Level 1: Student
-    const studentTarget = activeTargets.find(t => t.user_id === student.id);
-    if (studentTarget) return studentTarget;
-
-    // Level 2: Class
-    const classTarget = activeTargets.find(t => !t.user_id && t.class_id && t.class_id === student.class_id);
-    if (classTarget) return classTarget;
-
-    // Level 3: Year (must also match department)
-    const yearTarget = activeTargets.find(t =>
-      !t.user_id && !t.class_id && t.year !== null &&
-      t.year === Number(student.year) && t.department_id === student.department_id
-    );
-    if (yearTarget) return yearTarget;
-
-    // Level 4: Department (only if user_id, class_id, year are all null)
-    const deptTarget = activeTargets.find(t =>
-      !t.user_id && !t.class_id && t.year === null &&
-      t.department_id === student.department_id
-    );
-    if (deptTarget) return deptTarget;
-
-    return nullTarget;
-  }
-
-  // Core: Sync GitHub progress for all (or scoped) students
-  async function syncGitHubProgressForScope(scopeFilter?: { departmentId?: string; classId?: string; year?: number; userId?: string }) {
-    const dateStr = getISTDateStr();
-    let synced = 0, failed = 0;
+  // Core: Sync Daily GitHub Commits for all (or scoped) students
+  async function syncDailyGitHubCommits(scopeFilter?: { departmentId?: string; classId?: string; year?: number; studentId?: string; userId?: string; date?: string }) {
+    const dateStr = scopeFilter?.date || getISTDateStr();
+    let processed = 0, successful = 0, failed = 0, skipped = 0;
 
     try {
       let query = `
@@ -6206,9 +6128,10 @@ async function startServer() {
         WHERE u.role = 'STUDENT'
       `;
       const params: any[] = [];
+      const targetUserId = scopeFilter?.studentId || scopeFilter?.userId;
 
-      if (scopeFilter?.userId) {
-        params.push(scopeFilter.userId); query += ` AND u.id = $${params.length}`;
+      if (targetUserId) {
+        params.push(targetUserId); query += ` AND u.id = $${params.length}`;
       } else if (scopeFilter?.classId) {
         params.push(scopeFilter.classId); query += ` AND u.class_id = $${params.length}`;
       } else if (scopeFilter?.year) {
@@ -6218,128 +6141,51 @@ async function startServer() {
         params.push(scopeFilter.departmentId); query += ` AND u.department_id = $${params.length}`;
       }
 
-      const students = (await pool.query(query, params)).rows;
-      const total = students.length;
-      console.log(`[GitHub Sync] Starting sync for ${total} students on ${dateStr}...`);
+      query += ` ORDER BY u.register_number ASC`;
 
-      // Process in batches of 10 (GitHub GraphQL rate limit: 5000 pts/hr)
+      const students = (await pool.query(query, params)).rows;
+      const totalStudents = students.length;
+      console.log(`[GitHub Daily Sync] Starting commit sync for ${totalStudents} students on date ${dateStr}...`);
+
+      // Controlled concurrency in batches of 10
       const BATCH_SIZE = 10;
-      const BATCH_DELAY_MS = 500;
+      const BATCH_DELAY_MS = 300;
 
       for (let i = 0; i < students.length; i += BATCH_SIZE) {
         const batch = students.slice(i, i + BATCH_SIZE);
 
         await Promise.all(batch.map(async (student) => {
+          processed++;
           const studentDir = constantStudentByIdMap.get(student.id);
-          const githubProfile = studentDir?.github || student.github_url || '';
+          const rawProfile = studentDir?.github || student.github_url || '';
+          const githubUsername = extractGitHubUsername(rawProfile);
 
-          if (!githubProfile) {
-            // No GitHub username — record as DATA_UNAVAILABLE
-            await pool.query(`
-              INSERT INTO github_daily_progress
-                (user_id, date, github_username, commits_today, new_repos_today, total_repos, commit_status, repo_status, sync_status)
-              VALUES ($1, $2, '', 0, 0, NULL, 'DATA_UNAVAILABLE', 'DATA_UNAVAILABLE', 'NO_PROFILE')
-              ON CONFLICT (user_id, date) DO UPDATE
-                SET sync_status = 'NO_PROFILE', commit_status = 'DATA_UNAVAILABLE', repo_status = 'DATA_UNAVAILABLE', updated_at = CURRENT_TIMESTAMP
-            `, [student.id, dateStr]);
+          if (!githubUsername) {
+            skipped++;
             return;
           }
 
           try {
-            const stats = await fetchGitHubStats(githubProfile, dateStr);
+            const commitCount = await fetchGitHubDailyCommits(githubUsername, dateStr);
 
-            if (stats === null) {
-              // Fetch failed — preserve existing data, mark FETCH_FAILED
-              await pool.query(`
-                INSERT INTO github_daily_progress
-                  (user_id, date, github_username, commits_today, new_repos_today, total_repos, commit_status, repo_status, sync_status, error_message)
-                VALUES ($1, $2, $3, 0, 0, NULL, 'FETCH_FAILED', 'FETCH_FAILED', 'ERROR', 'GitHub API fetch failed')
-                ON CONFLICT (user_id, date) DO UPDATE
-                  SET sync_status = 'ERROR', commit_status = CASE WHEN github_daily_progress.commit_status = 'NO_TARGET' THEN 'FETCH_FAILED' ELSE github_daily_progress.commit_status END,
-                      error_message = 'GitHub API fetch failed', updated_at = CURRENT_TIMESTAMP
-              `, [student.id, dateStr, extractGitHubUsername(githubProfile)]);
+            if (commitCount === null) {
               failed++;
               return;
             }
 
-            const { totalRepos, commitsToday } = stats;
-
-            // Calculate new repos today (baseline-aware)
-            const prevDayDate = new Date(dateStr + 'T00:00:00Z');
-            prevDayDate.setUTCDate(prevDayDate.getUTCDate() - 1);
-            const prevDateStr = prevDayDate.toISOString().split('T')[0];
-
-            const prevRes = await pool.query(
-              `SELECT total_repos FROM github_daily_progress WHERE user_id = $1 AND date = $2`,
-              [student.id, prevDateStr]
-            );
-
-            // Check if there's a same-day existing record
-            const todayRes = await pool.query(
-              `SELECT total_repos, new_repos_today FROM github_daily_progress WHERE user_id = $1 AND date = $2`,
-              [student.id, dateStr]
-            );
-
-            let newReposToday = 0;
-            if (todayRes.rows.length > 0 && todayRes.rows[0].total_repos !== null) {
-              // Same-day re-sync: diff from today's opening snapshot
-              const baselineRepos = todayRes.rows[0].total_repos - todayRes.rows[0].new_repos_today;
-              newReposToday = Math.max(0, totalRepos - baselineRepos);
-            } else if (prevRes.rows.length > 0 && prevRes.rows[0].total_repos !== null) {
-              // New day: diff from yesterday
-              newReposToday = Math.max(0, totalRepos - Number(prevRes.rows[0].total_repos));
-            } else {
-              // First-ever sync — establish baseline
-              newReposToday = 0;
-            }
-
-            // Resolve active target
-            const activeTarget = await getActiveGitHubTargetForStudent(pool, student.id, student.class_id, student.year ? Number(student.year) : null, student.department_id, dateStr);
-
-            const commitTarget = Number(activeTarget.daily_commit_target) || 0;
-            const repoTarget = Number(activeTarget.daily_repo_target) || 0;
-            const weeklyCommitTarget = Number(activeTarget.weekly_commit_target) || 0;
-            const weeklyRepoTarget = Number(activeTarget.weekly_repo_target) || 0;
-
-            let commitStatus = 'NO_TARGET';
-            let repoStatus = 'NO_TARGET';
-
-            if (activeTarget.id !== null) {
-              commitStatus = commitsToday >= commitTarget ? 'COMPLETED' : 'NOT_COMPLETED';
-              if (repoTarget > 0) {
-                repoStatus = newReposToday >= repoTarget ? 'COMPLETED' : 'NOT_COMPLETED';
-              } else {
-                repoStatus = 'NO_TARGET';
-              }
-            }
-
+            // PostgreSQL UPSERT on UNIQUE(student_id, date)
             await pool.query(`
-              INSERT INTO github_daily_progress
-                (user_id, date, github_username, total_repos, new_repos_today, commits_today,
-                 commit_target, repo_target, weekly_commit_target, weekly_repo_target,
-                 commit_status, repo_status, sync_status, error_message)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'SUCCESS', NULL)
-              ON CONFLICT (user_id, date) DO UPDATE
-                SET github_username = EXCLUDED.github_username,
-                    total_repos = EXCLUDED.total_repos,
-                    new_repos_today = EXCLUDED.new_repos_today,
-                    commits_today = EXCLUDED.commits_today,
-                    commit_target = EXCLUDED.commit_target,
-                    repo_target = EXCLUDED.repo_target,
-                    weekly_commit_target = EXCLUDED.weekly_commit_target,
-                    weekly_repo_target = EXCLUDED.weekly_repo_target,
-                    commit_status = EXCLUDED.commit_status,
-                    repo_status = EXCLUDED.repo_status,
-                    sync_status = 'SUCCESS',
-                    error_message = NULL,
-                    updated_at = CURRENT_TIMESTAMP
-            `, [student.id, dateStr, extractGitHubUsername(githubProfile), totalRepos, newReposToday,
-                commitsToday, commitTarget, repoTarget, weeklyCommitTarget, weeklyRepoTarget,
-                commitStatus, repoStatus]);
+              INSERT INTO github_daily_commits (student_id, github_username, date, daily_commit_count, updated_at)
+              VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+              ON CONFLICT (student_id, date) DO UPDATE
+                SET daily_commit_count = EXCLUDED.daily_commit_count,
+                    github_username = EXCLUDED.github_username,
+                    updated_at = CURRENT_TIMESTAMP;
+            `, [student.id, githubUsername, dateStr, commitCount]);
 
-            synced++;
+            successful++;
           } catch (err: any) {
-            console.error(`[GitHub Sync] Error for student ${student.register_number}:`, err.message);
+            console.error(`[GitHub Daily Sync] Error for student ${student.register_number}:`, err.message);
             failed++;
           }
         }));
@@ -6349,313 +6195,173 @@ async function startServer() {
         }
       }
 
-      console.log(`[GitHub Sync] Completed. Synced: ${synced}, Failed: ${failed}, Total: ${total}`);
-      return { synced, failed, total };
+      console.log(`[GitHub Daily Sync] Completed. Total: ${totalStudents}, Processed: ${processed}, Successful: ${successful}, Skipped: ${skipped}, Failed: ${failed}`);
+      return {
+        total_students: totalStudents,
+        processed,
+        skipped,
+        successful,
+        failed,
+        date: dateStr
+      };
     } catch (err) {
-      console.error('[syncGitHubProgressForScope] Error:', err);
+      console.error('[syncDailyGitHubCommits] Error:', err);
       throw err;
     }
   }
 
-  // Enrich student list with GitHub progress data (batch-optimized for 400 students)
-  async function enrichStudentGitHubProgressBatch(students: any[], dateStr: string) {
+  // Nightly scheduler for GitHub daily commits sync (11:55 PM IST and 8:00 AM IST)
+  function scheduleGitHubDailySync() {
+    const now = new Date();
+    const nowIST = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+    const hours = nowIST.getUTCHours();
+    const minutes = nowIST.getUTCMinutes();
+
+    const target8AM = new Date(nowIST.getTime());
+    target8AM.setUTCHours(8, 0, 0, 0);
+
+    const target1155PM = new Date(nowIST.getTime());
+    target1155PM.setUTCHours(23, 55, 0, 0);
+
+    let nextTarget: Date;
+    if (hours < 8) {
+      nextTarget = target8AM;
+    } else if (hours < 23 || (hours === 23 && minutes < 55)) {
+      nextTarget = target1155PM;
+    } else {
+      const tomorrow = new Date(nowIST.getTime() + 24 * 60 * 60 * 1000);
+      tomorrow.setUTCHours(8, 0, 0, 0);
+      nextTarget = tomorrow;
+    }
+
+    const timeUntilSync = nextTarget.getTime() - nowIST.getTime();
+    const targetTimeStr = `${nextTarget.getUTCHours().toString().padStart(2, '0')}:${nextTarget.getUTCMinutes().toString().padStart(2, '0')}`;
+    console.log(`[GitHub Daily Sync Daemon] Scheduled next commit sync at ${targetTimeStr} IST (in ${Math.round(timeUntilSync / 1000 / 60)} minutes).`);
+
+    setTimeout(async () => {
+      console.log(`[GitHub Daily Sync Daemon] Running scheduled GitHub commit sync...`);
+      try {
+        await syncDailyGitHubCommits();
+        console.log('[GitHub Daily Sync Daemon] Sync completed.');
+      } catch (err) {
+        console.error('[GitHub Daily Sync Daemon] Scheduled sync failed:', err);
+      }
+      scheduleGitHubDailySync();
+    }, timeUntilSync);
+  }
+
+  // Alias for backward compatibility
+  const syncGitHubProgressForScope = syncDailyGitHubCommits;
+
+  // Enrich student list with daily GitHub commit data (batch-optimized for 400+ students)
+  async function enrichStudentGitHubDailyCommitsBatch(students: any[], dateStr: string) {
     if (!students || students.length === 0) return [];
 
     const week = getWeekRange(dateStr);
     const studentIds = students.map(s => s.id);
 
-    // 1. Fetch all active GitHub targets
-    const targetsRes = await pool.query(`
-      SELECT * FROM github_targets
-      WHERE start_date <= $1 AND end_date >= $1
-      ORDER BY
-        CASE
-          WHEN user_id IS NOT NULL THEN 1
-          WHEN class_id IS NOT NULL THEN 2
-          WHEN year IS NOT NULL THEN 3
-          WHEN department_id IS NOT NULL THEN 4
-          ELSE 5
-        END ASC,
-        created_at DESC
-    `, [dateStr]);
-    const activeTargets = targetsRes.rows;
-
-    // 2. Fetch daily GitHub progress for all students
+    // 1. Fetch daily GitHub commits for target date
     const dailyRes = await pool.query(`
-      SELECT user_id, github_username, total_repos, new_repos_today, commits_today,
-             commit_target, repo_target, commit_status, repo_status, sync_status
-      FROM github_daily_progress
-      WHERE user_id = ANY($1) AND date = $2
+      SELECT student_id, github_username, date, daily_commit_count, updated_at
+      FROM github_daily_commits
+      WHERE student_id = ANY($1) AND date = $2
     `, [studentIds, dateStr]);
     const dailyMap = new Map<string, any>();
-    for (const row of dailyRes.rows) dailyMap.set(row.user_id, row);
+    for (const row of dailyRes.rows) dailyMap.set(row.student_id, row);
 
-    // 3. Fetch weekly GitHub aggregate
+    // 2. Fetch weekly GitHub commits aggregate (sum of daily commits in current week)
     const weeklyRes = await pool.query(`
-      SELECT user_id,
-             SUM(commits_today) as commits_week,
-             SUM(new_repos_today) as repos_week
-      FROM github_daily_progress
-      WHERE user_id = ANY($1) AND date >= $2 AND date <= $3
-      GROUP BY user_id
+      SELECT student_id, SUM(daily_commit_count) as commits_week
+      FROM github_daily_commits
+      WHERE student_id = ANY($1) AND date >= $2 AND date <= $3
+      GROUP BY student_id
     `, [studentIds, week.start, week.end]);
     const weeklyMap = new Map<string, any>();
-    for (const row of weeklyRes.rows) weeklyMap.set(row.user_id, row);
+    for (const row of weeklyRes.rows) weeklyMap.set(row.student_id, Number(row.commits_week) || 0);
 
-    // 4. Enrich each student
+    // 3. Map students to enriched daily commit data
     return students.map(student => {
-      const activeTarget = resolveGitHubTargetInMemory(student, activeTargets);
       const studentDir = constantStudentByIdMap.get(student.id);
-      const githubUrl = studentDir?.github || '';
-      const githubUsername = extractGitHubUsername(githubUrl);
+      const rawGithub = studentDir?.github || student.github_url || '';
+      const githubUsername = extractGitHubUsername(rawGithub);
 
       const dailyRow = dailyMap.get(student.id);
-      const commitsToday = dailyRow?.sync_status === 'SUCCESS' ? Number(dailyRow.commits_today) || 0 : 0;
-      const newReposToday = dailyRow?.sync_status === 'SUCCESS' ? Number(dailyRow.new_repos_today) || 0 : 0;
-
-      let commitStatus = 'NO_TARGET';
-      let repoStatus = 'NO_TARGET';
-      if (dailyRow) {
-        commitStatus = dailyRow.commit_status || 'NO_TARGET';
-        repoStatus = dailyRow.repo_status || 'NO_TARGET';
-      } else if (activeTarget.id !== null) {
-        commitStatus = 'DATA_UNAVAILABLE';
-        repoStatus = 'DATA_UNAVAILABLE';
-      }
-
-      const commitTarget = activeTarget.id !== null ? Number(activeTarget.daily_commit_target) || 0 : 0;
-      const repoTarget = activeTarget.id !== null ? Number(activeTarget.daily_repo_target) || 0 : 0;
-      const weeklyCommitTarget = activeTarget.id !== null ? Number(activeTarget.weekly_commit_target) || 0 : 0;
-      const weeklyRepoTarget = activeTarget.id !== null ? Number(activeTarget.weekly_repo_target) || 0 : 0;
-
-      const remainingCommits = commitTarget > 0 ? Math.max(0, commitTarget - commitsToday) : 0;
-      const completionCommitPct = commitTarget > 0 ? Math.round((commitsToday / commitTarget) * 100) : 0;
-
-      const weeklyRow = weeklyMap.get(student.id);
-      const commitsThisWeek = Number(weeklyRow?.commits_week) || 0;
-      const reposThisWeek = Number(weeklyRow?.repos_week) || 0;
-
-      let weeklyCommitStatus = 'NO_TARGET';
-      if (activeTarget.id !== null) {
-        weeklyCommitStatus = commitsThisWeek >= weeklyCommitTarget ? 'COMPLETED' : 'NOT_COMPLETED';
-      }
-
-      const remainingWeeklyCommits = weeklyCommitTarget > 0 ? Math.max(0, weeklyCommitTarget - commitsThisWeek) : 0;
-      const completionWeeklyCommitPct = weeklyCommitTarget > 0 ? Math.round((commitsThisWeek / weeklyCommitTarget) * 100) : 0;
+      const commitsToday = dailyRow ? Number(dailyRow.daily_commit_count) || 0 : 0;
+      const commitsThisWeek = weeklyMap.get(student.id) || 0;
+      const syncStatus = dailyRow ? 'SUCCESS' : (githubUsername ? 'PENDING' : 'NO_PROFILE');
 
       return {
         studentId: student.id,
         registerNumber: student.register_number,
         fullName: student.full_name,
         className: student.class_name || student.class_id || 'Unassigned',
-        githubUrl,
-        githubUsername,
+        githubUrl: rawGithub,
+        githubUsername: dailyRow?.github_username || githubUsername,
+        date: dateStr,
+        dailyCommitCount: commitsToday,
         commitsToday,
-        newReposToday,
-        commitTarget,
-        repoTarget,
-        weeklyCommitTarget,
-        weeklyRepoTarget,
-        remainingCommits,
-        completionCommitPct,
-        commitStatus,
-        repoStatus,
         commitsThisWeek,
-        reposThisWeek,
-        remainingWeeklyCommits,
-        completionWeeklyCommitPct,
-        weeklyCommitStatus,
-        syncStatus: dailyRow?.sync_status || 'NOT_SYNCED',
+        syncStatus,
+        updatedAt: dailyRow?.updated_at || null,
+        // Forward-compatible aliases for legacy frontend monitors
+        commitTarget: 0,
+        repoTarget: 0,
+        weeklyCommitTarget: 0,
+        weeklyRepoTarget: 0,
+        newReposToday: 0,
+        reposThisWeek: 0,
+        commitStatus: commitsToday > 0 ? 'ACTIVE' : 'INACTIVE',
+        weeklyCommitStatus: commitsThisWeek > 0 ? 'ACTIVE' : 'INACTIVE',
+        repoStatus: 'NO_TARGET'
       };
     });
   }
 
+  // Alias for backward compatibility
+  const enrichStudentGitHubProgressBatch = enrichStudentGitHubDailyCommitsBatch;
+
   // ── GitHub REST API Routes ───────────────────────────────────────────────────
 
-  app.get('/api/github/targets', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
-    const scope = enforceUserScopeFilter(req.user, req.query);
-    let query = `
-      SELECT t.*, u.full_name as student_name, c.name as class_name,
-             d.name as dept_name, cb.full_name as created_by_name
-      FROM github_targets t
-      LEFT JOIN users u ON t.user_id = u.id
-      LEFT JOIN classes c ON t.class_id = c.id
-      LEFT JOIN departments d ON t.department_id = d.id
-      LEFT JOIN users cb ON t.created_by = cb.id
-      WHERE 1=1
-    `;
-    const params: any[] = [];
-    if (scope.classId) {
-      params.push(scope.classId);
-      query += ` AND (t.class_id = $${params.length} OR t.user_id IN (SELECT id FROM users WHERE class_id = $${params.length}) OR t.year = (SELECT year FROM classes WHERE id = $${params.length}) OR (t.department_id = (SELECT department_id FROM classes WHERE id = $${params.length}) AND t.class_id IS NULL AND t.year IS NULL AND t.user_id IS NULL))`;
-    } else if (scope.year) {
-      params.push(scope.year);
-      query += ` AND (t.year = $${params.length} OR t.class_id IN (SELECT id FROM classes WHERE year = $${params.length}))`;
-    } else if (scope.departmentId) {
-      params.push(scope.departmentId);
-      query += ` AND (t.department_id = $${params.length} OR t.department_id IS NULL)`;
-    }
-    query += ` ORDER BY t.created_at DESC`;
-    const result = await pool.query(query, params);
-    res.json(result.rows);
-  }));
-
-  // 2. Create / Update GitHub Target (upsert by scope+dates)
-  app.post('/api/github/targets', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
-    const { daily_commit_target, weekly_commit_target, daily_repo_target, weekly_repo_target,
-            start_date, end_date, user_id, class_id, year, department_id } = req.body;
-
-    if (!start_date || !end_date) return res.status(400).json({ error: 'start_date and end_date are required' });
-
-    const existingRes = await pool.query(`
-      SELECT id FROM github_targets
-      WHERE start_date = $1 AND end_date = $2
-        AND COALESCE(user_id::text, '') = COALESCE($3::text, '')
-        AND COALESCE(class_id::text, '') = COALESCE($4::text, '')
-        AND COALESCE(year::text, '') = COALESCE($5::text, '')
-        AND COALESCE(department_id::text, '') = COALESCE($6::text, '')
-      LIMIT 1
-    `, [start_date, end_date, user_id || null, class_id || null, year || null, department_id || null]);
-
-    let target;
-    if (existingRes.rows.length > 0) {
-      const upd = await pool.query(`
-        UPDATE github_targets SET
-          daily_commit_target = $1, weekly_commit_target = $2,
-          daily_repo_target = $3, weekly_repo_target = $4,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = $5 RETURNING *
-      `, [daily_commit_target || 0, weekly_commit_target || 0, daily_repo_target || 0, weekly_repo_target || 0, existingRes.rows[0].id]);
-      target = upd.rows[0];
-    } else {
-      const ins = await pool.query(`
-        INSERT INTO github_targets
-          (daily_commit_target, weekly_commit_target, daily_repo_target, weekly_repo_target,
-           start_date, end_date, user_id, class_id, year, department_id, created_by)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        RETURNING *
-      `, [daily_commit_target || 0, weekly_commit_target || 0, daily_repo_target || 0, weekly_repo_target || 0,
-          start_date, end_date, user_id || null, class_id || null, year || null, department_id || null, req.user.id]);
-      target = ins.rows[0];
-    }
-    res.json({ success: true, target });
-  }));
-
-  // 3. Delete GitHub Target
-  app.delete('/api/github/targets/:id', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
-    const { id } = req.params;
-    const chk = await pool.query('SELECT id FROM github_targets WHERE id = $1', [id]);
-    if (chk.rowCount === 0) return res.status(404).json({ error: 'Target not found' });
-    await pool.query('DELETE FROM github_targets WHERE id = $1', [id]);
-    res.json({ success: true });
-  }));
-
-  // 4. Manual GitHub Sync Trigger
-  app.post('/api/github/sync', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
-    const { departmentId, classId, year, userId } = req.body || {};
-    const scope = enforceUserScopeFilter(req.user, { departmentId, classId, year, userId });
-    res.json({ message: 'GitHub sync started in background' });
-    syncGitHubProgressForScope(scope).catch(err => console.error('[GitHub Sync] Manual sync error:', err));
-  }));
-
-  app.get('/api/github/stats', authenticate, asyncHandler(async (req: any, res: Response) => {
+  // 1. Get Daily GitHub Commits for all students / scope
+  app.get(['/api/github/daily-commits', '/api/github/progress/daily'], authenticate, asyncHandler(async (req: any, res: Response) => {
     const scope = enforceUserScopeFilter(req.user, req.query);
     const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
-
-    const studentRows = await fetchStudentsForScope(scope);
-    const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
-
-    const week = getWeekRange(dateStr);
-    const weeklyAgg = await pool.query(`
-      SELECT SUM(commits_today) as total_commits, SUM(new_repos_today) as total_repos
-      FROM github_daily_progress
-      WHERE user_id = ANY($1) AND date >= $2 AND date <= $3
-    `, [studentRows.map(s => s.id), week.start, week.end]);
-
-    const totalStudents = studentRows.length;
-    let metDaily = 0;
-    let inProgressDaily = 0;
-    let dailyCompleted = 0;
-    let dailyNotCompleted = 0;
-    let weeklyCompleted = 0;
-    let weeklyNotCompleted = 0;
-    let commitsToday = 0;
-    let newReposToday = 0;
-
-    for (const item of enrichedList) {
-      commitsToday += item.commitsToday;
-      newReposToday += item.newReposToday;
-      if (item.commitsToday > 0) inProgressDaily++;
-      if (item.commitStatus === 'COMPLETED') {
-        metDaily++;
-        dailyCompleted++;
-      } else if (item.commitStatus === 'NOT_COMPLETED' || item.commitStatus === 'DATA_UNAVAILABLE') {
-        dailyNotCompleted++;
-      }
-      if (item.weeklyCommitStatus === 'COMPLETED') weeklyCompleted++;
-      else if (item.weeklyCommitStatus === 'NOT_COMPLETED') weeklyNotCompleted++;
-    }
-
-    const completionDailyRate = totalStudents > 0 ? Math.round((metDaily / totalStudents) * 100) : 0;
-
-    res.json({
-      totalStudents,
-      metDaily,
-      inProgressDaily,
-      completionDailyRate,
-      commitsToday,
-      commitsThisWeek: Number(weeklyAgg.rows[0]?.total_commits) || 0,
-      newReposToday,
-      newReposThisWeek: Number(weeklyAgg.rows[0]?.total_repos) || 0,
-      dailyCompleted,
-      dailyNotCompleted,
-      weeklyCompleted,
-      weeklyNotCompleted
-    });
-  }));
-
-  // 6. GitHub Daily Progress Grid
-  app.get('/api/github/progress/daily', authenticate, asyncHandler(async (req: any, res: Response) => {
-    const scope = enforceUserScopeFilter(req.user, req.query);
-    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
-    const statusFilter = req.query.status ? req.query.status.toString() : 'ALL';
     const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
 
     const studentRows = await fetchStudentsForScope(scope);
-    const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
+    const enrichedList = await enrichStudentGitHubDailyCommitsBatch(studentRows, dateStr);
 
     const filtered = enrichedList.filter(row => {
-      const matchSearch = row.fullName.toLowerCase().includes(search) || row.registerNumber.toLowerCase().includes(search) || row.githubUsername.toLowerCase().includes(search);
-      if (!matchSearch) return false;
-      if (statusFilter !== 'ALL') return row.commitStatus.toUpperCase() === statusFilter.toUpperCase();
-      return true;
+      if (!search) return true;
+      return row.fullName.toLowerCase().includes(search) ||
+             row.registerNumber.toLowerCase().includes(search) ||
+             row.githubUsername.toLowerCase().includes(search);
     });
 
     res.json(filtered);
   }));
 
-  // 7. GitHub Weekly Progress Grid
-  app.get('/api/github/progress/weekly', authenticate, asyncHandler(async (req: any, res: Response) => {
+  // 2. Get Daily GitHub Commits for a specific date
+  app.get('/api/github/daily-commits/date/:date', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const dateStr = req.params.date;
     const scope = enforceUserScopeFilter(req.user, req.query);
-    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
-    const statusFilter = req.query.status ? req.query.status.toString() : 'ALL';
     const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
 
     const studentRows = await fetchStudentsForScope(scope);
-    const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
+    const enrichedList = await enrichStudentGitHubDailyCommitsBatch(studentRows, dateStr);
 
     const filtered = enrichedList.filter(row => {
-      const matchSearch = row.fullName.toLowerCase().includes(search) || row.registerNumber.toLowerCase().includes(search);
-      if (!matchSearch) return false;
-      if (statusFilter !== 'ALL') return row.weeklyCommitStatus.toUpperCase() === statusFilter.toUpperCase();
-      return true;
+      if (!search) return true;
+      return row.fullName.toLowerCase().includes(search) ||
+             row.registerNumber.toLowerCase().includes(search) ||
+             row.githubUsername.toLowerCase().includes(search);
     });
 
     res.json(filtered);
   }));
 
-  // 8. Student's own GitHub progress
-  app.get('/api/github/progress/my', authenticate, asyncHandler(async (req: any, res: Response) => {
+  // 3. Get Student's Own Daily GitHub Commits
+  app.get(['/api/github/daily-commits/my', '/api/github/progress/my'], authenticate, asyncHandler(async (req: any, res: Response) => {
     const studentId = req.user.id;
     const dateStr = getISTDateStr();
     const stdRes = await pool.query(`
@@ -6664,12 +6370,28 @@ async function startServer() {
       WHERE u.id = $1 LIMIT 1
     `, [studentId]);
     if (stdRes.rowCount === 0) return res.status(404).json({ error: 'Student not found' });
-    const enriched = (await enrichStudentGitHubProgressBatch([stdRes.rows[0]], dateStr))[0];
-    res.json(enriched);
+
+    const enriched = (await enrichStudentGitHubDailyCommitsBatch([stdRes.rows[0]], dateStr))[0];
+
+    const historyRes = await pool.query(`
+      SELECT date, daily_commit_count, updated_at
+      FROM github_daily_commits
+      WHERE student_id = $1
+      ORDER BY date DESC LIMIT 30
+    `, [studentId]);
+
+    const history = historyRes.rows.map(r => ({
+      date: typeof r.date === 'string' ? r.date.split('T')[0] : new Date(r.date).toISOString().split('T')[0],
+      commits: Number(r.daily_commit_count) || 0,
+      daily_commit_count: Number(r.daily_commit_count) || 0,
+      updated_at: r.updated_at
+    })).reverse();
+
+    res.json({ ...enriched, history });
   }));
 
-  // 9. Specific student GitHub progress history
-  app.get('/api/github/progress/student/:studentId', authenticate, asyncHandler(async (req: any, res: Response) => {
+  // 4. Get Specific Student's Daily GitHub Commits & History
+  app.get(['/api/github/daily-commits/:studentId', '/api/github/daily-commits/student/:studentId', '/api/github/progress/student/:studentId'], authenticate, asyncHandler(async (req: any, res: Response) => {
     const { studentId } = req.params;
     const dateStr = getISTDateStr();
     const stdRes = await pool.query(`
@@ -6679,27 +6401,131 @@ async function startServer() {
     `, [studentId]);
     if (stdRes.rowCount === 0) return res.status(404).json({ error: 'Student not found' });
 
-    const enriched = (await enrichStudentGitHubProgressBatch([stdRes.rows[0]], dateStr))[0];
+    const enriched = (await enrichStudentGitHubDailyCommitsBatch([stdRes.rows[0]], dateStr))[0];
 
-    const history = await pool.query(`
-      SELECT date, commits_today, new_repos_today, commit_target, commit_status, repo_status, sync_status
-      FROM github_daily_progress
-      WHERE user_id = $1
+    const historyRes = await pool.query(`
+      SELECT date, daily_commit_count, updated_at
+      FROM github_daily_commits
+      WHERE student_id = $1
       ORDER BY date DESC LIMIT 30
     `, [studentId]);
 
-    const dailyPoints = history.rows.map(r => ({
+    const history = historyRes.rows.map(r => ({
       date: typeof r.date === 'string' ? r.date.split('T')[0] : new Date(r.date).toISOString().split('T')[0],
-      commits: Number(r.commits_today),
-      repos: Number(r.new_repos_today),
-      target: Number(r.commit_target),
-      status: r.commit_status,
+      commits: Number(r.daily_commit_count) || 0,
+      daily_commit_count: Number(r.daily_commit_count) || 0,
+      updated_at: r.updated_at
     })).reverse();
 
-    res.json({ ...enriched, history: dailyPoints });
+    res.json({ ...enriched, history });
   }));
 
-  // ── Combined Coding Progress (LeetCode + GitHub) ─────────────────────────────
+  // 5. Weekly GitHub Commits Grid
+  app.get('/api/github/progress/weekly', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+    const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
+
+    const studentRows = await fetchStudentsForScope(scope);
+    const enrichedList = await enrichStudentGitHubDailyCommitsBatch(studentRows, dateStr);
+
+    const filtered = enrichedList.filter(row => {
+      if (!search) return true;
+      return row.fullName.toLowerCase().includes(search) || row.registerNumber.toLowerCase().includes(search);
+    });
+
+    res.json(filtered);
+  }));
+
+  // 6. GitHub Stats Summary
+  app.get('/api/github/stats', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const scope = enforceUserScopeFilter(req.user, req.query);
+    const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
+
+    const studentRows = await fetchStudentsForScope(scope);
+    const enrichedList = await enrichStudentGitHubDailyCommitsBatch(studentRows, dateStr);
+
+    const week = getWeekRange(dateStr);
+    const studentIds = studentRows.map(s => s.id);
+
+    const weeklyAgg = await pool.query(`
+      SELECT SUM(daily_commit_count) as total_commits
+      FROM github_daily_commits
+      WHERE student_id = ANY($1) AND date >= $2 AND date <= $3
+    `, [studentIds, week.start, week.end]);
+
+    const totalStudents = studentRows.length;
+    let commitsToday = 0;
+    let activeCommitters = 0;
+    let syncedStudents = 0;
+    let noGithubHandleCount = 0;
+
+    for (const item of enrichedList) {
+      commitsToday += item.commitsToday;
+      if (item.commitsToday > 0) activeCommitters++;
+      if (item.syncStatus === 'SUCCESS') syncedStudents++;
+      if (!item.githubUsername) noGithubHandleCount++;
+    }
+
+    res.json({
+      totalStudents,
+      syncedStudents,
+      activeCommitters,
+      commitsToday,
+      commitsThisWeek: Number(weeklyAgg.rows[0]?.total_commits) || 0,
+      noGithubHandleCount,
+      failedSyncCount: Math.max(0, totalStudents - syncedStudents - noGithubHandleCount),
+      // Forward-compatible aliases for existing dashboard cards
+      metDaily: activeCommitters,
+      inProgressDaily: activeCommitters,
+      completionDailyRate: totalStudents > 0 ? Math.round((activeCommitters / totalStudents) * 100) : 0,
+      newReposToday: 0,
+      newReposThisWeek: 0,
+      dailyCompleted: activeCommitters,
+      dailyNotCompleted: totalStudents - activeCommitters,
+      weeklyCompleted: activeCommitters,
+      weeklyNotCompleted: totalStudents - activeCommitters
+    });
+  }));
+
+  // 7. Trigger Daily GitHub Commits Sync (All or Scoped)
+  app.post(['/api/github/sync/daily-commits', '/api/github/sync'], authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const { departmentId, classId, year, studentId, userId, date } = req.body || {};
+    const scope = enforceUserScopeFilter(req.user, { departmentId, classId, year, studentId, userId });
+    
+    // Run sync and return full summary
+    const summary = await syncDailyGitHubCommits({ ...scope, date });
+    res.json({
+      success: true,
+      message: `GitHub daily commit sync completed. ${summary.successful} synced, ${summary.skipped} skipped, ${summary.failed} failed.`,
+      summary
+    });
+  }));
+
+  // 8. Trigger Daily GitHub Commits Sync for a Specific Student
+  app.post('/api/github/sync/daily-commits/:studentId', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
+    const { studentId } = req.params;
+    const { date } = req.body || {};
+    const summary = await syncDailyGitHubCommits({ studentId, date });
+    res.json({
+      success: true,
+      message: `Student GitHub daily commit sync completed.`,
+      summary
+    });
+  }));
+
+  // 9. Stub for deprecated target routes to maintain clean backward compatibility
+  app.get('/api/github/targets', authenticate, authorizeTargetManagement, asyncHandler(async (_req: any, res: Response) => {
+    res.json([]);
+  }));
+  app.post('/api/github/targets', authenticate, authorizeTargetManagement, asyncHandler(async (_req: any, res: Response) => {
+    res.json({ success: true, message: 'GitHub tracking is now daily-commit-count only. Targets are not needed.' });
+  }));
+  app.delete('/api/github/targets/:id', authenticate, authorizeTargetManagement, asyncHandler(async (_req: any, res: Response) => {
+    res.json({ success: true });
+  }));
+
+  // ── Combined Coding Progress (LeetCode + Daily GitHub Commits) ───────────────
 
   app.get('/api/coding/progress/combined', authenticate, asyncHandler(async (req: any, res: Response) => {
     const scope = enforceUserScopeFilter(req.user, req.query);
@@ -6721,7 +6547,7 @@ async function startServer() {
 
     const [lcList, ghList] = await Promise.all([
       enrichStudentProgressBatch(students.rows, dateStr),
-      enrichStudentGitHubProgressBatch(students.rows, dateStr),
+      enrichStudentGitHubDailyCommitsBatch(students.rows, dateStr),
     ]);
 
     const ghMap = new Map(ghList.map(g => [g.studentId, g]));
@@ -6744,31 +6570,33 @@ async function startServer() {
     const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
 
     const studentRows = await fetchStudentsForScope(scope);
-    const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
+    const enrichedList = await enrichStudentGitHubDailyCommitsBatch(studentRows, dateStr);
     const filtered = enrichedList.filter(r => !search || r.fullName.toLowerCase().includes(search) || r.registerNumber.toLowerCase().includes(search));
 
+    let sno = 1;
     const excelData = filtered.map(r => ({
-      'Register No': r.registerNumber, 'Student Name': r.fullName, 'Section': r.className,
-      'GitHub Username': r.githubUsername,
-      'Commit Target': r.commitTarget, 'Commits Today': r.commitsToday,
-      'Remaining': r.remainingCommits, 'Commit %': `${r.completionCommitPct}%`,
-      'Commit Status': r.commitStatus.replace('_', ' '),
-      'Repo Target': r.repoTarget, 'New Repos Today': r.newReposToday,
-      'Repo Status': r.repoStatus.replace('_', ' '),
+      'S.No': sno++,
+      'Register No': r.registerNumber,
+      'Student Name': r.fullName,
+      'Section': r.className,
+      'GitHub Username': r.githubUsername || 'Not Linked',
+      'Date': dateStr,
+      'Daily Commits': r.commitsToday,
+      'Commits This Week': r.commitsThisWeek,
     }));
 
-    const cols = ['Register No', 'Student Name', 'Section', 'GitHub Username', 'Commit Target', 'Commits Today', 'Remaining', 'Commit %', 'Commit Status', 'Repo Target', 'New Repos Today', 'Repo Status'];
+    const cols = ['S.No', 'Register No', 'Student Name', 'Section', 'GitHub Username', 'Date', 'Daily Commits', 'Commits This Week'];
     const finalBuf = await buildExcelReportBuffer([
       {
-        name: 'GitHub Daily Report',
-        title: `GITHUB DAILY REPORT - ${dateStr}`,
+        name: 'GitHub Daily Commits',
+        title: `GITHUB DAILY COMMITS REPORT - ${dateStr}`,
         cols: cols,
         dataRows: excelData
       }
     ]);
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=GitHub_Daily_Report_${dateStr}.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename=GitHub_Daily_Commits_${dateStr}.xlsx`);
     res.send(finalBuf);
   }));
 
@@ -6780,34 +6608,36 @@ async function startServer() {
     const week = getWeekRange(dateStr);
 
     const studentRows = await fetchStudentsForScope(scope);
-    const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
+    const enrichedList = await enrichStudentGitHubDailyCommitsBatch(studentRows, dateStr);
     const filtered = enrichedList.filter(r => !search || r.fullName.toLowerCase().includes(search) || r.registerNumber.toLowerCase().includes(search));
 
+    let sno = 1;
     const excelData = filtered.map(r => ({
-      'Register No': r.registerNumber, 'Student Name': r.fullName, 'Section': r.className,
-      'GitHub Username': r.githubUsername,
-      'Weekly Commit Target': r.weeklyCommitTarget, 'Commits This Week': r.commitsThisWeek,
-      'Remaining': r.remainingWeeklyCommits, 'Commit %': `${r.completionWeeklyCommitPct}%`,
-      'Weekly Commit Status': r.weeklyCommitStatus.replace('_', ' '),
-      'Weekly Repo Target': r.weeklyRepoTarget, 'New Repos This Week': r.reposThisWeek,
+      'S.No': sno++,
+      'Register No': r.registerNumber,
+      'Student Name': r.fullName,
+      'Section': r.className,
+      'GitHub Username': r.githubUsername || 'Not Linked',
+      'Commits Today': r.commitsToday,
+      'Total Commits This Week': r.commitsThisWeek,
     }));
 
-    const cols = ['Register No', 'Student Name', 'Section', 'GitHub Username', 'Weekly Commit Target', 'Commits This Week', 'Remaining', 'Commit %', 'Weekly Commit Status', 'Weekly Repo Target', 'New Repos This Week'];
+    const cols = ['S.No', 'Register No', 'Student Name', 'Section', 'GitHub Username', 'Commits Today', 'Total Commits This Week'];
     const finalBuf = await buildExcelReportBuffer([
       {
-        name: 'GitHub Weekly Report',
-        title: `GITHUB WEEKLY REPORT (${week.start} to ${week.end})`,
+        name: 'GitHub Weekly Commits',
+        title: `GITHUB WEEKLY COMMITS REPORT (${week.start} to ${week.end})`,
         cols: cols,
         dataRows: excelData
       }
     ]);
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=GitHub_Weekly_Report_${week.start}_to_${week.end}.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename=GitHub_Weekly_Commits_${week.start}_to_${week.end}.xlsx`);
     res.send(finalBuf);
   }));
 
-  // Weekly Detailed GitHub Report (Sunday -> Saturday breakdown)
+  // Weekly Detailed GitHub Report (Sunday -> Saturday daily breakdown)
   app.get('/api/github/export/weekly-detailed', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
     const scope = enforceUserScopeFilter(req.user, req.query);
     const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
@@ -6815,27 +6645,27 @@ async function startServer() {
     const week = getWeekRange(dateStr);
 
     const studentRows = await fetchStudentsForScope(scope);
-    const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
+    const enrichedList = await enrichStudentGitHubDailyCommitsBatch(studentRows, dateStr);
     const filtered = enrichedList.filter(r => !search || r.fullName.toLowerCase().includes(search) || r.registerNumber.toLowerCase().includes(search));
 
     const weekProgressRes = await pool.query(
-      'SELECT user_id, date, commits_today, new_repos_today FROM github_daily_progress WHERE user_id = ANY($1) AND date >= $2 AND date <= $3',
+      'SELECT student_id, date, daily_commit_count FROM github_daily_commits WHERE student_id = ANY($1) AND date >= $2 AND date <= $3',
       [studentRows.map(s => s.id), week.start, week.end]
     );
-    const dayMap = new Map<string, { commits: number; repos: number }>();
+    const dayMap = new Map<string, number>();
     for (const r of weekProgressRes.rows) {
       const dStr = typeof r.date === 'string' ? r.date.split('T')[0] : new Date(r.date).toISOString().split('T')[0];
-      dayMap.set(`${r.user_id}_${dStr}`, { commits: Number(r.commits_today) || 0, repos: Number(r.new_repos_today) || 0 });
+      dayMap.set(`${r.student_id}_${dStr}`, Number(r.daily_commit_count) || 0);
     }
 
-    const getDay = (id: string, offset: number) => {
+    const getDayCommits = (id: string, offset: number) => {
       const parts = week.start.split('-');
       const y = Number(parts[0]);
       const m = Number(parts[1]) - 1;
       const d = Number(parts[2]);
       const date = new Date(Date.UTC(y, m, d));
       date.setUTCDate(date.getUTCDate() + offset);
-      return dayMap.get(`${id}_${date.toISOString().split('T')[0]}`) || { commits: 0, repos: 0 };
+      return dayMap.get(`${id}_${date.toISOString().split('T')[0]}`) || 0;
     };
 
     const getUTCDayStr = (startStr: string, offsetDays: number): string => {
@@ -6856,73 +6686,78 @@ async function startServer() {
     const dateFri = `${getUTCDayStr(week.start, 5)} (Fri)`;
     const dateSat = `${getUTCDayStr(week.start, 6)} (Sat)`;
 
+    let sno = 1;
     const detailedList = filtered.map(r => {
       const id = r.studentId;
       return {
-        'Register No': r.registerNumber, 'Student Name': r.fullName, 'Section': r.className,
-        'GitHub': r.githubUsername,
-        [`${dateSun} Commits`]: getDay(id, 0).commits,
-        [`${dateMon} Commits`]: getDay(id, 1).commits,
-        [`${dateTue} Commits`]: getDay(id, 2).commits,
-        [`${dateWed} Commits`]: getDay(id, 3).commits,
-        [`${dateThu} Commits`]: getDay(id, 4).commits,
-        [`${dateFri} Commits`]: getDay(id, 5).commits,
-        [`${dateSat} Commits`]: getDay(id, 6).commits,
-        'Total Commits': r.commitsThisWeek, 'Commit Target': r.weeklyCommitTarget,
-        'Commit %': `${r.completionWeeklyCommitPct}%`, 'Status': r.weeklyCommitStatus.replace('_', ' '),
-        'New Repos This Week': r.reposThisWeek,
+        'S.No': sno++,
+        'Register No': r.registerNumber,
+        'Student Name': r.fullName,
+        'Section': r.className,
+        'GitHub': r.githubUsername || 'Not Linked',
+        [`${dateSun} Commits`]: getDayCommits(id, 0),
+        [`${dateMon} Commits`]: getDayCommits(id, 1),
+        [`${dateTue} Commits`]: getDayCommits(id, 2),
+        [`${dateWed} Commits`]: getDayCommits(id, 3),
+        [`${dateThu} Commits`]: getDayCommits(id, 4),
+        [`${dateFri} Commits`]: getDayCommits(id, 5),
+        [`${dateSat} Commits`]: getDayCommits(id, 6),
+        'Total Commits This Week': r.commitsThisWeek,
       };
     });
 
-    const cols = ['Register No', 'Student Name', 'Section', 'GitHub', `${dateSun} Commits`, `${dateMon} Commits`, `${dateTue} Commits`, `${dateWed} Commits`, `${dateThu} Commits`, `${dateFri} Commits`, `${dateSat} Commits`, 'Total Commits', 'Commit Target', 'Commit %', 'Status', 'New Repos This Week'];
+    const cols = ['S.No', 'Register No', 'Student Name', 'Section', 'GitHub', `${dateSun} Commits`, `${dateMon} Commits`, `${dateTue} Commits`, `${dateWed} Commits`, `${dateThu} Commits`, `${dateFri} Commits`, `${dateSat} Commits`, 'Total Commits This Week'];
     const finalBuf = await buildExcelReportBuffer([
       {
         name: 'GitHub Detailed Weekly',
-        title: `GITHUB DETAILED WEEKLY REPORT (${week.start} to ${week.end})`,
+        title: `GITHUB DETAILED WEEKLY COMMITS REPORT (${week.start} to ${week.end})`,
         cols: cols,
         dataRows: detailedList
       }
     ]);
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=GitHub_Weekly_Detailed_${week.start}_to_${week.end}.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename=GitHub_Weekly_Detailed_Commits_${week.start}_to_${week.end}.xlsx`);
     res.send(finalBuf);
   }));
 
-  // GitHub Defaulters Excel Report
+  // GitHub Incomplete / Defaulters Excel Report
   app.get('/api/github/export/incomplete', authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
     const scope = enforceUserScopeFilter(req.user, req.query);
     const dateStr = req.query.date ? req.query.date.toString() : getISTDateStr();
     const search = req.query.search ? req.query.search.toString().toLowerCase() : '';
 
     const studentRows = await fetchStudentsForScope(scope);
-    const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
+    const enrichedList = await enrichStudentGitHubDailyCommitsBatch(studentRows, dateStr);
     const filtered = enrichedList.filter(r => {
       const matchSearch = !search || r.fullName.toLowerCase().includes(search) || r.registerNumber.toLowerCase().includes(search);
-      return matchSearch && (r.commitStatus === 'NOT_COMPLETED' || r.weeklyCommitStatus === 'NOT_COMPLETED');
+      return matchSearch && r.commitsToday === 0;
     });
 
+    let sno = 1;
     const excelData = filtered.map(r => ({
-      'Register No': r.registerNumber, 'Student Name': r.fullName, 'Section': r.className,
-      'GitHub': r.githubUsername,
-      'Daily Commit Target': r.commitTarget, 'Commits Today': r.commitsToday,
-      'Daily Status': r.commitStatus.replace('_', ' '),
-      'Weekly Commit Target': r.weeklyCommitTarget, 'Commits This Week': r.commitsThisWeek,
-      'Weekly Status': r.weeklyCommitStatus.replace('_', ' '),
+      'S.No': sno++,
+      'Register No': r.registerNumber,
+      'Student Name': r.fullName,
+      'Section': r.className,
+      'GitHub': r.githubUsername || 'Not Linked',
+      'Date': dateStr,
+      'Commits Today': r.commitsToday,
+      'Commits This Week': r.commitsThisWeek,
     }));
 
-    const cols = ['Register No', 'Student Name', 'Section', 'GitHub', 'Daily Commit Target', 'Commits Today', 'Daily Status', 'Weekly Commit Target', 'Commits This Week', 'Weekly Status'];
+    const cols = ['S.No', 'Register No', 'Student Name', 'Section', 'GitHub', 'Date', 'Commits Today', 'Commits This Week'];
     const finalBuf = await buildExcelReportBuffer([
       {
-        name: 'GitHub Defaulters',
-        title: `GITHUB DEFAULTERS REPORT - ${dateStr}`,
+        name: 'GitHub Zero Commits Report',
+        title: `GITHUB ZERO COMMITS REPORT - ${dateStr}`,
         cols: cols,
         dataRows: excelData
       }
     ]);
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=GitHub_Defaulters_${dateStr}.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename=GitHub_Zero_Commits_${dateStr}.xlsx`);
     res.send(finalBuf);
   }));
 
@@ -6949,7 +6784,7 @@ async function startServer() {
     let excelData: any[] = [];
 
     if (view === 'GITHUB_DAILY') {
-      const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
+      const enrichedList = await enrichStudentGitHubDailyCommitsBatch(studentRows, dateStr);
       let sno = 1;
       excelData = enrichedList
         .filter(r => !search || r.fullName.toLowerCase().includes(search) || r.registerNumber.toLowerCase().includes(search))
@@ -6958,24 +6793,22 @@ async function startServer() {
           'Name': gh.fullName,
           'Reg No': gh.registerNumber,
           'GitHub ID': gh.githubUsername || '',
-          'Daily Commit Target': gh.commitTarget,
+          'Date': dateStr,
           'Commits Today': gh.commitsToday,
-          'Remaining': gh.remainingCommits,
-          'Completion %': `${gh.completionCommitPct}%`,
-          'Status': gh.commitStatus ? gh.commitStatus.replace('_', ' ') : 'NO_TARGET'
+          'Commits This Week': gh.commitsThisWeek
         }));
     } else if (view === 'GITHUB' || view === 'GITHUB_WEEKLY') {
-      const enrichedList = await enrichStudentGitHubProgressBatch(studentRows, dateStr);
+      const enrichedList = await enrichStudentGitHubDailyCommitsBatch(studentRows, dateStr);
       
       const prevWeeklyRes = await pool.query(`
-        SELECT user_id, SUM(commits_today) as commits_prev_week
-        FROM github_daily_progress 
-        WHERE user_id = ANY($1) AND date >= $2 AND date <= $3
-        GROUP BY user_id
+        SELECT student_id, SUM(daily_commit_count) as commits_prev_week
+        FROM github_daily_commits 
+        WHERE student_id = ANY($1) AND date >= $2 AND date <= $3
+        GROUP BY student_id
       `, [studentIds, prevWeekStartStr, prevWeekEndStr]);
       
       const prevWeeklyMap = new Map();
-      for (const row of prevWeeklyRes.rows) prevWeeklyMap.set(row.user_id, Number(row.commits_prev_week) || 0);
+      for (const row of prevWeeklyRes.rows) prevWeeklyMap.set(row.student_id, Number(row.commits_prev_week) || 0);
 
       let sno = 1;
       excelData = enrichedList
@@ -7045,33 +6878,7 @@ async function startServer() {
     res.send(finalBuf);
   }));
 
-  // ── GitHub & LeetCode Nightly Sync Daemon at 23:55 IST (18:25 UTC) ─────────
-  function scheduleGitHubDailySync() {
-    const now = new Date();
-    const targetUTC = new Date(now);
-    targetUTC.setUTCHours(18, 25, 0, 0); // 23:55 IST = 18:25 UTC
-    if (now.getTime() >= targetUTC.getTime()) {
-      targetUTC.setUTCDate(targetUTC.getUTCDate() + 1);
-    }
-    const timeUntilSync = targetUTC.getTime() - now.getTime();
-    console.log(`[Nightly Sync Daemon] Scheduled next 11:55 PM IST sync in ${Math.round(timeUntilSync / 1000 / 60)} minutes.`);
-    setTimeout(async () => {
-      console.log('[Nightly Sync Daemon] 🌙 Running 11:55 PM IST scheduled daily sync...');
-      try {
-        const todayStr = getISTDateStr();
-        if (process.env.GITHUB_TOKEN) {
-          const result = await syncGitHubProgressForScope();
-          console.log(`[Nightly Sync Daemon] GitHub sync completed: ${result.synced} synced, ${result.failed} failed.`);
-        }
-        await syncLeetcodeProgressForScope();
-        await exportAndPushLeetcodeDailyProgress(todayStr);
-      } catch (err) {
-        console.error('[Nightly Sync Daemon Error]:', err);
-      }
 
-      scheduleGitHubDailySync();
-    }, timeUntilSync);
-  }
 
   function escapeCsvCell(val: any): string {
     if (val === null || val === undefined) return '""';

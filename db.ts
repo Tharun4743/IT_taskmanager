@@ -544,62 +544,50 @@ export async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_leetcode_progress_date ON leetcode_daily_progress(user_id, date);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_leetcode_progress_date_range ON leetcode_daily_progress(date, user_id);`);
 
-    // ─── Module 6: GitHub Targets & Progress Tracking ─────────────────────────
+    // ─── Module 6: GitHub Daily Commit Count Tracking ─────────────────────────
     await client.query(`
-      CREATE TABLE IF NOT EXISTS github_targets (
+      CREATE TABLE IF NOT EXISTS github_daily_commits (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        daily_commit_target INT NOT NULL DEFAULT 0,
-        weekly_commit_target INT NOT NULL DEFAULT 0,
-        daily_repo_target INT NOT NULL DEFAULT 0,
-        weekly_repo_target INT NOT NULL DEFAULT 0,
-        start_date DATE NOT NULL,
-        end_date DATE NOT NULL,
-        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-        class_id UUID REFERENCES classes(id) ON DELETE CASCADE,
-        year INT,
-        department_id UUID REFERENCES departments(id) ON DELETE CASCADE,
-        created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        student_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        github_username TEXT,
+        date DATE NOT NULL,
+        daily_commit_count INT NOT NULL DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (student_id, date)
       );
     `);
 
+    // Safely migrate existing records from legacy github_daily_progress if present
     await client.query(`
-      CREATE TABLE IF NOT EXISTS github_daily_progress (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
-        date DATE NOT NULL,
-        github_username VARCHAR(255),
-        total_repos INT,
-        new_repos_today INT NOT NULL DEFAULT 0,
-        commits_today INT NOT NULL DEFAULT 0,
-        commit_target INT NOT NULL DEFAULT 0,
-        repo_target INT NOT NULL DEFAULT 0,
-        weekly_commit_target INT NOT NULL DEFAULT 0,
-        weekly_repo_target INT NOT NULL DEFAULT 0,
-        commit_status VARCHAR(50) NOT NULL DEFAULT 'NO_TARGET',
-        repo_status VARCHAR(50) NOT NULL DEFAULT 'NO_TARGET',
-        sync_status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
-        error_message TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE (user_id, date)
-      );
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'github_daily_progress') THEN
+          INSERT INTO github_daily_commits (student_id, github_username, date, daily_commit_count, created_at, updated_at)
+          SELECT user_id, github_username, date, COALESCE(commits_today, 0), created_at, updated_at
+          FROM github_daily_progress
+          ON CONFLICT (student_id, date) DO UPDATE
+            SET daily_commit_count = EXCLUDED.daily_commit_count,
+                github_username = EXCLUDED.github_username,
+                updated_at = EXCLUDED.updated_at;
+        END IF;
+      END $$;
     `);
+
+    // Drop legacy GitHub tables
+    await client.query(`DROP TABLE IF EXISTS github_daily_progress CASCADE;`);
+    await client.query(`DROP TABLE IF EXISTS github_targets CASCADE;`);
 
     // Ensure leetcode_url and github_url columns exist on users table
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS leetcode_url VARCHAR(255);`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS github_url VARCHAR(255);`);
 
-    // GitHub table indexes
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_github_targets_scope ON github_targets(user_id, class_id, year, department_id);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_github_targets_dates ON github_targets(start_date, end_date);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_github_progress_user_date ON github_daily_progress(user_id, date);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_github_progress_date_range ON github_daily_progress(date, user_id);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_github_progress_status ON github_daily_progress(commit_status, date);`);
+    // GitHub Daily Commits table indexes
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_github_daily_commits_student_date ON github_daily_commits(student_id, date);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_github_daily_commits_date ON github_daily_commits(date);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_github_daily_commits_username ON github_daily_commits(github_username);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_leetcode_progress_status_date ON leetcode_daily_progress(status, date);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_leetcode_daily_user_date_status ON leetcode_daily_progress(user_id, date, status);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_github_daily_user_date_status ON github_daily_progress(user_id, date, commit_status);`);
 
     // Clean up duplicate target configuration rows if any exist
     await client.query(`
