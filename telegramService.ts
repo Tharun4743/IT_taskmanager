@@ -739,9 +739,11 @@ export async function getClassOrYearAnalysisCard(queryText: string): Promise<{ f
     `, [dateStr, studentIds]),
 
     pool.query(`
-      SELECT student_id as id, COALESCE(daily_commit_count, 0) as commits_today
-      FROM github_daily_commits
-      WHERE student_id = ANY($1) AND date = $2
+      SELECT g.student_id as id, u.full_name, u.register_number, COALESCE(g.daily_commit_count, 0) as commits_today
+      FROM github_daily_commits g
+      JOIN users u ON u.id = g.student_id
+      WHERE g.student_id = ANY($1) AND g.date = $2
+      ORDER BY g.daily_commit_count DESC
     `, [studentIds, dateStr]),
 
     pool.query(`
@@ -839,7 +841,33 @@ export async function getClassOrYearAnalysisCard(queryText: string): Promise<{ f
   } else if (lcTargetedCount > 0) {
     html += `• ✨ <i>All targeted students met their LeetCode goal today!</i> 🎉\n`;
   }
-  html += `• 💻 <b>GitHub:</b> <b>${ghTotalCommits}</b> commits pushed (${ghActiveCommitters} active committers)\n\n`;
+
+  // Top LeetCode Solvers
+  const lcTopSolvers = lcRes.rows
+    .filter(r => (Number(r.solved_today) || 0) > 0)
+    .sort((a, b) => Number(b.solved_today) - Number(a.solved_today));
+  if (lcTopSolvers.length > 0) {
+    const topLcList = lcTopSolvers.slice(0, 3).map((r, idx) => {
+      const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
+      return `   ${medal} <b>${escapeHtml(r.full_name)}</b>: <code>${r.solved_today}</code> solved`;
+    }).join('\n');
+    html += `• 🌟 <b>Top LeetCode Solvers:</b>\n${topLcList}\n`;
+  }
+
+  html += `• 💻 <b>GitHub:</b> <b>${ghTotalCommits}</b> commits pushed (${ghActiveCommitters} active committers)\n`;
+
+  // Top GitHub Committers Leaderboard
+  const ghTopCommitters = ghRes.rows
+    .filter(r => (Number(r.commits_today) || 0) > 0)
+    .sort((a, b) => Number(b.commits_today) - Number(a.commits_today));
+  if (ghTopCommitters.length > 0) {
+    const topGhList = ghTopCommitters.slice(0, 3).map((r, idx) => {
+      const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
+      return `   ${medal} <b>${escapeHtml(r.full_name)}</b>: <code>${r.commits_today}</code> commits`;
+    }).join('\n');
+    html += `• 🏆 <b>Top GitHub Committers:</b>\n${topGhList}\n`;
+  }
+  html += `\n`;
 
   // Active Tasks for this class
   html += `─────────────────────────\n`;
