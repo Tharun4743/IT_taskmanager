@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { pool } from './db.js';
+import ExcelJS from 'exceljs';
 
 export function getBotToken(): string {
   return process.env.TELEGRAM_BOT_TOKEN || '';
@@ -206,10 +207,269 @@ async function sendSingleTelegramMessage(
   }
 }
 
+export async function sendTelegramDocument(
+  chatId: string | number,
+  fileBuffer: Buffer,
+  fileName: string,
+  caption?: string
+): Promise<{ ok: boolean; description?: string; result?: any }> {
+  const token = getBotToken();
+  if (!token) {
+    return { ok: false, description: 'No bot token configured.' };
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append('chat_id', String(chatId));
+
+    const blob = new Blob([new Uint8Array(fileBuffer)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    formData.append('document', blob, fileName);
+
+    if (caption) {
+      formData.append('caption', caption);
+      formData.append('parse_mode', 'HTML');
+    }
+
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
+      method: 'POST',
+      body: formData
+    });
+
+    const data = await response.json();
+    if (!data.ok) {
+      console.error(`[Telegram] Failed to send document to ${chatId}:`, data.description);
+    }
+    return data;
+  } catch (err: any) {
+    console.error(`[Telegram] Error sending document to ${chatId}:`, err.message);
+    return { ok: false, description: err.message };
+  }
+}
+
+export function getYearFromClassName(className: string | null | undefined): string | null {
+  if (!className) return null;
+  const clean = className.trim().toUpperCase();
+
+  if (/^IV/i.test(clean)) return '4';
+  if (/^III/i.test(clean)) return '3';
+  if (/^II/i.test(clean)) return '2';
+  if (/^I/i.test(clean)) return '1';
+
+  const match = clean.match(/^([1-4])/);
+  if (match) return match[1];
+
+  return null;
+}
+
+export async function buildIncompleteExcelBuffer(
+  lcIncompleteRows: any[],
+  pendingTasksData: any[],
+  allStudentsProgress: any[]
+): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'IT Task Manager';
+  workbook.created = new Date();
+
+  // Find all distinct years in the student progress
+  const years = new Set<string>();
+  allStudentsProgress.forEach(r => {
+    const className = r.class_name ? String(r.class_name).trim() : '';
+    const year = getYearFromClassName(className);
+    if (year) {
+      years.add(year);
+    }
+  });
+
+  const sortedYears = Array.from(years).sort();
+
+  for (const year of sortedYears) {
+    const romanYear = year === '1' ? 'I' : year === '2' ? 'II' : year === '3' ? 'III' : 'IV';
+
+    // --- 1. LeetCode WorkSheet ---
+    const sheetLc = workbook.addWorksheet(`${year}IT Leetcode`, { views: [{ showGridLines: true }] });
+    // Title Block
+    sheetLc.mergeCells('A1:F1');
+    const title1 = sheetLc.getCell('A1');
+    title1.value = 'VSB ENGINEERING COLLEGE - DEPARTMENT OF IT';
+    title1.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF1E3A8A' } };
+    title1.alignment = { horizontal: 'center', vertical: 'middle' };
+    sheetLc.getRow(1).height = 25;
+
+    sheetLc.mergeCells('A2:F2');
+    const subtitle1 = sheetLc.getCell('A2');
+    subtitle1.value = `${romanYear} YEAR - LEETCODE INCOMPLETE SOLVERS`;
+    subtitle1.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF475569' } };
+    subtitle1.alignment = { horizontal: 'center', vertical: 'middle' };
+    sheetLc.getRow(2).height = 20;
+
+    sheetLc.getRow(4).values = ['S.No', 'Register Number', 'Student Name', 'Section', 'Solved Today', 'Daily Target'];
+    sheetLc.getRow(4).font = { bold: true };
+    sheetLc.getRow(4).height = 20;
+
+    const yearLcPending = lcIncompleteRows.filter(r => {
+      const className = r.class_name ? String(r.class_name).trim() : '';
+      return getYearFromClassName(className) === year;
+    });
+
+    if (yearLcPending.length === 0) {
+      sheetLc.getCell(5, 1).value = 'All targeted students met today\'s goal! 🎉';
+      sheetLc.getCell(5, 1).font = { italic: true };
+    } else {
+      yearLcPending.forEach((r, idx) => {
+        let sec = 'A';
+        const className = r.class_name ? String(r.class_name).trim() : '';
+        const match = className.match(/^([1-4])\s*(it)?\s*([a-d])$/i) || className.match(/^(?:iii|ii|iv|i)\s*(?:it)?\s*([a-d])$/i);
+        if (match) {
+          sec = (match[3] || match[1] || 'A').toUpperCase();
+        }
+        sheetLc.addRow([
+          idx + 1,
+          r.register_number || '',
+          r.full_name || '',
+          sec,
+          Number(r.solved_today) || 0,
+          Number(r.leetcode_target) || 0
+        ]);
+      });
+    }
+
+    sheetLc.columns.forEach(column => {
+      let maxLength = 10;
+      column.eachCell!({ includeEmpty: true }, cell => {
+        const columnLength = cell.value ? cell.value.toString().length : 0;
+        if (columnLength > maxLength) {
+          maxLength = columnLength;
+        }
+      });
+      column.width = maxLength + 3;
+    });
+
+    // --- 2. GitHub WorkSheet ---
+    const sheetGh = workbook.addWorksheet(`${year}IT Github`, { views: [{ showGridLines: true }] });
+    sheetGh.mergeCells('A1:E1');
+    const title2 = sheetGh.getCell('A1');
+    title2.value = 'VSB ENGINEERING COLLEGE - DEPARTMENT OF IT';
+    title2.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF1E3A8A' } };
+    title2.alignment = { horizontal: 'center', vertical: 'middle' };
+    sheetGh.getRow(1).height = 25;
+
+    sheetGh.mergeCells('A2:E2');
+    const subtitle2 = sheetGh.getCell('A2');
+    subtitle2.value = `${romanYear} YEAR - GITHUB INACTIVE COMMITTERS (0 COMMITS)`;
+    subtitle2.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF475569' } };
+    subtitle2.alignment = { horizontal: 'center', vertical: 'middle' };
+    sheetGh.getRow(2).height = 20;
+
+    sheetGh.getRow(4).values = ['S.No', 'Register Number', 'Student Name', 'Section', 'Commits Today'];
+    sheetGh.getRow(4).font = { bold: true };
+    sheetGh.getRow(4).height = 20;
+
+    const yearGhPending = allStudentsProgress.filter(r => {
+      const className = r.class_name ? String(r.class_name).trim() : '';
+      return getYearFromClassName(className) === year && (Number(r.commits_today) || 0) === 0;
+    });
+
+    if (yearGhPending.length === 0) {
+      sheetGh.getCell(5, 1).value = 'All students active on GitHub today! 🎉';
+      sheetGh.getCell(5, 1).font = { italic: true };
+    } else {
+      yearGhPending.forEach((r, idx) => {
+        let sec = 'A';
+        const className = r.class_name ? String(r.class_name).trim() : '';
+        const match = className.match(/^([1-4])\s*(it)?\s*([a-d])$/i) || className.match(/^(?:iii|ii|iv|i)\s*(?:it)?\s*([a-d])$/i);
+        if (match) {
+          sec = (match[3] || match[1] || 'A').toUpperCase();
+        }
+        sheetGh.addRow([
+          idx + 1,
+          r.register_number || '',
+          r.full_name || '',
+          sec,
+          0
+        ]);
+      });
+    }
+
+    sheetGh.columns.forEach(column => {
+      let maxLength = 10;
+      column.eachCell!({ includeEmpty: true }, cell => {
+        const columnLength = cell.value ? cell.value.toString().length : 0;
+        if (columnLength > maxLength) {
+          maxLength = columnLength;
+        }
+      });
+      column.width = maxLength + 3;
+    });
+
+    // --- 3. Task WorkSheet ---
+    const sheetTk = workbook.addWorksheet(`${year}IT Task`, { views: [{ showGridLines: true }] });
+    sheetTk.mergeCells('A1:G1');
+    const title3 = sheetTk.getCell('A1');
+    title3.value = 'VSB ENGINEERING COLLEGE - DEPARTMENT OF IT';
+    title3.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF1E3A8A' } };
+    title3.alignment = { horizontal: 'center', vertical: 'middle' };
+    sheetTk.getRow(1).height = 25;
+
+    sheetTk.mergeCells('A2:G2');
+    const subtitle3 = sheetTk.getCell('A2');
+    subtitle3.value = `${romanYear} YEAR - PENDING TASK SUBMISSIONS`;
+    subtitle3.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF475569' } };
+    subtitle3.alignment = { horizontal: 'center', vertical: 'middle' };
+    sheetTk.getRow(2).height = 20;
+
+    sheetTk.getRow(4).values = ['S.No', 'Register Number', 'Student Name', 'Section', 'Task Title', 'Category', 'Due Date'];
+    sheetTk.getRow(4).font = { bold: true };
+    sheetTk.getRow(4).height = 20;
+
+    const yearTasksPending = pendingTasksData.filter(r => {
+      const className = r.className ? String(r.className).trim() : '';
+      return getYearFromClassName(className) === year;
+    });
+
+    if (yearTasksPending.length === 0) {
+      sheetTk.getCell(5, 1).value = 'All assigned tasks completed! 🎉';
+      sheetTk.getCell(5, 1).font = { italic: true };
+    } else {
+      yearTasksPending.forEach((r, idx) => {
+        sheetTk.addRow([
+          idx + 1,
+          r.registerNumber || '',
+          r.studentName || '',
+          r.className.replace(/^(?:I|II|III|IV|\d+)\s*(?:IT)?\s*/i, '').trim() || 'A',
+          r.taskTitle || '',
+          r.category || '',
+          r.deadline || ''
+        ]);
+      });
+    }
+
+    sheetTk.columns.forEach(column => {
+      let maxLength = 10;
+      column.eachCell!({ includeEmpty: true }, cell => {
+        const columnLength = cell.value ? cell.value.toString().length : 0;
+        if (columnLength > maxLength) {
+          maxLength = columnLength;
+        }
+      });
+      column.width = maxLength + 3;
+    });
+  }
+
+  // Double-insurance: Ensure at least one worksheet is created to prevent Excel corruption
+  if (workbook.worksheets.length === 0) {
+    const summarySheet = workbook.addWorksheet('Summary', { views: [{ showGridLines: true }] });
+    summarySheet.getCell('A1').value = 'No incomplete reports generated for today.';
+    summarySheet.getCell('A1').font = { italic: true };
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return Buffer.from(buffer);
+}
+
 /**
  * Answer inline callback queries immediately from button clicks
  */
-export async function answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
+export async function answerCallbackQuery(callbackQueryId: string, text?: string, showAlert?: boolean): Promise<void> {
   const token = getBotToken();
   if (!token) return;
   try {
@@ -218,10 +478,18 @@ export async function answerCallbackQuery(callbackQueryId: string, text?: string
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         callback_query_id: callbackQueryId,
-        text: text || ''
+        text: text || '',
+        show_alert: showAlert || false
       })
     });
-  } catch {}
+  } catch { }
+}
+
+export async function sendPrivateActionWarning(chatId: string | number): Promise<void> {
+  await sendTelegramMessage(
+    chatId,
+    `ℹ️ <b>Private Action Only</b>\n\nPlease chat with the <b>IT Task Manager Private Bot</b> (@IT_TaskManager_Alerts_bot) directly to check your personal details, coding progress, and tasks.\n${getWatermarkHtml()}`
+  );
 }
 
 /**
@@ -611,8 +879,8 @@ export async function getComprehensiveStudentProgressCard(identifierOrUser: stri
   const lcDailyTarget = Number(lcTargetRes.rows[0]?.daily_target) || 0;
   const lcWeeklyTarget = Number(lcTargetRes.rows[0]?.weekly_target) || 0;
 
-  const lcDailyStatus = lcDailyTarget > 0 
-    ? (lcSolvedToday >= lcDailyTarget ? '✅ Completed' : '⏳ In Progress') 
+  const lcDailyStatus = lcDailyTarget > 0
+    ? (lcSolvedToday >= lcDailyTarget ? '✅ Completed' : '⏳ In Progress')
     : '⚪ No Target';
 
   // GitHub calculations
@@ -680,7 +948,10 @@ export async function getComprehensiveStudentProgressCard(identifierOrUser: stri
  * 🏫 Class & Year-Wise Comprehensive Analysis Card
  * Supports queries like: '3ita', '3itb', '3itc', '2ita', '2itb', '2itc', '2it', '3it', '4it', '1it', 'link/2it', 'link 3it', 'year3', 'year2'
  */
-export async function getClassOrYearAnalysisCard(queryText: string): Promise<{ found: boolean; html: string; keyboard?: any }> {
+export async function getClassOrYearAnalysisCard(
+  queryText: string,
+  chatId?: string | number
+): Promise<{ found: boolean; html: string; keyboard?: any }> {
   const clean = queryText.toLowerCase().replace(/[@#/_]/g, '').trim();
   const dateStr = getISTDateStr();
 
@@ -886,24 +1157,23 @@ export async function getClassOrYearAnalysisCard(queryText: string): Promise<{ f
       });
 
       const secName = sec.name.replace(/^(?:I|II|III|IV|\d+)\s*(?:Year)?\s*/i, '').trim() || sec.name;
-      html += `• <b>${escapeHtml(secName)} (${secStudents.length}):</b> 🧩 <b>${secLcSolved}</b> LC | 🎯 <b>${secLcMet}/${secLcTargeted}</b> Target | 💻 <b>${secGhCommits}</b> Commits\n`;
+      html += `• <b>${escapeHtml(secName)} (${secStudents.length}):</b> LeetCode: <b>${secLcSolved}</b> solved | Target: <b>${secLcMet}/${secLcTargeted}</b> met | GitHub: <b>${secGhCommits}</b> commits\n`;
     });
     html += `\n─────────────────────────\n\n`;
   }
 
   html += `🚀 <b>Today's Coding Highlights:</b>\n`;
-  html += `• 🧩 <b>LeetCode:</b> <b>${lcTotalSolved}</b> problems solved (${lcActiveSolvers} active solvers)\n`;
+  html += `• <b>LeetCode:</b> <b>${lcTotalSolved}</b> problems solved (${lcActiveSolvers} active solvers)\n`;
   if (lcTargetedCount > 0) {
     const lcProgress = makeProgressBar(lcMetCount, lcTargetedCount, 8);
-    html += `• 🎯 <b>Target Status:</b> ${lcMetCount}/${lcTargetedCount} met target ${lcProgress}\n`;
+    html += `• <b>Target Status:</b> ${lcMetCount}/${lcTargetedCount} met target ${lcProgress}\n`;
   }
   if (lcDefaulters.length > 0) {
-    const defaulterNames = lcDefaulters.map(d => `${escapeHtml(d.name)} (<code>${d.solved}/${d.target}</code>)`).join(', ');
-    html += `• ⚠️ <b>Incomplete Solvers (${lcDefaulters.length}):</b>\n   ${defaulterNames}\n`;
+    html += `• <b>Incomplete Solvers:</b> <b>${lcDefaulters.length}</b> student(s) pending (Full list attached in Excel)\n`;
   } else if (lcTargetedCount > 0) {
-    html += `• ✨ <i>All targeted students met their LeetCode goal today!</i> 🎉\n`;
+    html += `• <i>All targeted students met their LeetCode goal today!</i>\n`;
   }
-  html += `• 💻 <b>GitHub:</b> <b>${ghTotalCommits}</b> commits pushed (${ghActiveCommitters} active committers)\n\n`;
+  html += `• <b>GitHub:</b> <b>${ghTotalCommits}</b> commits pushed (${ghActiveCommitters} active committers)\n\n`;
 
   // ── Prominent Coding Leaderboard Section ──────────────────────────────────
   html += `─────────────────────────\n`;
@@ -975,11 +1245,13 @@ export async function getClassOrYearAnalysisCard(queryText: string): Promise<{ f
       if (pendingCount === 0) {
         html += `   ✨ <i>Status: 100% Complete! All students submitted!</i> 🎉\n\n`;
       } else {
-        const pendingNames = taskSubmissionsRes.rows.map(p => escapeHtml(p.full_name)).join(', ');
-        html += `   ⏳ <b>Incomplete (${pendingCount}):</b> ${pendingNames}\n\n`;
+        html += `   ⏳ <i>Status: ${pendingCount} pending submission(s) (Listed in Excel)</i>\n\n`;
       }
     }
   }
+
+  html += `📎 <b>Detailed Incomplete Report:</b>\n`;
+  html += `Detailed lists of LeetCode targets, inactive GitHub students, and pending task submissions grouped Year-wise are attached in the Excel sheet below.\n\n`;
 
   html += getWatermarkHtml();
 
@@ -990,6 +1262,83 @@ export async function getClassOrYearAnalysisCard(queryText: string): Promise<{ f
       ]
     ]
   };
+
+  // Generate and send the Excel report attachment if chatId is provided
+  if (chatId) {
+    const lcIncompleteRows = lcRes.rows.filter(r => {
+      const solved = Number(r.solved_today) || 0;
+      const target = Number(r.daily_target) || 0;
+      return target > 0 && solved < target;
+    }).map(r => {
+      const std = students.find(s => s.id === r.id);
+      return {
+        ...r,
+        solved_today: r.solved_today,
+        leetcode_target: r.daily_target,
+        class_name: std ? std.class_name : classNamesHeader
+      };
+    });
+
+    const pendingTasksData: any[] = [];
+    for (let idx = 0; idx < activeTasksRes.rows.length; idx++) {
+      const t = activeTasksRes.rows[idx];
+      const deadlineStr = t.deadline
+        ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
+        : 'No deadline';
+
+      const taskSubmissionsRes = await pool.query(`
+        SELECT u.full_name, u.register_number, c.name as class_name
+        FROM users u
+        LEFT JOIN classes c ON c.id = u.class_id
+        LEFT JOIN task_submissions ts ON ts.task_id = $1 AND ts.user_id = u.id AND ts.status IN ('SUBMITTED', 'VERIFIED')
+        WHERE u.id = ANY($2)
+          AND ts.id IS NULL
+        ORDER BY u.register_number ASC
+      `, [t.id, studentIds]);
+
+      taskSubmissionsRes.rows.forEach(p => {
+        let classNameFormatted = p.class_name ? String(p.class_name).toUpperCase() : 'Unassigned';
+        const match = classNameFormatted.match(/^([1-4])\s*(it)?\s*([a-d])$/i);
+        if (match) {
+          classNameFormatted = `${match[1]}-IT-${match[3].toUpperCase()}`;
+        }
+        pendingTasksData.push({
+          studentName: p.full_name,
+          registerNumber: p.register_number,
+          className: classNameFormatted,
+          taskTitle: t.title,
+          category: t.category,
+          deadline: deadlineStr
+        });
+      });
+    }
+
+    const allStudentsProgress = students.map(s => {
+      const ghRecord = ghRes.rows.find(g => g.id === s.id);
+      return {
+        id: s.id,
+        full_name: s.full_name,
+        register_number: s.register_number,
+        class_name: s.class_name,
+        commits_today: ghRecord ? ghRecord.commits_today : 0
+      };
+    });
+
+    const hasIncompletes = lcIncompleteRows.length > 0 || pendingTasksData.length > 0;
+    if (hasIncompletes) {
+      try {
+        const excelBuffer = await buildIncompleteExcelBuffer(lcIncompleteRows, pendingTasksData, allStudentsProgress);
+        sendTelegramDocument(
+          chatId,
+          excelBuffer,
+          `Incomplete_Report_${classNamesHeader.replace(/[^a-zA-Z0-9]/g, '_')}_${dateStr}.xlsx`,
+          `📊 Incomplete Work Report — ${classNamesHeader}`
+        ).catch(err => console.error('[Telegram] Error sending shortcut Excel document:', err));
+      } catch (excelErr) {
+        console.error('[Telegram] Error generating shortcut Excel buffer:', excelErr);
+      }
+    }
+  }
 
   return { found: true, html, keyboard };
 }
@@ -1021,11 +1370,15 @@ export async function getDefaultersCard(scopeText?: string): Promise<{ html: str
 
   const res = await pool.query(query, params);
   const defaulters: any[] = [];
+  let targetedCount = 0;
 
   for (const row of res.rows) {
     const lcTarget = Number(row.leetcode_target) || 0;
     const lcSolved = Number(row.solved_today) || 0;
 
+    if (lcTarget > 0) {
+      targetedCount++;
+    }
     const lcPending = lcTarget > 0 && lcSolved < lcTarget;
 
     if (lcPending) {
@@ -1044,7 +1397,9 @@ export async function getDefaultersCard(scopeText?: string): Promise<{ html: str
   html += `👥 <b>Total Defaulters:</b> <b>${defaulters.length}</b> student(s)\n`;
   html += `─────────────────────────\n\n`;
 
-  if (defaulters.length === 0) {
+  if (targetedCount === 0) {
+    html += `🧩 <b>No active coding targets set for today.</b>\n`;
+  } else if (defaulters.length === 0) {
     html += `🎉 <b>Awesome! All students have completed their daily targets today!</b>\n`;
   } else {
     defaulters.forEach((d, i) => {
@@ -1154,7 +1509,7 @@ export async function notifyNewTaskCreated(task: {
   // 1. Dispatch to Telegram Group Chat if configured
   const groupChatId = await getGroupChatId();
   if (groupChatId) {
-    sendTelegramMessage(groupChatId, html, { reply_markup: keyboard }).catch(() => {});
+    sendTelegramMessage(groupChatId, html, { reply_markup: keyboard }).catch(() => { });
   }
 
   // 2. Dispatch in parallel to all students in the assigned classes with linked Telegram
@@ -1207,7 +1562,7 @@ export async function notifyTaskSubmissionReceived(studentId: string, taskId: st
       ]
     };
 
-    sendTelegramMessage(user.telegram_chat_id, html, { reply_markup: keyboard }).catch(() => {});
+    sendTelegramMessage(user.telegram_chat_id, html, { reply_markup: keyboard }).catch(() => { });
   } catch (err) {
     console.error('[Telegram] notifyTaskSubmissionReceived error:', err);
   }
@@ -1278,7 +1633,7 @@ export async function notifySubmissionVerifiedOrRejected(
       };
     }
 
-    sendTelegramMessage(sub.telegram_chat_id, html, { reply_markup: keyboard }).catch(() => {});
+    sendTelegramMessage(sub.telegram_chat_id, html, { reply_markup: keyboard }).catch(() => { });
   } catch (err) {
     console.error('[Telegram] notifySubmissionVerifiedOrRejected error:', err);
   }
@@ -1290,23 +1645,26 @@ export async function notifySubmissionVerifiedOrRejected(
 export async function notifySubmissionBatchVerified(submissionIds: string[]): Promise<void> {
   if (!submissionIds || submissionIds.length === 0) return;
   for (const sid of submissionIds) {
-    notifySubmissionVerifiedOrRejected(sid, 'VERIFIED').catch(() => {});
+    notifySubmissionVerifiedOrRejected(sid, 'VERIFIED').catch(() => { });
   }
 }
 
 /**
  * 📢 Enhanced Daily Group Summary (Tasks + LeetCode + GitHub)
  */
-export async function sendGroupSummary(targetChatId?: string): Promise<{ success: boolean; message: string; data?: any }> {
+export async function sendGroupSummary(targetChatId?: string, dateOverride?: string): Promise<{ success: boolean; message: string; data?: any }> {
   const destChatId = targetChatId || await getGroupChatId() || getAdminChatId();
   if (!destChatId) {
     return { success: false, message: 'No destination Telegram Chat ID configured for Group Summary.' };
   }
 
   try {
-    const dateStr = getISTDateStr();
+    const dateStr = dateOverride || getISTDateStr();
+    const pendingTasksData: any[] = [];
 
-const [tasksRes, studentsRes, lcRes, ghRes, lcIncompleteRes, topGhRes, topLcRes] = await Promise.all([
+    // Query 1: Active assignments
+    // Query 2: All students with today's coding stats and targets
+    const [tasksRes, studentProgressRes] = await Promise.all([
       pool.query(`
         SELECT t.id, t.title, t.category, t.deadline, t.status,
                COUNT(DISTINCT tc.class_id) as class_count,
@@ -1320,137 +1678,267 @@ const [tasksRes, studentsRes, lcRes, ghRes, lcIncompleteRes, topGhRes, topLcRes]
         ORDER BY t.deadline ASC NULLS LAST
         LIMIT 5
       `),
-      pool.query(`SELECT COUNT(*) as total_students, COUNT(telegram_chat_id) as linked_telegram_count FROM users WHERE role = 'STUDENT'`),
-      pool.query(`SELECT COUNT(DISTINCT user_id) as active_solvers, SUM(solved_today) as total_problems_solved FROM leetcode_daily_progress WHERE date = $1 AND solved_today > 0`, [dateStr]),
-      pool.query(`SELECT COUNT(DISTINCT student_id) as active_committers, SUM(daily_commit_count) as total_commits FROM github_daily_commits WHERE date = $1 AND daily_commit_count > 0`, [dateStr]),
       pool.query(`
-        SELECT u.full_name, u.register_number, c.name as class_name,
+        SELECT u.id, u.full_name, u.register_number, u.gender, u.telegram_chat_id, c.name as class_name,
                COALESCE(lp.solved_today, 0) as solved_today,
-               lt.daily_target
+               COALESCE(gh.daily_commit_count, 0) as commits_today,
+               COALESCE(lt.daily_target, 0) as leetcode_target
         FROM users u
-        LEFT JOIN classes c ON c.id = u.class_id
+        LEFT JOIN classes c ON u.class_id = c.id
         LEFT JOIN leetcode_daily_progress lp ON lp.user_id = u.id AND lp.date = $1
-        JOIN LATERAL (
+        LEFT JOIN github_daily_commits gh ON gh.student_id = u.id AND gh.date = $1
+        LEFT JOIN LATERAL (
           SELECT daily_target FROM leetcode_targets
           WHERE start_date <= $1 AND end_date >= $1 AND (user_id = u.id OR class_id = u.class_id OR class_id IS NULL)
           ORDER BY CASE WHEN user_id IS NOT NULL THEN 1 WHEN class_id IS NOT NULL THEN 2 ELSE 3 END ASC
           LIMIT 1
         ) lt ON true
         WHERE u.role = 'STUDENT'
-          AND lt.daily_target > 0
-          AND COALESCE(lp.solved_today, 0) < lt.daily_target
-        ORDER BY c.name, u.register_number ASC
-      `, [dateStr]),
-      pool.query(`
-        SELECT u.full_name, COALESCE(gh.daily_commit_count, 0) as commits_today
-        FROM users u
-        JOIN github_daily_commits gh ON gh.student_id = u.id AND gh.date = $1
-        WHERE u.role = 'STUDENT' AND gh.daily_commit_count > 0
-        ORDER BY gh.daily_commit_count DESC, u.full_name ASC
-        LIMIT 3
-      `, [dateStr]),
-      pool.query(`
-        SELECT u.full_name, COALESCE(lp.solved_today, 0) as solved_today
-        FROM users u
-        JOIN leetcode_daily_progress lp ON lp.user_id = u.id AND lp.date = $1
-        WHERE u.role = 'STUDENT' AND lp.solved_today > 0
-        ORDER BY lp.solved_today DESC, u.full_name ASC
-        LIMIT 3
+        ORDER BY c.name ASC, u.register_number ASC
       `, [dateStr])
     ]);
 
-    const totalStudents = parseInt(studentsRes.rows[0]?.total_students || '0', 10);
-    const linkedTelegram = parseInt(studentsRes.rows[0]?.linked_telegram_count || '0', 10);
-    const lcSolvers = Number(lcRes.rows[0]?.active_solvers) || 0;
-    const lcTotalSolved = Number(lcRes.rows[0]?.total_problems_solved) || 0;
-    const ghCommitters = Number(ghRes.rows[0]?.active_committers) || 0;
-    const ghTotalCommits = Number(ghRes.rows[0]?.total_commits) || 0;
+    const totalStudents = studentProgressRes.rows.length;
+    const linkedTelegram = studentProgressRes.rows.filter(r => r.telegram_chat_id).length;
+    const lcSolvers = studentProgressRes.rows.filter(r => Number(r.solved_today) > 0).length;
+    const lcTotalSolved = studentProgressRes.rows.reduce((sum, r) => sum + (Number(r.solved_today) || 0), 0);
+    const ghCommitters = studentProgressRes.rows.filter(r => Number(r.commits_today) > 0).length;
+    const ghTotalCommits = studentProgressRes.rows.reduce((sum, r) => sum + (Number(r.commits_today) || 0), 0);
 
-    let html = `📊 <b>IT TASK MANAGER — DAILY DEPARTMENT BRIEF</b>\n`;
+    // ── Aggregation: Year-wise and Class-wise ──────────────────────────────
+    const yearMap = { '1': 'I Year', '2': 'II Year', '3': 'III Year', '4': 'IV Year' };
+    const yearStats = {
+      '1': { solves: 0, activeSolvers: 0, commits: 0, activeCommitters: 0, total: 0 },
+      '2': { solves: 0, activeSolvers: 0, commits: 0, activeCommitters: 0, total: 0 },
+      '3': { solves: 0, activeSolvers: 0, commits: 0, activeCommitters: 0, total: 0 },
+      '4': { solves: 0, activeSolvers: 0, commits: 0, activeCommitters: 0, total: 0 }
+    };
+
+    const classStats = {};
+
+    studentProgressRes.rows.forEach(r => {
+      const classNameClean = r.class_name ? r.class_name.trim() : '';
+      if (!classNameClean) return;
+
+      const yearChar = classNameClean.charAt(0);
+      if (yearStats[yearChar]) {
+        yearStats[yearChar].total++;
+        yearStats[yearChar].solves += Number(r.solved_today) || 0;
+        if (Number(r.solved_today) > 0) yearStats[yearChar].activeSolvers++;
+        yearStats[yearChar].commits += Number(r.commits_today) || 0;
+        if (Number(r.commits_today) > 0) yearStats[yearChar].activeCommitters++;
+      }
+
+      if (!classStats[classNameClean]) {
+        let formattedName = classNameClean.toUpperCase();
+        const match = classNameClean.match(/^([1-4])\s*(it)?\s*([a-d])$/i);
+        if (match) {
+          formattedName = `${match[1]}-IT-${match[3].toUpperCase()}`;
+        }
+        classStats[classNameClean] = {
+          name: formattedName,
+          solves: 0,
+          boysSolves: 0,
+          girlsSolves: 0,
+          activeSolvers: 0,
+          boysActiveSolvers: 0,
+          girlsActiveSolvers: 0,
+          commits: 0,
+          boysCommits: 0,
+          girlsCommits: 0,
+          activeCommitters: 0,
+          boysActiveCommitters: 0,
+          girlsActiveCommitters: 0,
+          metTarget: 0,
+          boysMet: 0,
+          girlsMet: 0,
+          targetedCount: 0,
+          boysTargeted: 0,
+          girlsTargeted: 0,
+          totalStudents: 0,
+          boysCount: 0,
+          girlsCount: 0
+        };
+      }
+
+      const cStat = classStats[classNameClean];
+      const solves = Number(r.solved_today) || 0;
+      const commits = Number(r.commits_today) || 0;
+      cStat.solves += solves;
+      cStat.commits += commits;
+
+      const genderUpper = r.gender ? String(r.gender).toUpperCase() : '';
+      const isBoy = ['MALE', 'BOYS', 'BOY', 'M'].includes(genderUpper);
+      const isGirl = ['FEMALE', 'GIRLS', 'GIRL', 'F'].includes(genderUpper);
+
+      cStat.totalStudents++;
+      if (isBoy) cStat.boysCount++;
+      else if (isGirl) cStat.girlsCount++;
+
+      if (solves > 0) {
+        cStat.activeSolvers++;
+        if (isBoy) cStat.boysActiveSolvers++;
+        else if (isGirl) cStat.girlsActiveSolvers++;
+      }
+
+      if (commits > 0) {
+        cStat.activeCommitters++;
+        if (isBoy) cStat.boysActiveCommitters++;
+        else if (isGirl) cStat.girlsActiveCommitters++;
+      }
+
+      if (isBoy) {
+        cStat.boysSolves += solves;
+        cStat.boysCommits += commits;
+      } else if (isGirl) {
+        cStat.girlsSolves += solves;
+        cStat.girlsCommits += commits;
+      }
+
+      const target = Number(r.leetcode_target) || 0;
+      const solved = Number(r.solved_today) || 0;
+      if (target > 0) {
+        cStat.targetedCount++;
+        if (isBoy) cStat.boysTargeted++;
+        else if (isGirl) cStat.girlsTargeted++;
+
+        if (solved >= target) {
+          cStat.metTarget++;
+          if (isBoy) cStat.boysMet++;
+          else if (isGirl) cStat.girlsMet++;
+        }
+      }
+    });
+
+    // ── Generate coding leaderboards ───────────────────────────────────────
+    const topGhCommitters = [...studentProgressRes.rows]
+      .filter(r => (Number(r.commits_today) || 0) > 0)
+      .sort((a, b) => Number(b.commits_today) - Number(a.commits_today))
+      .slice(0, 3);
+
+    const topLcSolvers = [...studentProgressRes.rows]
+      .filter(r => (Number(r.solved_today) || 0) > 0)
+      .sort((a, b) => Number(b.solved_today) - Number(a.solved_today))
+      .slice(0, 3);
+
+    // ── Group incomplete LeetCode solvers class-wise ───────────────────────
+    const incompleteByClass = {};
+    const lcTargetedCount = studentProgressRes.rows.filter(r => (Number(r.leetcode_target) || 0) > 0).length;
+    const lcIncompleteRows = studentProgressRes.rows.filter(r => {
+      const target = Number(r.leetcode_target) || 0;
+      const solved = Number(r.solved_today) || 0;
+      return target > 0 && solved < target;
+    });
+
+    lcIncompleteRows.forEach(r => {
+      const classNameClean = r.class_name ? r.class_name.trim() : 'Unassigned';
+      if (!incompleteByClass[classNameClean]) {
+        incompleteByClass[classNameClean] = [];
+      }
+      incompleteByClass[classNameClean].push(r);
+    });
+
+
+
+    // Process task pending submissions silently to compile data for the Excel sheet
+    for (let idx = 0; idx < tasksRes.rows.length; idx++) {
+      const t = tasksRes.rows[idx];
+      const deadlineStr = t.deadline
+        ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
+        : 'No deadline';
+
+      const pendingStudentsRes = await pool.query(`
+        SELECT u.full_name, u.register_number, c.name as class_name
+        FROM users u
+        JOIN task_classes tc ON tc.class_id = u.class_id
+        LEFT JOIN task_submissions ts ON ts.task_id = tc.task_id AND ts.user_id = u.id AND ts.status IN ('SUBMITTED', 'VERIFIED')
+        LEFT JOIN classes c ON c.id = u.class_id
+        WHERE tc.task_id = $1
+          AND u.role = 'STUDENT'
+          AND ts.id IS NULL
+        ORDER BY c.name, u.register_number ASC
+      `, [t.id]);
+
+      pendingStudentsRes.rows.forEach(p => {
+        let classNameFormatted = p.class_name ? String(p.class_name).toUpperCase() : 'Unassigned';
+        const match = classNameFormatted.match(/^([1-4])\s*(it)?\s*([a-d])$/i);
+        if (match) {
+          classNameFormatted = `${match[1]}-IT-${match[3].toUpperCase()}`;
+        }
+        pendingTasksData.push({
+          studentName: p.full_name,
+          registerNumber: p.register_number,
+          className: classNameFormatted,
+          taskTitle: t.title,
+          category: t.category,
+          deadline: deadlineStr
+        });
+      });
+    }
+
+    // ── Build HTML Report ──────────────────────────────────────────────────
+    let html = `📊 <b>IT TASK MANAGER — DAILY BRIEF</b>\n`;
     html += `📅 <i>${dateStr} (IST)</i>\n`;
     html += `👥 <b>Total Students:</b> ${totalStudents} | 📱 <b>Telegram Linked:</b> ${linkedTelegram}\n`;
     html += `─────────────────────────\n\n`;
 
-html += `🚀 <b>Today's Coding Highlights:</b>\n`;
-    html += `• 🧩 <b>LeetCode:</b> <b>${lcTotalSolved}</b> problems solved (${lcSolvers} active solvers)\n`;
-    html += `• 💻 <b>GitHub:</b> <b>${ghTotalCommits}</b> commits pushed (${ghCommitters} active committers)\n\n`;
-
-    html += `🏆 <b>TODAY'S CODING LEADERBOARDS:</b>\n`;
-    html += `💻 <b>GitHub Top Committers:</b>\n`;
-    if (topGhRes.rows.length === 0) {
+    html += `🚀 <b>Today's Coding Highlights:</b>\n`;
+    html += `<b>GitHub Top Committers:</b>\n`;
+    if (topGhCommitters.length === 0) {
       html += `   <i>No commits recorded today.</i>\n`;
     } else {
-      topGhRes.rows.forEach((r, idx) => {
+      topGhCommitters.forEach((r, idx) => {
         const rankEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
         html += `   ${rankEmoji} ${escapeHtml(r.full_name)} (<code>${r.commits_today}</code> commits)\n`;
       });
     }
-    html += `🧩 <b>LeetCode Top Solvers:</b>\n`;
-    if (topLcRes.rows.length === 0) {
+    html += `\n`;
+
+    html += `<b>LeetCode Top Solvers:</b>\n`;
+    if (topLcSolvers.length === 0) {
       html += `   <i>No problems solved today.</i>\n`;
     } else {
-      topLcRes.rows.forEach((r, idx) => {
+      topLcSolvers.forEach((r, idx) => {
         const rankEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
         html += `   ${rankEmoji} ${escapeHtml(r.full_name)} (<code>${r.solved_today}</code> solved)\n`;
       });
     }
-    html += `─────────────────────────\n\n`;
+    html += `\n`;
 
-    // LeetCode Incomplete / Defaulters
-    if (lcIncompleteRes.rows.length > 0) {
-      const lcPendingCount = lcIncompleteRes.rows.length;
-      const lcPendingNames = lcIncompleteRes.rows
-        .map(p => `${escapeHtml(p.full_name)} (<code>${p.solved_today}/${p.daily_target}</code>)`)
-        .join(', ');
-      html += `• ⚠️ <b>LeetCode Incomplete (${lcPendingCount}):</b>\n   ${lcPendingNames}\n\n`;
-    } else {
-      html += `• ✨ <b>LeetCode Status:</b> All targeted students met today's goal! 🎉\n\n`;
-    }
-
-    if (tasksRes.rows.length === 0) {
-      html += `✨ <b>No active assignments pending today! Keep up the great work!</b> 🎉\n`;
-    } else {
-      html += `📌 <b>Active Assignments:</b>\n\n`;
-      
-      for (let idx = 0; idx < tasksRes.rows.length; idx++) {
-        const t = tasksRes.rows[idx];
-        const completed = parseInt(t.completed_count || '0', 10);
-        const deadlineStr = t.deadline
-          ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
-          : 'No deadline';
-        
-        const progressBar = totalStudents > 0 ? makeProgressBar(completed, totalStudents, 8) : '';
-
-        // Query incomplete students for this specific task
-        const pendingStudentsRes = await pool.query(`
-          SELECT u.full_name, u.register_number, c.name as class_name
-          FROM users u
-          JOIN task_classes tc ON tc.class_id = u.class_id
-          LEFT JOIN task_submissions ts ON ts.task_id = tc.task_id AND ts.user_id = u.id AND ts.status IN ('SUBMITTED', 'VERIFIED')
-          LEFT JOIN classes c ON c.id = u.class_id
-          WHERE tc.task_id = $1
-            AND u.role = 'STUDENT'
-            AND ts.id IS NULL
-          ORDER BY c.name, u.register_number ASC
-        `, [t.id]);
-
-        const pendingCount = pendingStudentsRes.rows.length;
-
-        html += `<b>${idx + 1}. ${escapeHtml(t.title)}</b>\n`;
-        if (t.category) html += `   📂 <i>Category:</i> <code>${escapeHtml(t.category)}</code>\n`;
-        html += `   ⏰ <i>Due:</i> ${deadlineStr}\n`;
-        html += `   ✅ <i>Submissions:</i> <b>${completed}</b> ${progressBar}\n`;
-
-        if (pendingCount === 0) {
-          html += `   ✨ <i>Status: All assigned students completed!</i> 🎉\n\n`;
-        } else {
-          const pendingNames = pendingStudentsRes.rows
-            .map(p => escapeHtml(p.full_name))
-            .join(', ');
-          html += `   ⏳ <b>Incomplete (${pendingCount}):</b> ${pendingNames}\n\n`;
-        }
+    // Add Year-wise Coding Summary
+    let yearHtml = `🏢 <b>YEAR-WISE CODING SUMMARY:</b>\n`;
+    let yearAdded = false;
+    Object.keys(yearStats).sort().forEach(y => {
+      const label = yearMap[y];
+      const s = yearStats[y];
+      if (s.total > 0) {
+        yearHtml += `🎓 <b>${label}:</b>\n`;
+        yearHtml += `   • LeetCode: <b>${s.solves}</b> Solves (${s.activeSolvers} active)\n`;
+        yearHtml += `   • GitHub: <b>${s.commits}</b> Commits (${s.activeCommitters} active)\n\n`;
+        yearAdded = true;
       }
+    });
+    if (yearAdded) {
+      html += yearHtml;
     }
+
+    // Add Class-wise Coding Summary
+    html += `🏫 <b>CLASS & SECTION SUMMARY:</b>\n`;
+    const sortedClassKeys = Object.keys(classStats).sort();
+    if (sortedClassKeys.length > 0) {
+      sortedClassKeys.forEach(k => {
+        const c = classStats[k];
+        html += `• <b>${c.name}:</b>\n`;
+        html += `   Total: <b>${c.totalStudents}</b> (Boys: ${c.boysCount} / Girls: ${c.girlsCount})\n`;
+        html += `   LeetCode Solvers: <b>${c.activeSolvers}</b> (Boys: ${c.boysActiveSolvers} / Girls: ${c.girlsActiveSolvers})\n`;
+        html += `   GitHub Active: <b>${c.activeCommitters}</b> (Boys: ${c.boysActiveCommitters} / Girls: ${c.girlsActiveCommitters})\n\n`;
+      });
+    } else {
+      html += `• 🏫 <i>No class summaries available.</i>\n\n`;
+    }
+
+    html += `📎 <b>Detailed Incomplete Report:</b>\n`;
+    html += `Detailed lists of LeetCode targets, inactive GitHub students, and pending task submissions grouped Year-wise are attached in the Excel sheet below.\n\n`;
 
     html += getWatermarkHtml();
 
@@ -1464,6 +1952,21 @@ html += `🚀 <b>Today's Coding Highlights:</b>\n`;
 
     const res = await sendTelegramMessage(destChatId, html, { reply_markup: inlineKeyboard });
     if (res.ok) {
+      // Generate and send the Excel report attachment if there are incomplete students
+      const hasIncompletes = lcIncompleteRows.length > 0 || pendingTasksData.length > 0;
+      if (hasIncompletes) {
+        try {
+          const excelBuffer = await buildIncompleteExcelBuffer(lcIncompleteRows, pendingTasksData, studentProgressRes.rows);
+          await sendTelegramDocument(
+            destChatId,
+            excelBuffer,
+            `Incomplete_Report_${dateStr}.xlsx`,
+            `📊 LeetCode, GitHub & Tasks Pending Report — ${dateStr}`
+          );
+        } catch (excelErr) {
+          console.error('[Telegram Summary] Error generating/sending Excel report:', excelErr);
+        }
+      }
       return { success: true, message: `Group summary delivered successfully to ${destChatId}.` };
     } else {
       return { success: false, message: `Telegram error: ${res.description}` };
@@ -1692,12 +2195,22 @@ export function startTelegramPoller(): void {
             const cbChatId = cb.message?.chat?.id;
             const cbUserId = cb.from?.id;
 
-            // Fire answerCallbackQuery immediately to dismiss loading spinner
-            if (cb.id) {
-              answerCallbackQuery(cb.id).catch(() => {});
+            if (!cbChatId || !cbUserId) return;
+
+            const cbIsGroup = cb.message?.chat?.type === 'group' || cb.message?.chat?.type === 'supergroup';
+            const personalCallbackKeys = ['cb_tasks', 'view_tasks', 'cb_leetcode', 'cb_github', 'cb_stats', 'cb_profile'];
+
+            if (cbIsGroup && personalCallbackKeys.includes(cbData)) {
+              if (cb.id) {
+                await answerCallbackQuery(cb.id, '⚠️ Personal actions are disabled in group chats. Message the bot privately!', true);
+              }
+              return;
             }
 
-            if (!cbChatId || !cbUserId) return;
+            // Fire answerCallbackQuery immediately to dismiss loading spinner
+            if (cb.id) {
+              answerCallbackQuery(cb.id).catch(() => { });
+            }
 
             const userRes = await pool.query(`
               SELECT u.id, u.full_name, u.register_number, u.role, u.class_id, u.leetcode_url, u.github_url, c.name as class_name
@@ -1774,7 +2287,7 @@ export function startTelegramPoller(): void {
           if (isGroup && chatId) {
             getGroupChatId().then(currentSavedGroup => {
               if (!currentSavedGroup) setGroupChatId(String(chatId));
-            }).catch(() => {});
+            }).catch(() => { });
           }
 
           // Command: /id
@@ -1801,12 +2314,17 @@ export function startTelegramPoller(): void {
                 cleanParam.startsWith('class');
 
               if (isClassOrYear) {
-                const card = await getClassOrYearAnalysisCard(param);
+                const card = await getClassOrYearAnalysisCard(param, chatId);
                 await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
                 return;
               }
 
               // Otherwise link student account with register number / username
+              if (isGroup) {
+                await sendPrivateActionWarning(chatId);
+                return;
+              }
+
               const linkResult = await linkStudentTelegram(param, senderUserId, fromUsername);
               if (linkResult.success) {
                 const inlineKeyboard = getInteractiveMenuKeyboard();
@@ -1861,7 +2379,7 @@ export function startTelegramPoller(): void {
             helpHtml += `• <code>/tasks</code> - View pending assignments\n`;
             helpHtml += `• <code>/leetcode</code> (or <code>/lc</code>) - Daily LeetCode progress & targets\n`;
             helpHtml += `• <code>/github</code> (or <code>/gh</code>) - Daily GitHub commits & targets\n`;
-helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
+            helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
             helpHtml += `• <code>/leaderboard</code> (or <code>/top</code>) - Daily coding leaderboards\n`;
             helpHtml += `• <code>/status</code> - Connected profile info\n`;
             helpHtml += `• <code>/unlink</code> - Disconnect account\n`;
@@ -1908,12 +2426,17 @@ helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
                 cleanQ.startsWith('class');
 
               if (isClassOrYear) {
-                const card = await getClassOrYearAnalysisCard(query);
+                const card = await getClassOrYearAnalysisCard(query, chatId);
                 await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
                 return;
               }
 
               // 3. Otherwise treat as student query (reg no or name/username)
+              if (isGroup) {
+                await sendPrivateActionWarning(chatId);
+                return;
+              }
+
               const card = await getComprehensiveStudentProgressCard(query);
               await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
               return;
@@ -1950,7 +2473,7 @@ helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
               const parts = cleanNoMention.split(/\s+/);
               classQuery = parts.slice(1).join(' ').trim() || parts[0];
             }
-            const card = await getClassOrYearAnalysisCard(classQuery);
+            const card = await getClassOrYearAnalysisCard(classQuery, chatId);
             if (card.found || text.startsWith('/')) {
               await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
               return;
@@ -1958,8 +2481,8 @@ helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
           }
 
           // ── Automatic Register Number / Username Lookup ──────────────────
-          // If anyone in a group or private DM simply types a Register Number
-          if (!text.startsWith('/') && cleanCandidate.length >= 4 && cleanCandidate.length <= 25) {
+          // If anyone in a private DM simply types a Register Number
+          if (!isGroup && !text.startsWith('/') && cleanCandidate.length >= 4 && cleanCandidate.length <= 25) {
             const studentCheck = await pool.query(`
               SELECT id FROM users 
               WHERE (REPLACE(LOWER(register_number), ' ', '') = $1 
@@ -1979,7 +2502,7 @@ helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
             }
           }
 
-// Command: /leaderboard or /top or /rank
+          // Command: /leaderboard or /top or /rank
           if (text.startsWith('/leaderboard') || text.startsWith('/top') || text.startsWith('/rank')) {
             const dateStr = getISTDateStr();
             try {
@@ -2026,7 +2549,7 @@ helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
                   leadHtml += `   ${rankEmoji} <b>${escapeHtml(r.full_name)}</b> — <code>${r.solved_today}</code> solved\n`;
                 });
               }
-              
+
               leadHtml += `\n─────────────────────────\n`;
               leadHtml += `💡 <i>Keep coding and push your code to reach the top!</i> 🚀\n`;
               leadHtml += getWatermarkHtml();
@@ -2041,6 +2564,10 @@ helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
 
           // Command: /leetcode or /lc
           if (text.startsWith('/leetcode') || text.startsWith('/lc')) {
+            if (isGroup) {
+              await sendPrivateActionWarning(chatId);
+              return;
+            }
             if (!user) {
               await sendTelegramMessage(chatId, `ℹ️ Please link your student account first: <code>/link &lt;Register_Number&gt;</code>\n${getWatermarkHtml()}`);
             } else {
@@ -2052,6 +2579,10 @@ helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
 
           // Command: /github or /gh
           if (text.startsWith('/github') || text.startsWith('/gh')) {
+            if (isGroup) {
+              await sendPrivateActionWarning(chatId);
+              return;
+            }
             if (!user) {
               await sendTelegramMessage(chatId, `ℹ️ Please link your student account first: <code>/link &lt;Register_Number&gt;</code>\n${getWatermarkHtml()}`);
             } else {
@@ -2063,6 +2594,10 @@ helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
 
           // Command: /stats or /myprogress or /progress
           if (text.startsWith('/stats') || text.startsWith('/myprogress') || text.startsWith('/progress')) {
+            if (isGroup) {
+              await sendPrivateActionWarning(chatId);
+              return;
+            }
             if (!user) {
               await sendTelegramMessage(chatId, `ℹ️ Please link your student account first: <code>/link &lt;Register_Number&gt;</code>\n${getWatermarkHtml()}`);
             } else {
@@ -2112,6 +2647,10 @@ helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
 
           // Command: /tasks or /pending or /mytasks
           if (text.startsWith('/tasks') || text.startsWith('/pending') || text.startsWith('/mytasks')) {
+            if (isGroup) {
+              await sendPrivateActionWarning(chatId);
+              return;
+            }
             if (!user) {
               await sendTelegramMessage(chatId, `ℹ️ Please link your student account first: <code>/link &lt;Register_Number&gt;</code>\n${getWatermarkHtml()}`);
             } else {
@@ -2123,6 +2662,10 @@ helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
 
           // Command: /unlink
           if (text.startsWith('/unlink')) {
+            if (isGroup) {
+              await sendPrivateActionWarning(chatId);
+              return;
+            }
             await pool.query(`
               UPDATE users
               SET telegram_chat_id = NULL, telegram_username = NULL, telegram_linked_at = NULL
@@ -2134,6 +2677,10 @@ helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
 
           // Command: /status
           if (text.startsWith('/status')) {
+            if (isGroup) {
+              await sendPrivateActionWarning(chatId);
+              return;
+            }
             if (user) {
               await sendTelegramMessage(
                 chatId,

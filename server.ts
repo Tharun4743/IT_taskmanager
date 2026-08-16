@@ -375,13 +375,15 @@ async function startServer() {
   }
 
   // Schedule automated daily Telegram notifications:
-  // 1. 8:00 PM IST -> 1-to-1 Private Reminders to students with pending deadlines
-  // 2. 9:00 PM IST -> Formatted Group Summary to the Department Telegram Group
-  // 3. 11:55 PM IST -> Daily LeetCode & GitHub Progress Sync & CSV/JSON GitHub Auto-Push
+  // 1. 8:00 AM IST -> Morning Group Summary to the Department Telegram Group
+  // 2. 8:00 PM IST -> 1-to-1 Private Reminders to students with pending deadlines
+  // 3. 9:00 PM IST -> Evening Group Summary to the Department Telegram Group
+  // 4. 11:55 PM IST -> Daily LeetCode & GitHub Progress Sync & CSV/JSON GitHub Auto-Push
   let lastRemindersDate = '';
-  let lastGroupSummaryDate = '';
+  let lastGroupSummaryMorningDate = '';
+  let lastGroupSummaryEveningDate = '';
   let lastLeetcodePushDate = '';
-
+ 
   setInterval(async () => {
     try {
       const now = new Date();
@@ -390,6 +392,25 @@ async function startServer() {
       const todayStr = istDate.toISOString().split('T')[0];
       const hours = istDate.getUTCHours();
       const minutes = istDate.getUTCMinutes();
+ 
+      // 8:00 AM IST (08:00) -> Morning Group Summary (strictly once per day)
+      if (hours === 8 && minutes >= 0 && minutes <= 10 && lastGroupSummaryMorningDate !== todayStr) {
+        const checkRes = await pool.query("SELECT value FROM system_settings WHERE key = 'telegram_last_group_summary_morning_date' LIMIT 1").catch(() => ({ rows: [] }));
+        const alreadySent = checkRes.rows[0]?.value;
+        if (alreadySent !== todayStr) {
+          lastGroupSummaryMorningDate = todayStr;
+          await pool.query(`
+            INSERT INTO system_settings (key, value, updated_at)
+            VALUES ('telegram_last_group_summary_morning_date', $1, CURRENT_TIMESTAMP)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
+          `, [todayStr]).catch(() => {});
+          
+          const prevIstDate = new Date(istDate.getTime() - 24 * 60 * 60 * 1000);
+          const prevDayStr = prevIstDate.toISOString().split('T')[0];
+          console.log(`[Telegram Scheduler] 📊 Running automated 8:00 AM IST daily group summary (for previous day: ${prevDayStr})...`);
+          sendGroupSummary(undefined, prevDayStr).catch(err => console.error('[Telegram Scheduler] Error sending morning group summary:', err));
+        }
+      }
 
       // 8:00 PM IST (20:00) -> Private Reminders (strictly once per day)
       if (hours === 20 && minutes >= 0 && minutes <= 10 && lastRemindersDate !== todayStr) {
@@ -406,20 +427,20 @@ async function startServer() {
           triggerPendingTaskReminders().catch(err => console.error('[Telegram Scheduler] Error sending reminders:', err));
         }
       }
-
-      // 9:00 PM IST (21:00) -> Group Summary (strictly once per day)
-      if (hours === 21 && minutes >= 0 && minutes <= 10 && lastGroupSummaryDate !== todayStr) {
-        const checkRes = await pool.query("SELECT value FROM system_settings WHERE key = 'telegram_last_group_summary_date' LIMIT 1").catch(() => ({ rows: [] }));
+ 
+      // 9:00 PM IST (21:00) -> Evening Group Summary (strictly once per day)
+      if (hours === 21 && minutes >= 0 && minutes <= 10 && lastGroupSummaryEveningDate !== todayStr) {
+        const checkRes = await pool.query("SELECT value FROM system_settings WHERE key = 'telegram_last_group_summary_evening_date' LIMIT 1").catch(() => ({ rows: [] }));
         const alreadySent = checkRes.rows[0]?.value;
         if (alreadySent !== todayStr) {
-          lastGroupSummaryDate = todayStr;
+          lastGroupSummaryEveningDate = todayStr;
           await pool.query(`
             INSERT INTO system_settings (key, value, updated_at)
-            VALUES ('telegram_last_group_summary_date', $1, CURRENT_TIMESTAMP)
+            VALUES ('telegram_last_group_summary_evening_date', $1, CURRENT_TIMESTAMP)
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
           `, [todayStr]).catch(() => {});
           console.log(`[Telegram Scheduler] 📊 Running automated 9:00 PM IST daily group summary for ${todayStr}...`);
-          sendGroupSummary().catch(err => console.error('[Telegram Scheduler] Error sending group summary:', err));
+          sendGroupSummary().catch(err => console.error('[Telegram Scheduler] Error sending evening group summary:', err));
         }
       }
 
