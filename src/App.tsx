@@ -4083,7 +4083,53 @@ const githubTop3 = useMemo(() => {
   const [userRoleFilter, setUserRoleFilter] = useState('');
   const [userDeptFilter, setUserDeptFilter] = useState('');
   const [userYearFilter, setUserYearFilter] = useState('');
-  const [userClassFilter, setUserClassFilter] = useState('');
+  // Telegram Link Prompt State
+  const [showTelegramLinkModal, setShowTelegramLinkModal] = useState(false);
+  const [telegramChatIdInput, setTelegramChatIdInput] = useState('');
+  const [telegramUsernameInput, setTelegramUsernameInput] = useState('');
+  const [isLinkingTelegram, setIsLinkingTelegram] = useState(false);
+
+  const handleLinkTelegram = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!telegramChatIdInput.trim()) {
+      addToast('Please enter your Telegram Chat ID', 'warning');
+      return;
+    }
+    const cleanChatId = telegramChatIdInput.trim();
+    if (cleanChatId.startsWith('-')) {
+      addToast('Please enter your personal Telegram Chat ID, not a group ID', 'error');
+      return;
+    }
+    setIsLinkingTelegram(true);
+    try {
+      const res = await fetch(`${API_URL}/api/student/link-telegram`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          chatId: cleanChatId,
+          telegramUsername: telegramUsernameInput.trim() || undefined
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast(data.message || 'Telegram account linked successfully!', 'success');
+        setUser((prev: any) => prev ? {
+          ...prev,
+          telegram_chat_id: cleanChatId,
+          telegram_username: telegramUsernameInput.trim() || prev.telegram_username
+        } : prev);
+        setShowTelegramLinkModal(false);
+        setTelegramChatIdInput('');
+        setTelegramUsernameInput('');
+      } else {
+        addToast(data.error || 'Failed to link Telegram account', 'error');
+      }
+    } catch {
+      addToast('Error connecting to server to link Telegram', 'error');
+    } finally {
+      setIsLinkingTelegram(false);
+    }
+  };
 
   // Notice Board State
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -7929,6 +7975,155 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
     );
   };
 
+  const renderTelegramLinkModal = () => {
+    if (!showTelegramLinkModal) return null;
+    const botUrl = `https://t.me/IT_TaskManager_Alerts_bot?start=link_${user?.register_number || user?.username}`;
+    const linkCommand = `/link ${user?.register_number || user?.username}`;
+
+    return (
+      <AnimatePresence>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[210] flex items-center justify-center p-4">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+            className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-lg shadow-2xl relative overflow-hidden border border-zinc-100 max-h-[95vh] overflow-y-auto"
+          >
+            {/* Top decorative gradient bar */}
+            <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-sky-400 via-indigo-500 to-violet-600" />
+
+            <button
+              onClick={() => setShowTelegramLinkModal(false)}
+              className="absolute top-5 right-5 p-2 text-zinc-400 hover:text-zinc-700 rounded-full hover:bg-zinc-100 transition-all"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="flex items-center gap-3.5 mb-5">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-400 to-blue-600 text-white flex items-center justify-center shadow-lg shadow-sky-500/20 shrink-0">
+                <Send size={24} className="-rotate-12" />
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-zinc-900 tracking-tight">Connect Telegram Alerts</h3>
+                <p className="text-xs text-zinc-500 font-medium">Instant task notifications, deadline alerts & coding reports</p>
+              </div>
+            </div>
+
+            {/* Feature Highlights */}
+            <div className="grid grid-cols-2 gap-2.5 p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200/70 mb-5 text-xs text-zinc-700">
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-black">✓</span>
+                <span>Instant New Tasks</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-black">✓</span>
+                <span>24h Deadline Alerts</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-black">✓</span>
+                <span>Verification Results</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-black">✓</span>
+                <span>LeetCode / GitHub Cards</span>
+              </div>
+            </div>
+
+            {/* Option 1: 1-Click Bot Link */}
+            <div className="p-4 rounded-2xl bg-sky-50 border border-sky-100 mb-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-sky-800 uppercase tracking-wider">Method 1: Open Bot (Instant)</span>
+                <span className="bg-sky-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full">FASTEST</span>
+              </div>
+              <p className="text-xs text-sky-900 leading-relaxed">
+                Click below to open our official bot in Telegram and tap <b>START</b> to link automatically:
+              </p>
+              <a
+                href={botUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-2.5 px-4 bg-sky-500 hover:bg-sky-600 active:scale-98 text-white font-bold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2 shadow-md transition-all text-center"
+              >
+                <Send size={16} /> Open @IT_TaskManager_Alerts_bot
+              </a>
+              <div className="text-[11px] text-zinc-500 flex items-center justify-between pt-1">
+                <span>Or message the bot with:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(linkCommand);
+                    addToast('Command copied to clipboard!', 'info');
+                  }}
+                  className="font-mono font-bold text-sky-700 bg-white px-2 py-0.5 rounded border border-sky-200 hover:bg-sky-100 transition-colors"
+                >
+                  {linkCommand} 📋
+                </button>
+              </div>
+            </div>
+
+            {/* Option 2: Enter Chat ID */}
+            <form onSubmit={handleLinkTelegram} className="space-y-4">
+              <div className="flex items-center gap-2 text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                <div className="h-px bg-zinc-200 flex-1" />
+                <span>OR Enter Chat ID Manually</span>
+                <div className="h-px bg-zinc-200 flex-1" />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-zinc-700 block mb-1.5">
+                  Your Personal Telegram Chat ID <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  type="text"
+                  placeholder="e.g. 1321795497"
+                  value={telegramChatIdInput}
+                  onChange={e => setTelegramChatIdInput(e.target.value)}
+                  required
+                  className="font-mono text-sm"
+                />
+                <p className="text-[10px] text-zinc-400 mt-1">
+                  💡 Don't know your ID? Open Telegram and send <code>/start</code> to <b>@userinfobot</b> or message our bot!
+                </p>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-zinc-700 block mb-1.5">
+                  Telegram Username (Optional)
+                </label>
+                <Input
+                  type="text"
+                  placeholder="e.g. your_handle (without @)"
+                  value={telegramUsernameInput}
+                  onChange={e => setTelegramUsernameInput(e.target.value.replace('@', ''))}
+                  className="text-sm"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="flex-1"
+                  onClick={() => setShowTelegramLinkModal(false)}
+                >
+                  Maybe Later
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
+                  disabled={isLinkingTelegram || !telegramChatIdInput.trim()}
+                >
+                  {isLinkingTelegram ? 'Linking...' : 'Connect Account'}
+                </Button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      </AnimatePresence>
+    );
+  };
+
   const renderAssignTargetModal = () => {
     if (!showAssignTargetModal) return null;
     const isYearCoordinator = user?.is_year_coordinator;
@@ -8447,6 +8642,7 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
       <div className="h-screen bg-[#F5F5F4] flex overflow-hidden">
         <ToastContainer toasts={toasts} removeToast={removeToast} />
         {renderAssignTargetModal()}
+        {renderTelegramLinkModal()}
         {renderHistoryDetailsModal()}
         {/* Rejection Modal */}
         <AnimatePresence>
@@ -8754,6 +8950,19 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                 </Button>
               )}
               <div className="flex-1" />
+              {isStudent && !user?.telegram_chat_id && (
+                <button
+                  onClick={() => setShowTelegramLinkModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r from-sky-500 via-indigo-600 to-violet-600 text-white shadow-md hover:shadow-lg hover:scale-105 transition-all animate-pulse shrink-0"
+                >
+                  <Send size={13} className="-rotate-12" /> Connect Telegram
+                </button>
+              )}
+              {isStudent && user?.telegram_chat_id && (
+                <span className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                  <CheckCircle2 size={12} /> Telegram Linked
+                </span>
+              )}
               <div className="relative group">
                 <button
                   className="p-2 text-zinc-400 hover:text-zinc-900 transition-colors relative"
@@ -8962,6 +9171,46 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                           );
                         })() : (
                           <div>
+                            {/* Prominent Telegram Connect Banner for unlinked students */}
+                            {isStudent && !user?.telegram_chat_id && (
+                              <div className="mb-6 p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-sky-600 via-indigo-600 to-violet-700 text-white shadow-xl relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border border-white/20">
+                                <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+                                <div className="absolute left-1/3 -top-10 w-32 h-32 bg-sky-400/20 rounded-full blur-xl pointer-events-none" />
+
+                                <div className="flex items-start gap-4 relative z-10">
+                                  <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 shadow-inner border border-white/30 text-white">
+                                    <Send size={24} className="-rotate-12 text-sky-200" />
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="bg-white/20 text-white text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full tracking-wider backdrop-blur-md">
+                                        Action Recommended
+                                      </span>
+                                      <span className="flex items-center gap-1.5 text-[11px] font-semibold text-sky-200">
+                                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" /> Instant Phone Notifications
+                                      </span>
+                                    </div>
+                                    <h2 className="text-lg sm:text-xl font-black mt-1 text-white tracking-tight">
+                                      Connect your Telegram for Live Task Alerts & Coding Reports
+                                    </h2>
+                                    <p className="text-xs sm:text-sm text-sky-100/90 mt-1 max-w-2xl leading-relaxed">
+                                      Receive automatic alerts for newly assigned tasks, upcoming deadlines within 24 hours, and submission status — plus check your LeetCode and GitHub scores on Telegram anytime!
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-3 w-full md:w-auto shrink-0 relative z-10">
+                                  <button
+                                    onClick={() => setShowTelegramLinkModal(true)}
+                                    className="w-full md:w-auto px-5 py-2.5 bg-white text-indigo-900 rounded-xl font-bold text-xs sm:text-sm shadow-lg hover:bg-sky-50 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+                                  >
+                                    <Send size={16} className="text-sky-500" />
+                                    Connect in 1-Click
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                               <StatCard title="Total Assigned Tasks" value={studentStats?.total_tasks || 0} icon={<ClipboardList />} color="bg-blue-500" />
                               <StatCard title="Submitted" value={studentStats?.submitted_tasks || 0} icon={<Clock />} color="bg-orange-500" />
