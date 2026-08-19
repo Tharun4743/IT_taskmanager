@@ -8062,63 +8062,16 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
               </div>
             </div>
 
-            {/* Option 2: Enter Chat ID */}
-            <form onSubmit={handleLinkTelegram} className="space-y-4">
-              <div className="flex items-center gap-2 text-xs font-bold text-zinc-400 uppercase tracking-wider">
-                <div className="h-px bg-zinc-200 flex-1" />
-                <span>OR Enter Chat ID Manually</span>
-                <div className="h-px bg-zinc-200 flex-1" />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-zinc-700 block mb-1.5">
-                  Your Personal Telegram Chat ID <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  type="text"
-                  placeholder="e.g. 1321795497"
-                  value={telegramChatIdInput}
-                  onChange={e => setTelegramChatIdInput(e.target.value)}
-                  required
-                  className="font-mono text-sm"
-                />
-                <p className="text-[10px] text-zinc-400 mt-1">
-                  💡 Don't know your ID? Open Telegram and send <code>/start</code> to <b>@userinfobot</b> or message our bot!
-                </p>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-zinc-700 block mb-1.5">
-                  Telegram Username (Optional)
-                </label>
-                <Input
-                  type="text"
-                  placeholder="e.g. your_handle (without @)"
-                  value={telegramUsernameInput}
-                  onChange={e => setTelegramUsernameInput(e.target.value.replace('@', ''))}
-                  className="text-sm"
-                />
-              </div>
-
-              <div className="flex items-center gap-3 pt-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="flex-1"
-                  onClick={() => setShowTelegramLinkModal(false)}
-                >
-                  Maybe Later
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
-                  disabled={isLinkingTelegram || !telegramChatIdInput.trim()}
-                >
-                  {isLinkingTelegram ? 'Linking...' : 'Connect Account'}
-                </Button>
-              </div>
-            </form>
+            <div className="flex items-center justify-center pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-zinc-400 hover:text-zinc-600 text-xs"
+                onClick={() => setShowTelegramLinkModal(false)}
+              >
+                Maybe Later
+              </Button>
+            </div>
           </motion.div>
         </div>
       </AnimatePresence>
@@ -10944,8 +10897,8 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                       )}
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                      <div className={cn((isHOD || isAdmin || user?.is_year_coordinator) ? "md:col-span-2" : "md:col-span-3", "relative")}>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 items-start">
+                      <div className={cn((isHOD || isAdmin || user?.is_year_coordinator) ? "md:col-span-2" : "md:col-span-3", "relative self-start")}>
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
                         <Input
                           placeholder="Search submissions by student name or register number..."
