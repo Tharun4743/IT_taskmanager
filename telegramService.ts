@@ -3,6 +3,12 @@ dotenv.config();
 
 import { pool } from './db.js';
 import ExcelJS from 'exceljs';
+import {
+  constantStudentByIdMap,
+  constantStudentByRegNoMap,
+  constantStudentByEmailMap,
+  cleanStudentName
+} from './studentDirectoryService.js';
 
 export function getBotToken(): string {
   return process.env.TELEGRAM_BOT_TOKEN || '';
@@ -502,9 +508,11 @@ export async function registerBotCommandsMenu(): Promise<void> {
     const commands = [
       { command: 'menu', description: 'Interactive Quick-Action Menu' },
       { command: 'tasks', description: 'View your pending assignments & deadlines' },
+      { command: 'deadlines', description: 'View tasks ending in the next 24 hours' },
       { command: 'leetcode', description: 'Check LeetCode solved count & targets' },
       { command: 'github', description: 'Check GitHub commits & targets' },
       { command: 'stats', description: 'Your overall performance scorecard' },
+      { command: 'mismatch', description: 'Student profile mismatch audit (Staff)' },
       { command: 'defaulters', description: 'List students with pending targets (Staff)' },
       { command: 'status', description: 'Check linked student account' },
       { command: 'link', description: 'Connect account (/link <reg_no>)' },
@@ -539,6 +547,10 @@ export function getInteractiveMenuKeyboard(role?: string) {
           { text: '⚠️ Defaulters', callback_data: 'cb_defaulters' }
         ],
         [
+          { text: '📑 Mismatch Audit', callback_data: 'cb_mismatch' },
+          { text: '⏰ 24h Deadlines', callback_data: 'cb_deadlines' }
+        ],
+        [
           { text: '🔎 Student Search', callback_data: 'cb_search_help' },
           { text: '📋 Task Status', callback_data: 'cb_task_status' }
         ],
@@ -553,14 +565,17 @@ export function getInteractiveMenuKeyboard(role?: string) {
     inline_keyboard: [
       [
         { text: '📋 My Tasks', callback_data: 'cb_tasks' },
-        { text: '🧩 LeetCode', callback_data: 'cb_leetcode' }
+        { text: '⏰ 24h Deadlines', callback_data: 'cb_deadlines' }
       ],
       [
-        { text: '💻 GitHub', callback_data: 'cb_github' },
-        { text: '📊 My Progress', callback_data: 'cb_stats' }
+        { text: '🧩 LeetCode', callback_data: 'cb_leetcode' },
+        { text: '💻 GitHub', callback_data: 'cb_github' }
       ],
       [
-        { text: '👤 Profile', callback_data: 'cb_profile' },
+        { text: '📊 My Progress', callback_data: 'cb_stats' },
+        { text: '👤 My Profile', callback_data: 'cb_profile' }
+      ],
+      [
         { text: '🌐 Open Portal', url: portalUrl }
       ]
     ]
@@ -719,29 +734,90 @@ export async function getStudentStatsCard(user: any): Promise<{ html: string; ke
 }
 
 /**
- * 👤 Profile Card for a Student
+ * 👤 Comprehensive Profile Card for a Student
  */
 export async function getProfileCard(user: any): Promise<{ html: string; keyboard: any }> {
-  let html = `👤 <b>MY PROFILE</b>\n\n`;
-  html += `• <b>Name:</b> ${escapeHtml(user.full_name)}\n`;
-  html += `• <b>Register No:</b> <code>${escapeHtml(user.register_number || user.username)}</code>\n`;
-  html += `• <b>Class:</b> ${escapeHtml(user.class_name || 'IT Section')}\n`;
-  html += `• <b>Role:</b> ${escapeHtml(user.role)}\n`;
-  html += `• <b>Telegram:</b> 🟢 Connected\n`;
-  html += getWatermarkHtml();
+  try {
+    const [profileRes, statsRes] = await Promise.all([
+      pool.query(`
+        SELECT 
+          u.id, u.full_name, u.register_number, u.email, u.gender, u.phone,
+          u.leetcode_url, u.github_url, u.telegram_chat_id, u.telegram_username, u.telegram_linked_at,
+          c.name as class_name, c.year, c.batch,
+          d.name as dept_name,
+          sp.mobile_number, sp.date_of_birth, sp.semester, sp.cgpa, sp.current_arrears, sp.history_of_arrears, sp.about_me
+        FROM users u
+        LEFT JOIN classes c ON u.class_id = c.id
+        LEFT JOIN departments d ON u.department_id = d.id
+        LEFT JOIN student_profiles sp ON sp.user_id = u.id
+        WHERE u.id = $1
+        LIMIT 1
+      `, [user.id]),
+      pool.query(`
+        SELECT 
+          (SELECT COUNT(DISTINCT ts.id) FROM task_submissions ts WHERE ts.user_id = $1 AND ts.status = 'VERIFIED') as verified_tasks,
+          (SELECT COUNT(DISTINCT t.id) FROM tasks t JOIN task_classes tc ON tc.task_id = t.id WHERE tc.class_id = $2 AND t.status = 'OPEN') as total_tasks,
+          (SELECT COALESCE(MAX(total_solved), 0) FROM leetcode_daily_progress WHERE user_id = $1) as lc_solved,
+          (SELECT COALESCE(SUM(daily_commit_count), 0) FROM github_daily_commits WHERE student_id = $1) as gh_commits
+      `, [user.id, user.class_id])
+    ]);
 
-  const keyboard = {
-    inline_keyboard: [
-      [
-        { text: '🌐 Open Full Profile on Portal', url: getPortalUrl() }
-      ],
-      [
-        { text: '📱 Main Menu', callback_data: 'cb_menu' }
+    const p = profileRes.rows[0] || user;
+    const s = statsRes.rows[0] || {};
+
+    const regKey = p.register_number ? p.register_number.toLowerCase().trim() : '';
+    const dir = regKey ? constantStudentByRegNoMap.get(regKey) : null;
+    const effectiveLc = p.leetcode_url || dir?.leetcode || 'Not set';
+    const effectiveGh = p.github_url || dir?.github || 'Not set';
+
+    let html = `👤 <b>STUDENT COMPREHENSIVE PROFILE</b>\n\n`;
+    html += `📌 <b>Full Name:</b> <b>${escapeHtml(p.full_name)}</b>\n`;
+    html += `🆔 <b>Register No:</b> <code>${escapeHtml(p.register_number || p.username)}</code>\n`;
+    html += `🏫 <b>Class & Year:</b> <code>${escapeHtml(p.class_name || 'N/A')}</code> (${p.year ? `Year ${p.year}` : 'IT Dept'})\n`;
+    if (p.batch) html += `🎓 <b>Batch:</b> <code>${escapeHtml(p.batch)}</code>\n`;
+    if (p.gender) html += `⚧ <b>Gender:</b> ${escapeHtml(p.gender)}\n`;
+    if (p.email) html += `📧 <b>Email:</b> <code>${escapeHtml(p.email)}</code>\n`;
+    if (p.mobile_number || p.phone) html += `📱 <b>Phone:</b> <code>${escapeHtml(p.mobile_number || p.phone)}</code>\n`;
+    if (p.semester) html += `📚 <b>Semester:</b> <code>Sem ${p.semester}</code>\n`;
+    if (p.cgpa) html += `🎯 <b>CGPA:</b> <code>${p.cgpa}</code>\n`;
+    html += `─────────────────────────\n\n`;
+
+    html += `🌐 <b>Coding & Social Profiles:</b>\n`;
+    html += `• 🧩 <b>LeetCode:</b> <code>${escapeHtml(effectiveLc)}</code>\n`;
+    html += `• 🐙 <b>GitHub:</b> <code>${escapeHtml(effectiveGh)}</code>\n`;
+    html += `• ✈️ <b>Telegram:</b> 🟢 Connected (${p.telegram_username ? `@${escapeHtml(p.telegram_username)}` : 'Personal DM'})\n\n`;
+
+    html += `📊 <b>Overall Portal Performance:</b>\n`;
+    html += `• 📋 <b>Tasks Completed:</b> <b>${s.verified_tasks || 0}/${s.total_tasks || 0}</b>\n`;
+    html += `• 🧩 <b>LeetCode Problems Solved:</b> <b>${s.lc_solved || 0}</b>\n`;
+    html += `• 💻 <b>GitHub Commits:</b> <b>${s.gh_commits || 0}</b>\n`;
+    html += getWatermarkHtml();
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          { text: '📋 My Tasks', callback_data: 'cb_tasks' },
+          { text: '📊 My Progress', callback_data: 'cb_stats' }
+        ],
+        [
+          { text: '🧩 LeetCode Card', callback_data: 'cb_leetcode' },
+          { text: '💻 GitHub Card', callback_data: 'cb_github' }
+        ],
+        [
+          { text: '📱 Main Menu', callback_data: 'cb_menu' },
+          { text: '🌐 Open Portal', url: getPortalUrl() }
+        ]
       ]
-    ]
-  };
+    };
 
-  return { html, keyboard };
+    return { html, keyboard };
+  } catch (err: any) {
+    console.error('[Telegram] getProfileCard error:', err);
+    return {
+      html: `👤 <b>MY PROFILE</b>\n\n• <b>Name:</b> ${escapeHtml(user.full_name)}\n• <b>Register No:</b> <code>${escapeHtml(user.register_number || user.username)}</code>\n• <b>Telegram:</b> 🟢 Connected\n${getWatermarkHtml()}`,
+      keyboard: { inline_keyboard: [[{ text: '📱 Main Menu', callback_data: 'cb_menu' }]] }
+    };
+  }
 }
 
 /**
@@ -1427,45 +1503,147 @@ export async function getDefaultersCard(scopeText?: string): Promise<{ html: str
 }
 
 /**
- * 📋 Tasks Card for a Student
+ * Helper to calculate live countdown strings
+ */
+export function formatCountdown(deadlineDate: Date): string {
+  const now = new Date();
+  const diffMs = deadlineDate.getTime() - now.getTime();
+  if (diffMs <= 0) return '⚠️ Overdue / Closed';
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffHours / 24);
+  const remHours = diffHours % 24;
+  if (diffDays > 0) {
+    return `⏰ ${diffDays}d ${remHours}h left`;
+  }
+  const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  if (diffHours > 0) {
+    return `⏰ ${diffHours}h ${diffMins}m left`;
+  }
+  return `🔥 ${diffMins}m left!`;
+}
+
+/**
+ * 📋 Comprehensive Tasks Card for a Student (Pending, Submitted, Verified, Rejected)
  */
 export async function getTasksCard(user: any): Promise<{ html: string; keyboard: any }> {
   const tasksRes = await pool.query(`
-    SELECT t.id, t.title, t.category, t.deadline, ts.status as submission_status
+    SELECT 
+      t.id, 
+      t.title, 
+      t.category, 
+      t.deadline, 
+      t.created_at,
+      u.full_name as creator_name,
+      ts.id as submission_id,
+      ts.status as submission_status,
+      ts.submitted_at,
+      ts.rejection_reason
     FROM tasks t
     JOIN task_classes tc ON tc.task_id = t.id
+    LEFT JOIN users u ON t.created_by = u.id
     LEFT JOIN task_submissions ts ON ts.task_id = t.id AND ts.user_id = $1
     WHERE tc.class_id = $2
       AND t.status = 'OPEN'
-      AND (ts.id IS NULL OR ts.status = 'REJECTED')
-      AND (t.deadline IS NULL OR t.deadline >= CURRENT_TIMESTAMP)
-    ORDER BY t.deadline ASC NULLS LAST
+    ORDER BY 
+      CASE 
+        WHEN ts.status = 'REJECTED' THEN 1
+        WHEN ts.id IS NULL THEN 2
+        WHEN ts.status = 'SUBMITTED' THEN 3
+        WHEN ts.status = 'VERIFIED' THEN 4
+        ELSE 5
+      END ASC,
+      t.deadline ASC NULLS LAST
   `, [user.id, user.class_id]);
 
-  let html = '';
-  if (tasksRes.rows.length === 0) {
-    html = `📋 <b>MY TASKS</b>\n\n🎉 <b>All caught up, ${escapeHtml(user.full_name)}!</b>\nYou have no pending assignments right now. ✨\n${getWatermarkHtml()}`;
-  } else {
-    html = `📋 <b>MY PENDING TASKS (${tasksRes.rows.length}):</b>\n\n`;
-    tasksRes.rows.forEach((t, i) => {
-      const dStr = t.deadline
-        ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
-        : 'No deadline';
-      const statusStr = t.submission_status === 'REJECTED' ? '❌ Rejected (Needs Resubmission)' : '⏳ Pending';
-      html += `${i + 1}. 📌 <b>${escapeHtml(t.title)}</b>\n`;
+  const tasks = tasksRes.rows;
+  const pendingList = tasks.filter(t => !t.submission_status);
+  const rejectedList = tasks.filter(t => t.submission_status === 'REJECTED');
+  const submittedList = tasks.filter(t => t.submission_status === 'SUBMITTED');
+  const verifiedList = tasks.filter(t => t.submission_status === 'VERIFIED');
+
+  const totalAssigned = tasks.length;
+  const totalCompleted = verifiedList.length;
+  const completionPercent = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : 100;
+  const progressBar = makeProgressBar(totalCompleted, totalAssigned, 10);
+
+  let html = `📋 <b>STUDENT TASK DASHBOARD</b>\n\n`;
+  html += `👤 <b>Student:</b> ${escapeHtml(user.full_name)} (<code>${escapeHtml(user.register_number || user.username)}</code>)\n`;
+  html += `🏫 <b>Class:</b> <code>${escapeHtml(user.class_name || 'IT Section')}</code>\n\n`;
+
+  html += `📊 <b>Completion Progress:</b> [${progressBar}] <b>${completionPercent}%</b>\n`;
+  html += `• ✅ <b>Verified:</b> <b>${verifiedList.length}</b> / ${totalAssigned}\n`;
+  html += `• ⏳ <b>Pending Submission:</b> <b>${pendingList.length}</b>\n`;
+  if (submittedList.length > 0) html += `• 📤 <b>Under Review:</b> <b>${submittedList.length}</b>\n`;
+  if (rejectedList.length > 0) html += `• ❌ <b>Needs Resubmission:</b> <b>${rejectedList.length}</b>\n`;
+  html += `─────────────────────────\n\n`;
+
+  // 1. Show Rejected / Action Required first
+  if (rejectedList.length > 0) {
+    html += `🚨 <b>NEEDS RESUBMISSION (${rejectedList.length}):</b>\n`;
+    rejectedList.forEach((t, i) => {
+      const dStr = t.deadline ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : 'No deadline';
+      html += `${i + 1}. ❌ <b>${escapeHtml(t.title)}</b>\n`;
+      if (t.category) html += `   📂 <b>Category:</b> <code>${escapeHtml(t.category)}</code>\n`;
       html += `   ⏰ <b>Deadline:</b> <i>${dStr}</i>\n`;
-      html += `   📊 <b>Status:</b> ${statusStr}\n\n`;
+      if (t.rejection_reason) html += `   💬 <b>Reason:</b> <i>${escapeHtml(t.rejection_reason)}</i>\n`;
+      html += `\n`;
     });
-    html += getWatermarkHtml();
   }
+
+  // 2. Show Pending Tasks
+  if (pendingList.length > 0) {
+    html += `⏳ <b>PENDING ASSIGNMENTS (${pendingList.length}):</b>\n`;
+    pendingList.forEach((t, i) => {
+      const dObj = t.deadline ? new Date(t.deadline) : null;
+      const dStr = dObj ? dObj.toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : 'No deadline';
+      const countdown = dObj ? formatCountdown(dObj) : '';
+
+      html += `${i + 1}. 📌 <b>${escapeHtml(t.title)}</b>\n`;
+      if (t.category) html += `   📂 <b>Category:</b> <code>${escapeHtml(t.category)}</code>\n`;
+      html += `   ⏰ <b>Deadline:</b> <i>${dStr}</i> ${countdown ? `(${countdown})` : ''}\n`;
+      if (t.creator_name) html += `   👤 <b>Assigned by:</b> ${escapeHtml(t.creator_name)}\n`;
+      html += `\n`;
+    });
+  }
+
+  // 3. Show Submitted Under Review
+  if (submittedList.length > 0) {
+    html += `📤 <b>SUBMITTED (AWAITING VERIFICATION) (${submittedList.length}):</b>\n`;
+    submittedList.forEach((t, i) => {
+      const subStr = t.submitted_at ? new Date(t.submitted_at).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : 'Recently';
+      html += `${i + 1}. 📤 <b>${escapeHtml(t.title)}</b> — <i>Submitted on ${subStr}</i>\n`;
+    });
+    html += `\n`;
+  }
+
+  // 4. Show Verified
+  if (verifiedList.length > 0) {
+    html += `✅ <b>VERIFIED SUBMISSIONS (${verifiedList.length}):</b>\n`;
+    verifiedList.forEach((t, i) => {
+      html += `${i + 1}. 🟢 <b>${escapeHtml(t.title)}</b>\n`;
+    });
+    html += `\n`;
+  }
+
+  if (totalAssigned === 0) {
+    html += `✨ <i>No assignments posted for your class currently!</i>\n\n`;
+  }
+
+  html += getWatermarkHtml();
 
   const keyboard = {
     inline_keyboard: [
       [
-        { text: '🌐 Open / Submit on Portal', url: getPortalUrl() }
+        { text: '🔄 Refresh Tasks', callback_data: 'cb_tasks' },
+        { text: '⏰ 24h Deadlines', callback_data: 'cb_deadlines' }
       ],
       [
-        { text: '📱 Main Menu', callback_data: 'cb_menu' }
+        { text: '📊 My Scorecard', callback_data: 'cb_stats' },
+        { text: '👤 My Profile', callback_data: 'cb_profile' }
+      ],
+      [
+        { text: '📱 Main Menu', callback_data: 'cb_menu' },
+        { text: '🌐 Submit on Portal', url: getPortalUrl() }
       ]
     ]
   };
@@ -1506,13 +1684,14 @@ export async function notifyNewTaskCreated(task: {
     ]
   };
 
-  // 1. Dispatch to Telegram Group Chat if configured
+  // 1. Dispatch exactly ONCE to Telegram Group Chat if configured
   const groupChatId = await getGroupChatId();
-  if (groupChatId) {
-    sendTelegramMessage(groupChatId, html, { reply_markup: keyboard }).catch(() => { });
+  const normalizedGroupChatId = groupChatId ? String(groupChatId).trim() : '';
+  if (normalizedGroupChatId) {
+    sendTelegramMessage(normalizedGroupChatId, html, { reply_markup: keyboard }).catch(() => { });
   }
 
-  // 2. Dispatch in parallel to all students in the assigned classes with linked Telegram
+  // 2. Dispatch in parallel to all students in the assigned classes with linked PERSONAL Telegram
   if (classIds && classIds.length > 0) {
     const studentsRes = await pool.query(`
       SELECT telegram_chat_id
@@ -1520,15 +1699,27 @@ export async function notifyNewTaskCreated(task: {
       WHERE class_id = ANY($1::uuid[]) AND telegram_chat_id IS NOT NULL AND role = 'STUDENT'
     `, [classIds]);
 
-    const chatIds = studentsRes.rows.map(r => r.telegram_chat_id).filter(Boolean);
-    console.log(`[Telegram Notifications] Sending new task alert to ${chatIds.length} student(s)...`);
+    const rawChatIds = studentsRes.rows
+      .map(r => r.telegram_chat_id ? String(r.telegram_chat_id).trim() : '')
+      .filter(Boolean);
 
-    // Send in chunks with Promise.allSettled to avoid blocking
-    const BATCH_SIZE = 15;
-    for (let i = 0; i < chatIds.length; i += BATCH_SIZE) {
-      const batch = chatIds.slice(i, i + BATCH_SIZE);
-      await Promise.allSettled(batch.map(cid => sendTelegramMessage(cid, html, { reply_markup: keyboard })));
-      await new Promise(r => setTimeout(r, 40));
+    // Only send private DM to distinct personal chats (exclude groups with negative IDs and groupChatId)
+    const personalChatIds = Array.from(new Set(rawChatIds)).filter(cid => {
+      if (cid.startsWith('-')) return false;
+      if (normalizedGroupChatId && cid === normalizedGroupChatId) return false;
+      return true;
+    });
+
+    if (personalChatIds.length > 0) {
+      console.log(`[Telegram Notifications] Sending new task alert to ${personalChatIds.length} personal student chat(s)...`);
+
+      // Send in chunks with Promise.allSettled to avoid blocking
+      const BATCH_SIZE = 15;
+      for (let i = 0; i < personalChatIds.length; i += BATCH_SIZE) {
+        const batch = personalChatIds.slice(i, i + BATCH_SIZE);
+        await Promise.allSettled(batch.map(cid => sendTelegramMessage(cid, html, { reply_markup: keyboard })));
+        await new Promise(r => setTimeout(r, 40));
+      }
     }
   }
 }
@@ -1978,6 +2169,464 @@ export async function sendGroupSummary(targetChatId?: string, dateOverride?: str
 }
 
 /**
+ * 🧩 Validates if a LeetCode profile string or username is valid
+ */
+export function isValidLeetCodeProfile(val: string | null | undefined): boolean {
+  if (!val) return false;
+  const clean = val.trim();
+  if (!clean || clean.length < 2) return false;
+  
+  const lower = clean.toLowerCase();
+  const invalidPlaceholders = [
+    'na', 'n/a', 'nil', 'none', 'null', 'undefined', '-', '--', 'no', 'not available', 'not set',
+    'http://', 'https://', 'https://leetcode.com', 'https://leetcode.com/',
+    'https://leetcode.com/u', 'https://leetcode.com/u/', 'http://leetcode.com', 'http://leetcode.com/'
+  ];
+  if (invalidPlaceholders.includes(lower)) return false;
+
+  if (lower.includes('leetcode.com')) {
+    const match = clean.match(/leetcode\.com\/(?:u\/)?([a-zA-Z0-9_-]+)/i);
+    if (!match || !match[1]) return false;
+    const handle = match[1].trim().toLowerCase();
+    const reserved = ['u', 'problems', 'problemset', 'explore', 'contest', 'discuss', 'tag', 'profile'];
+    if (reserved.includes(handle) || handle.length < 2) return false;
+    return true;
+  }
+
+  const rawHandle = clean.replace(/^@/, '').trim();
+  return /^[a-zA-Z0-9_-]{2,50}$/.test(rawHandle);
+}
+
+/**
+ * 🐙 Validates if a GitHub profile string or username is valid
+ */
+export function isValidGitHubProfile(val: string | null | undefined): boolean {
+  if (!val) return false;
+  const clean = val.trim();
+  if (!clean || clean.length < 2) return false;
+  
+  const lower = clean.toLowerCase();
+  const invalidPlaceholders = [
+    'na', 'n/a', 'nil', 'none', 'null', 'undefined', '-', '--', 'no', 'not available', 'not set',
+    'http://', 'https://', 'https://github.com', 'https://github.com/',
+    'http://github.com', 'http://github.com/'
+  ];
+  if (invalidPlaceholders.includes(lower)) return false;
+
+  if (lower.includes('github.com')) {
+    const match = clean.match(/github\.com\/([a-zA-Z0-9_-]+)/i);
+    if (!match || !match[1]) return false;
+    const handle = match[1].trim().toLowerCase();
+    const reserved = ['orgs', 'repositories', 'settings', 'explore', 'topics', 'trending', 'collections', 'events', 'about'];
+    if (reserved.includes(handle) || handle.length < 1) return false;
+    return true;
+  }
+
+  const rawHandle = clean.replace(/^@/, '').trim();
+  return /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/i.test(rawHandle);
+}
+
+/**
+ * ✈️ Validates if a Telegram Chat ID is a valid personal student chat ID
+ */
+export function isValidTelegramChatId(chatId: string | null | undefined): boolean {
+  if (!chatId) return false;
+  const clean = String(chatId).trim();
+  if (!clean) return false;
+  if (clean.startsWith('-')) return false; // Negative IDs denote group/supergroup/channel
+  if (clean === '0' || clean.toLowerCase() === 'null' || clean.toLowerCase() === 'undefined') return false;
+  return /^\d{5,20}$/.test(clean);
+}
+
+/**
+ * 📝 Validates if a student has completed their detailed profile
+ */
+export function isCompleteStudentProfile(s: any): boolean {
+  if (!s.profile_id) return false;
+  const hasPhone = Boolean((s.mobile_number && s.mobile_number.trim().length > 0) || (s.phone && s.phone.trim().length > 0));
+  const hasDob = Boolean(s.date_of_birth && s.date_of_birth.trim().length > 0);
+  const hasSemester = Boolean(s.semester !== null && s.semester !== undefined);
+  return hasPhone || hasDob || hasSemester;
+}
+
+/**
+ * ⚠️ Send Comprehensive Student Details Mismatch & Profile Audit Report to Telegram Group (at 8:00 AM IST)
+ */
+export async function sendGroupMismatchReport(targetChatId?: string): Promise<{ success: boolean; message: string; count?: number }> {
+  const destChatId = targetChatId || await getGroupChatId() || getAdminChatId();
+  if (!destChatId) {
+    return { success: false, message: 'No destination Telegram Chat ID configured for Mismatch Report.' };
+  }
+
+  try {
+    const studentsRes = await pool.query(`
+      SELECT 
+        u.id, 
+        u.full_name, 
+        u.register_number, 
+        u.email, 
+        u.gender, 
+        u.phone,
+        u.leetcode_url, 
+        u.github_url, 
+        u.linkedin_url,
+        u.telegram_chat_id, 
+        u.telegram_username,
+        c.name as class_name,
+        c.year,
+        sp.id as profile_id,
+        sp.mobile_number,
+        sp.date_of_birth,
+        sp.semester,
+        sp.cgpa
+      FROM users u
+      LEFT JOIN classes c ON u.class_id = c.id
+      LEFT JOIN student_profiles sp ON sp.user_id = u.id
+      WHERE u.role = 'STUDENT'
+      ORDER BY c.year ASC NULLS LAST, c.name ASC, u.register_number ASC
+    `);
+
+    const students = studentsRes.rows;
+    if (students.length === 0) {
+      return { success: true, message: 'No students found in database.', count: 0 };
+    }
+
+    const missingLeetCode: any[] = [];
+    const missingGithub: any[] = [];
+    const unlinkedTelegram: any[] = [];
+    const incompleteProfile: any[] = [];
+    const allDefaulters: any[] = [];
+
+    for (const s of students) {
+      const regKey = s.register_number ? s.register_number.toLowerCase().trim() : '';
+      const emailKey = s.email ? s.email.toLowerCase().trim() : '';
+      const dir = (regKey ? constantStudentByRegNoMap.get(regKey) : null) || 
+                  constantStudentByIdMap.get(s.id) || 
+                  (emailKey ? constantStudentByEmailMap.get(emailKey) : null);
+
+      const effectiveLeetCode = s.leetcode_url || dir?.leetcode || '';
+      const effectiveGitHub = s.github_url || dir?.github || '';
+
+      const hasLeetcode = isValidLeetCodeProfile(effectiveLeetCode);
+      const hasGithub = isValidGitHubProfile(effectiveGitHub);
+      const hasTelegram = isValidTelegramChatId(s.telegram_chat_id);
+      const hasFullProfile = isCompleteStudentProfile(s);
+
+      const issuesList: string[] = [];
+
+      if (!hasLeetcode) {
+        missingLeetCode.push({
+          ...s,
+          effectiveLeetCode,
+          issueDetail: !effectiveLeetCode ? 'LeetCode Profile Missing' : `Invalid Handle/URL: "${effectiveLeetCode}"`
+        });
+        issuesList.push('Missing LeetCode');
+      }
+      if (!hasGithub) {
+        missingGithub.push({
+          ...s,
+          effectiveGitHub,
+          issueDetail: !effectiveGitHub ? 'GitHub Handle Missing' : `Invalid Handle/URL: "${effectiveGitHub}"`
+        });
+        issuesList.push('Missing GitHub');
+      }
+      if (!hasTelegram) {
+        unlinkedTelegram.push({
+          ...s,
+          issueDetail: !s.telegram_chat_id ? 'Telegram Account Not Linked' : 'Improper Group Chat ID Linked'
+        });
+        issuesList.push('Unlinked Telegram');
+      }
+      if (!hasFullProfile) {
+        incompleteProfile.push({
+          ...s,
+          issueDetail: !s.profile_id ? 'Portal Bio & Profile Not Created' : 'Incomplete Contact / Academic Details'
+        });
+        issuesList.push('Incomplete Profile');
+      }
+
+      if (issuesList.length > 0) {
+        allDefaulters.push({
+          ...s,
+          effectiveLeetCode,
+          effectiveGitHub,
+          hasLeetcode,
+          hasGithub,
+          hasTelegram,
+          hasFullProfile,
+          issuesList,
+          issuesCount: issuesList.length,
+          issuesSummary: issuesList.join(' • ')
+        });
+      }
+    }
+
+    const totalStudents = students.length;
+    const totalWithIssues = allDefaulters.length;
+
+    // Build Telegram HTML Message
+    let html = `⚠️ <b>STUDENT PROFILE & DETAILS AUDIT REPORT</b>\n\n`;
+    html += `📅 <b>Date:</b> ${new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}\n`;
+    html += `👥 <b>Total Enrolled Students:</b> <b>${totalStudents}</b>\n`;
+    html += `🚨 <b>Students with Mismatching / Incomplete Details:</b> <b>${totalWithIssues}</b>\n\n`;
+
+    html += `📊 <b>Category Breakdown:</b>\n`;
+    html += `• 🧩 <b>Missing / Invalid LeetCode:</b> <code>${missingLeetCode.length}</code> students\n`;
+    html += `• 🐙 <b>Missing / Invalid GitHub:</b> <code>${missingGithub.length}</code> students\n`;
+    html += `• ✈️ <b>Unlinked Telegram Accounts:</b> <code>${unlinkedTelegram.length}</code> students\n`;
+    html += `• 📝 <b>Incomplete Portal Profiles:</b> <code>${incompleteProfile.length}</code> students\n\n`;
+
+    // Group issues class-wise
+    const classIssueMap: Record<string, { total: number; missingLc: number; missingGh: number; unlinkedTg: number; incProf: number; totalDefaulters: number }> = {};
+    for (const s of students) {
+      const cls = s.class_name || 'Unassigned Class';
+      if (!classIssueMap[cls]) {
+        classIssueMap[cls] = { total: 0, missingLc: 0, missingGh: 0, unlinkedTg: 0, incProf: 0, totalDefaulters: 0 };
+      }
+      classIssueMap[cls].total++;
+
+      const regKey = s.register_number ? s.register_number.toLowerCase().trim() : '';
+      const emailKey = s.email ? s.email.toLowerCase().trim() : '';
+      const dir = (regKey ? constantStudentByRegNoMap.get(regKey) : null) || 
+                  constantStudentByIdMap.get(s.id) || 
+                  (emailKey ? constantStudentByEmailMap.get(emailKey) : null);
+
+      const effectiveLeetCode = s.leetcode_url || dir?.leetcode || '';
+      const effectiveGitHub = s.github_url || dir?.github || '';
+
+      const hasLc = isValidLeetCodeProfile(effectiveLeetCode);
+      const hasGh = isValidGitHubProfile(effectiveGitHub);
+      const hasTg = isValidTelegramChatId(s.telegram_chat_id);
+      const hasProf = isCompleteStudentProfile(s);
+
+      if (!hasLc) classIssueMap[cls].missingLc++;
+      if (!hasGh) classIssueMap[cls].missingGh++;
+      if (!hasTg) classIssueMap[cls].unlinkedTg++;
+      if (!hasProf) classIssueMap[cls].incProf++;
+      if (!hasLc || !hasGh || !hasTg || !hasProf) {
+        classIssueMap[cls].totalDefaulters++;
+      }
+    }
+
+    html += `🏫 <b>Class-wise Mismatch Summary:</b>\n`;
+    Object.keys(classIssueMap).sort().forEach(cls => {
+      const st = classIssueMap[cls];
+      if (st.totalDefaulters > 0) {
+        html += `• <b>${escapeHtml(cls)}</b> (${st.total} students, <b>${st.totalDefaulters}</b> with issues):\n`;
+        html += `   🧩 LC: <b>${st.missingLc}</b> | 🐙 GH: <b>${st.missingGh}</b> | ✈️ TG: <b>${st.unlinkedTg}</b> | 📝 Prof: <b>${st.incProf}</b>\n`;
+      }
+    });
+
+    html += `\n👉 <i>Students listed with missing or mismatched details are requested to log in to the portal and complete their profile immediately!</i>\n`;
+    html += getWatermarkHtml();
+
+    const inlineKeyboard = {
+      inline_keyboard: [
+        [
+          { text: '🌐 Update Profile on Portal', url: getPortalUrl() },
+          { text: '🤖 Link Telegram Bot', url: 'https://t.me/IT_TaskManager_Alerts_bot' }
+        ]
+      ]
+    };
+
+    const msgRes = await sendTelegramMessage(destChatId, html, { reply_markup: inlineKeyboard });
+
+    // Generate Excel attachment if there are issues
+    if (totalWithIssues > 0) {
+      try {
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'IT TaskManager';
+        workbook.created = new Date();
+
+        const styleHeaderRow = (sheet: any) => {
+          const headerRow = sheet.getRow(1);
+          headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+          headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+          headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+          headerRow.height = 24;
+        };
+
+        // ── Sheet 1: All Issues Overview ────────────────────────────────
+        const overviewSheet = workbook.addWorksheet('Defaulters Overview', { views: [{ showGridLines: true }] });
+        overviewSheet.columns = [
+          { header: 'S.No', key: 'sno', width: 8 },
+          { header: 'Class', key: 'class_name', width: 14 },
+          { header: 'Register No', key: 'register_number', width: 18 },
+          { header: 'Student Name', key: 'full_name', width: 26 },
+          { header: 'Gender', key: 'gender', width: 10 },
+          { header: 'Email', key: 'email', width: 28 },
+          { header: 'Phone', key: 'phone', width: 16 },
+          { header: 'LeetCode Status', key: 'lc_status', width: 22 },
+          { header: 'GitHub Status', key: 'gh_status', width: 22 },
+          { header: 'Telegram Status', key: 'tg_status', width: 22 },
+          { header: 'Profile Status', key: 'prof_status', width: 22 },
+          { header: 'Issues Summary', key: 'issues_summary', width: 42 }
+        ];
+        styleHeaderRow(overviewSheet);
+
+        allDefaulters.forEach((s, idx) => {
+          const row = overviewSheet.addRow({
+            sno: idx + 1,
+            class_name: s.class_name || 'N/A',
+            register_number: s.register_number || 'N/A',
+            full_name: s.full_name || 'N/A',
+            gender: s.gender || 'N/A',
+            email: s.email || 'N/A',
+            phone: s.phone || s.mobile_number || 'N/A',
+            lc_status: s.hasLeetcode ? '✅ Valid' : '❌ Missing/Invalid',
+            gh_status: s.hasGithub ? '✅ Valid' : '❌ Missing/Invalid',
+            tg_status: s.hasTelegram ? '✅ Connected' : '❌ Not Linked',
+            prof_status: s.hasFullProfile ? '✅ Complete' : '❌ Incomplete',
+            issues_summary: s.issuesSummary
+          });
+          row.alignment = { vertical: 'middle' };
+        });
+
+        // Helper for specialized issue sheets
+        const addSpecializedSheet = (sheetTitle: string, list: any[], extraHeader: string, extraKey: string) => {
+          const sheet = workbook.addWorksheet(sheetTitle, { views: [{ showGridLines: true }] });
+          sheet.columns = [
+            { header: 'S.No', key: 'sno', width: 8 },
+            { header: 'Class', key: 'class_name', width: 14 },
+            { header: 'Register No', key: 'register_number', width: 18 },
+            { header: 'Student Name', key: 'full_name', width: 26 },
+            { header: 'Gender', key: 'gender', width: 10 },
+            { header: 'Email', key: 'email', width: 28 },
+            { header: extraHeader, key: extraKey, width: 34 },
+            { header: 'Issue Status', key: 'issue', width: 32 }
+          ];
+          styleHeaderRow(sheet);
+
+          list.forEach((s, idx) => {
+            const rowData: any = {
+              sno: idx + 1,
+              class_name: s.class_name || 'N/A',
+              register_number: s.register_number || 'N/A',
+              full_name: s.full_name || 'N/A',
+              gender: s.gender || 'N/A',
+              email: s.email || 'N/A',
+              issue: s.issueDetail || 'Action Required'
+            };
+            rowData[extraKey] = s[extraKey] || s.effectiveLeetCode || s.effectiveGitHub || 'N/A';
+            const row = sheet.addRow(rowData);
+            row.alignment = { vertical: 'middle' };
+          });
+        };
+
+        if (missingLeetCode.length > 0) addSpecializedSheet('Missing LeetCode', missingLeetCode, 'Recorded LeetCode Value', 'effectiveLeetCode');
+        if (missingGithub.length > 0) addSpecializedSheet('Missing GitHub', missingGithub, 'Recorded GitHub Value', 'effectiveGitHub');
+        if (unlinkedTelegram.length > 0) addSpecializedSheet('Unlinked Telegram', unlinkedTelegram, 'Telegram Username', 'telegram_username');
+        if (incompleteProfile.length > 0) addSpecializedSheet('Incomplete Profile', incompleteProfile, 'Portal Profile Status', 'issueDetail');
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const dateStr = getISTDateStr();
+        await sendTelegramDocument(
+          destChatId,
+          Buffer.from(buffer),
+          `IT_Student_Details_Mismatch_Report_${dateStr}.xlsx`,
+          `📋 Comprehensive Student Profile & Details Audit Report — ${dateStr}`
+        );
+      } catch (excelErr) {
+        console.error('[Telegram Mismatch Report] Error generating/sending Excel:', excelErr);
+      }
+    }
+
+    return { success: msgRes.ok, message: `Mismatch audit report dispatched to ${destChatId}`, count: totalWithIssues };
+  } catch (err: any) {
+    console.error('[Telegram] sendGroupMismatchReport error:', err);
+    return { success: false, message: err.message };
+  }
+}
+
+/**
+ * ⏰ Notify Group Chat about tasks with deadlines within the next 24 hours
+ */
+export async function sendGroupDeadlineAlert(targetChatId?: string): Promise<{ success: boolean; count: number; message: string }> {
+  const destChatId = targetChatId || await getGroupChatId() || getAdminChatId();
+  if (!destChatId) {
+    return { success: false, count: 0, message: 'No destination Telegram Chat ID configured.' };
+  }
+
+  try {
+    const tasksRes = await pool.query(`
+      SELECT 
+        t.id, 
+        t.title, 
+        t.category, 
+        t.deadline, 
+        u.full_name as creator_name,
+        string_agg(DISTINCT c.name, ', ') as class_names,
+        COUNT(DISTINCT tc.class_id) as class_count,
+        (
+          SELECT COUNT(DISTINCT ts.id) 
+          FROM task_submissions ts 
+          WHERE ts.task_id = t.id AND ts.status IN ('SUBMITTED', 'VERIFIED')
+        ) as submitted_count,
+        (
+          SELECT COUNT(DISTINCT usr.id)
+          FROM users usr
+          JOIN task_classes tcl ON tcl.class_id = usr.class_id
+          WHERE tcl.task_id = t.id AND usr.role = 'STUDENT'
+        ) as total_targeted
+      FROM tasks t
+      JOIN users u ON t.created_by = u.id
+      JOIN task_classes tc ON tc.task_id = t.id
+      JOIN classes c ON tc.class_id = c.id
+      WHERE t.status = 'OPEN'
+        AND t.deadline IS NOT NULL
+        AND t.deadline > CURRENT_TIMESTAMP
+        AND t.deadline <= CURRENT_TIMESTAMP + INTERVAL '24 hours'
+      GROUP BY t.id, t.title, t.category, t.deadline, u.full_name
+      ORDER BY t.deadline ASC
+    `);
+
+    if (tasksRes.rows.length === 0) {
+      return { success: true, count: 0, message: 'No tasks due within the next 24 hours.' };
+    }
+
+    const tasks = tasksRes.rows;
+    let html = `⏰ <b>UPCOMING TASK DEADLINE ALERT!</b>\n\n`;
+    html += `The following assignment(s) are closing within the next <b>24 hours</b>. Please make sure to complete and submit your proof before the deadline!\n\n`;
+
+    tasks.forEach((t, i) => {
+      const deadlineStr = new Date(t.deadline).toLocaleString('en-IN', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Kolkata'
+      });
+      const pending = Math.max(0, Number(t.total_targeted) - Number(t.submitted_count));
+
+      html += `${i + 1}. 📌 <b>${escapeHtml(t.title)}</b>\n`;
+      if (t.category) html += `   📂 <b>Category:</b> <code>${escapeHtml(t.category)}</code>\n`;
+      html += `   🏫 <b>Classes:</b> <code>${escapeHtml(t.class_names || 'All Classes')}</code>\n`;
+      html += `   ⏰ <b>Deadline:</b> <i>${deadlineStr}</i>\n`;
+      html += `   📊 <b>Submissions:</b> ${t.submitted_count}/${t.total_targeted} (${pending} pending)\n\n`;
+    });
+
+    html += `👉 <i>Log in to the portal now to review the requirements and upload your proof!</i>\n`;
+    html += getWatermarkHtml();
+
+    const keyboard = {
+      inline_keyboard: [
+        [{ text: '🌐 View & Submit Tasks on Portal', url: getPortalUrl() }]
+      ]
+    };
+
+    const res = await sendTelegramMessage(destChatId, html, { reply_markup: keyboard });
+    return {
+      success: res.ok,
+      count: tasks.length,
+      message: res.ok ? `Deadline alerts posted to group for ${tasks.length} task(s).` : (res.description || 'Failed to send')
+    };
+  } catch (err: any) {
+    console.error('[Telegram] sendGroupDeadlineAlert error:', err);
+    return { success: false, count: 0, message: err.message };
+  }
+}
+
+/**
  * 👤 1-to-1 Private Reminders with Rate-Limiting
  */
 export async function triggerPendingTaskReminders(): Promise<{
@@ -2048,7 +2697,8 @@ export async function triggerPendingTaskReminders(): Promise<{
     const portalUrl = getPortalUrl();
 
     for (const [, info] of studentTasksMap.entries()) {
-      if (!info.telegramChatId) {
+      const chatIdStr = info.telegramChatId ? String(info.telegramChatId).trim() : '';
+      if (!chatIdStr || chatIdStr.startsWith('-')) {
         unlinkedCount++;
         continue;
       }
@@ -2120,6 +2770,14 @@ export async function linkStudentTelegram(
   try {
     const rawClean = identifier.trim();
     const cleanNoSpaces = rawClean.replace(/\s+/g, '').toLowerCase();
+
+    const strChatId = String(personalChatId).trim();
+    if (strChatId.startsWith('-')) {
+      return {
+        success: false,
+        message: 'Cannot link a Telegram group or channel chat ID as a student account. Please message the bot in a private DM.'
+      };
+    }
 
     const res = await pool.query(`
       SELECT id, full_name, register_number, username, role
@@ -2250,6 +2908,10 @@ export function startTelegramPoller(): void {
               await sendTelegramMessage(cbChatId, card.html, { reply_markup: card.keyboard });
             } else if (cbData === 'cb_summary') {
               await sendGroupSummary(String(cbChatId));
+            } else if (cbData === 'cb_mismatch') {
+              await sendGroupMismatchReport(String(cbChatId));
+            } else if (cbData === 'cb_deadlines') {
+              await sendGroupDeadlineAlert(String(cbChatId));
             } else if (cbData === 'cb_task_status') {
               const card = await getFacultyTaskStatusCard();
               await sendTelegramMessage(cbChatId, card.html, { reply_markup: card.keyboard });
@@ -2377,6 +3039,7 @@ export function startTelegramPoller(): void {
             helpHtml += `• <code>/3ita</code>, <code>/3itb</code>, <code>/2ita</code>, <code>/2itb</code> - Instant class analysis report\n`;
             helpHtml += `• <code>/year3</code>, <code>/year2</code> - Year-wise department analysis\n`;
             helpHtml += `• <code>/tasks</code> - View pending assignments\n`;
+            helpHtml += `• <code>/deadlines</code> (or <code>/due</code>) - View tasks ending in the next 24 hours\n`;
             helpHtml += `• <code>/leetcode</code> (or <code>/lc</code>) - Daily LeetCode progress & targets\n`;
             helpHtml += `• <code>/github</code> (or <code>/gh</code>) - Daily GitHub commits & targets\n`;
             helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
@@ -2387,6 +3050,7 @@ export function startTelegramPoller(): void {
             if (user?.role === 'SUPREME_ADMIN' || user?.role === 'STAFF' || user?.role === 'COORDINATOR' || user?.role === 'HOD' || user?.role === 'CLASS_ADVISOR') {
               helpHtml += `\n<b>Staff / Coordinator Commands:</b>\n`;
               helpHtml += `• <code>/defaulters [class]</code> - Target defaulters report\n`;
+              helpHtml += `• <code>/mismatch</code> (or <code>/audit</code>) - Student profile mismatch audit\n`;
               helpHtml += `• <code>/broadcast &lt;msg&gt;</code> - Send announcement to all students\n`;
               helpHtml += `• <code>/summary</code> - Class daily brief\n`;
             }
@@ -2630,15 +3294,15 @@ export function startTelegramPoller(): void {
             }
 
             const studentsRes = await pool.query(`SELECT telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL AND role = 'STUDENT'`);
+            const rawChatIds = studentsRes.rows.map(s => s.telegram_chat_id ? String(s.telegram_chat_id).trim() : '').filter(Boolean);
+            const studentChatIds = Array.from(new Set(rawChatIds)).filter(cid => !cid.startsWith('-'));
             let count = 0;
             const broadcastHtml = `📢 <b>DEPARTMENT ANNOUNCEMENT</b>\n\n${escapeHtml(broadcastText)}\n\n— <i>Sent by ${escapeHtml(user.full_name)} (${user.role})</i>${getWatermarkHtml()}`;
 
-            for (const s of studentsRes.rows) {
-              if (s.telegram_chat_id) {
-                await sendTelegramMessage(s.telegram_chat_id, broadcastHtml);
-                count++;
-                await new Promise(r => setTimeout(r, 40));
-              }
+            for (const cid of studentChatIds) {
+              await sendTelegramMessage(cid, broadcastHtml);
+              count++;
+              await new Promise(r => setTimeout(r, 40));
             }
 
             await sendTelegramMessage(chatId, `✅ <b>Broadcast sent to ${count} student(s) successfully!</b>\n${getWatermarkHtml()}`);
@@ -2698,6 +3362,26 @@ export function startTelegramPoller(): void {
             const res = await sendGroupSummary(String(chatId));
             if (!res.success) {
               await sendTelegramMessage(chatId, `⚠️ ${escapeHtml(res.message)}\n${getWatermarkHtml()}`);
+            }
+            return;
+          }
+
+          // Command: /mismatch or /audit
+          if (text.startsWith('/mismatch') || text.startsWith('/audit')) {
+            const res = await sendGroupMismatchReport(String(chatId));
+            if (!res.success) {
+              await sendTelegramMessage(chatId, `⚠️ ${escapeHtml(res.message)}\n${getWatermarkHtml()}`);
+            }
+            return;
+          }
+
+          // Command: /deadlines or /due
+          if (text.startsWith('/deadlines') || text.startsWith('/due')) {
+            const res = await sendGroupDeadlineAlert(String(chatId));
+            if (!res.success && res.message !== 'No tasks due within the next 24 hours.') {
+              await sendTelegramMessage(chatId, `⚠️ ${escapeHtml(res.message)}\n${getWatermarkHtml()}`);
+            } else if (res.count === 0) {
+              await sendTelegramMessage(chatId, `✅ <b>No assignments closing within the next 24 hours!</b>\n${getWatermarkHtml()}`);
             }
             return;
           }

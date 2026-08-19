@@ -102,6 +102,9 @@ export async function initDB() {
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_username VARCHAR(100);`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_linked_at TIMESTAMP;`);
 
+    // Clean up any improperly saved Telegram group IDs from individual user accounts
+    await client.query(`UPDATE users SET telegram_chat_id = NULL, telegram_username = NULL, telegram_linked_at = NULL WHERE telegram_chat_id LIKE '-%';`);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS system_settings (
         key VARCHAR(100) PRIMARY KEY,

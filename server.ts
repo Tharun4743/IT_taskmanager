@@ -29,6 +29,8 @@ import { initSentry } from './sentryService.js';
 import {
   startTelegramPoller,
   sendGroupSummary,
+  sendGroupMismatchReport,
+  sendGroupDeadlineAlert,
   triggerPendingTaskReminders,
   getTelegramStats,
   setGroupChatId,
@@ -393,7 +395,7 @@ async function startServer() {
       const hours = istDate.getUTCHours();
       const minutes = istDate.getUTCMinutes();
  
-      // 8:00 AM IST (08:00) -> Morning Group Summary (strictly once per day)
+      // 8:00 AM IST (08:00) -> Morning Group Summary, Mismatch Audit Report & Deadline Alerts (strictly once per day)
       if (hours === 8 && minutes >= 0 && minutes <= 10 && lastGroupSummaryMorningDate !== todayStr) {
         const checkRes = await pool.query("SELECT value FROM system_settings WHERE key = 'telegram_last_group_summary_morning_date' LIMIT 1").catch(() => ({ rows: [] }));
         const alreadySent = checkRes.rows[0]?.value;
@@ -409,6 +411,13 @@ async function startServer() {
           const prevDayStr = prevIstDate.toISOString().split('T')[0];
           console.log(`[Telegram Scheduler] 📊 Running automated 8:00 AM IST daily group summary (for previous day: ${prevDayStr})...`);
           sendGroupSummary(undefined, prevDayStr).catch(err => console.error('[Telegram Scheduler] Error sending morning group summary:', err));
+
+          // Send 8:00 AM IST Mismatching Details & Profile Audit Report
+          console.log(`[Telegram Scheduler] ⚠️ Running automated 8:00 AM IST student details mismatch & profile audit report...`);
+          sendGroupMismatchReport().catch(err => console.error('[Telegram Scheduler] Error sending morning mismatch report:', err));
+
+          // Send 8:00 AM IST 24-Hour Upcoming Deadline Alert to Group
+          sendGroupDeadlineAlert().catch(err => console.error('[Telegram Scheduler] Error sending morning deadline alert:', err));
         }
       }
 
@@ -667,7 +676,21 @@ async function startServer() {
     res.json(result);
   }));
 
-  // 4. Trigger Instant 1-to-1 Private Reminders to Pending Students
+  // 4. Trigger Instant Student Details Mismatch & Profile Audit Report
+  app.post('/api/telegram/send-mismatch-report', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), asyncHandler(async (req: any, res: Response) => {
+    const { targetChatId } = req.body;
+    const result = await sendGroupMismatchReport(targetChatId);
+    res.json(result);
+  }));
+
+  // 5. Trigger Instant 24-Hour Upcoming Deadline Alert to Group
+  app.post('/api/telegram/send-deadline-alert', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), asyncHandler(async (req: any, res: Response) => {
+    const { targetChatId } = req.body;
+    const result = await sendGroupDeadlineAlert(targetChatId);
+    res.json(result);
+  }));
+
+  // 6. Trigger Instant 1-to-1 Private Reminders to Pending Students
   app.post('/api/telegram/send-reminders', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), asyncHandler(async (req: any, res: Response) => {
     const result = await triggerPendingTaskReminders();
     res.json(result);
@@ -703,18 +726,23 @@ async function startServer() {
       return res.status(400).json({ error: 'Telegram Chat ID is required.' });
     }
 
+    const strChatId = String(chatId).trim();
+    if (strChatId.startsWith('-')) {
+      return res.status(400).json({ error: 'Cannot link a group or channel chat ID to an individual student account. Please use your personal Telegram Chat ID.' });
+    }
+
     const userRes = await pool.query('SELECT id, full_name, register_number, username FROM users WHERE id = $1 LIMIT 1', [req.user.id]);
     const user = userRes.rows[0];
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const linkRes = await linkStudentTelegram(user.register_number || user.username, chatId, telegramUsername);
+    const linkRes = await linkStudentTelegram(user.register_number || user.username, strChatId, telegramUsername);
     if (!linkRes.success) {
       return res.status(400).json({ error: linkRes.message });
     }
 
     // Send a confirmation ping to the linked Telegram Chat
     const confirmMsg = `🎉 <b>TELEGRAM ACCOUNT LINKED SUCCESSFULLY!</b>\n\nHello <b>${user.full_name}</b> (<code>${user.register_number || user.username}</code>),\nYour Telegram account has been linked to the IT TaskManager portal!\nYou will now receive instant task updates, verification notices, and deadline alerts directly here. 🚀`;
-    sendTelegramMessage(chatId, confirmMsg).catch(() => {});
+    sendTelegramMessage(strChatId, confirmMsg).catch(() => {});
 
     res.json({ success: true, message: 'Telegram account linked successfully!', studentName: user.full_name });
   }));
@@ -747,7 +775,8 @@ async function startServer() {
     }
 
     const studentsRes = await pool.query(query, params);
-    const chatIds = studentsRes.rows.map(r => r.telegram_chat_id).filter(Boolean);
+    const rawChatIds = studentsRes.rows.map(r => r.telegram_chat_id ? String(r.telegram_chat_id).trim() : '').filter(Boolean);
+    const chatIds = Array.from(new Set(rawChatIds)).filter(cid => !cid.startsWith('-'));
 
     const broadcastHtml = `📢 <b>DEPARTMENT ANNOUNCEMENT</b>\n\n${message.trim()}\n\n— <i>Sent by ${req.user.username} (${req.user.role})</i>`;
 

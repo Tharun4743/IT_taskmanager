@@ -6391,7 +6391,7 @@ const githubTop3 = useMemo(() => {
     };
 
     const isStudentResponded = (s: any) => {
-      const studentSubs = submissions.filter(sub => sub.user_id?.toString() === s.id?.toString());
+      const studentSubs = submissions.filter(sub => sub.user_id?.toString() === s.id?.toString() && sub.status !== 'NOT_PARTICIPATING');
       if (analyzerTaskFilter) {
         return studentSubs.some(sub => sub.task_id?.toString() === analyzerTaskFilter);
       }
@@ -6564,7 +6564,7 @@ const githubTop3 = useMemo(() => {
             <div>
               <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Responded Students</p>
               <p className="text-2xl font-black text-indigo-700 mt-0.5">{respondedCount}</p>
-              <span className="text-[9px] font-semibold text-indigo-500">Interested or Skipped</span>
+              <span className="text-[9px] font-semibold text-indigo-500">Interested</span>
             </div>
             <div className="text-right text-xs font-semibold space-y-0.5">
               <p className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md flex items-center justify-end gap-1"><User size={12} /> Boys: {boysResponded}</p>
@@ -8873,7 +8873,7 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                       const respondedCount = new Set(submissions.filter(s => {
                         const std = users.find(u => u.id === s.user_id);
                         const cid = s.class_id || std?.class_id;
-                        return activeClassId ? String(cid) === String(activeClassId) : true;
+                        return s.status !== 'NOT_PARTICIPATING' && (activeClassId ? String(cid) === String(activeClassId) : true);
                       }).map(s => s.user_id)).size;
                       const pendingCount = new Set(submissions.filter(s => {
                         const std = users.find(u => u.id === s.user_id);
@@ -8906,7 +8906,7 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                           const respondedCount = new Set(submissions.filter(s => {
                             const std = users.find(u => u.id === s.user_id);
                             const cid = s.class_id || std?.class_id;
-                            return activeClassId ? String(cid) === String(activeClassId) : true;
+                            return s.status !== 'NOT_PARTICIPATING' && (activeClassId ? String(cid) === String(activeClassId) : true);
                           }).map(s => s.user_id)).size;
                           const pendingCount = new Set(submissions.filter(s => {
                             const std = users.find(u => u.id === s.user_id);
