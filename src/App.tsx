@@ -4083,6 +4083,7 @@ const githubTop3 = useMemo(() => {
   const [userRoleFilter, setUserRoleFilter] = useState('');
   const [userDeptFilter, setUserDeptFilter] = useState('');
   const [userYearFilter, setUserYearFilter] = useState('');
+  const [userClassFilter, setUserClassFilter] = useState('');
   // Telegram Link Prompt State
   const [showTelegramLinkModal, setShowTelegramLinkModal] = useState(false);
   const [telegramChatIdInput, setTelegramChatIdInput] = useState('');
