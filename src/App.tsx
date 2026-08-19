@@ -468,7 +468,7 @@ const Button = ({ className, variant = 'primary', ...props }: React.ButtonHTMLAt
     primary: 'bg-black text-white hover:bg-zinc-800 focus:ring-black/10',
     secondary: 'bg-zinc-100 text-zinc-900 hover:bg-zinc-200 focus:ring-zinc-200/50',
     danger: 'bg-red-500 text-white hover:bg-red-600 focus:ring-red-500/20',
-    ghost: 'hover:bg-zinc-100 text-zinc-600 focus:ring-zinc-150',
+    ghost: 'hover:bg-zinc-100 text-zinc-600 focus:ring-zinc-200/50',
     success: 'bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-600/20'
   };
   return (
@@ -7478,7 +7478,7 @@ const githubTop3 = useMemo(() => {
                     onChange={(e) => setLeetcodeStatusFilter(e.target.value)}
                     className="text-xs font-bold text-zinc-700 bg-transparent border-none outline-none p-0 pr-6 cursor-pointer"
                   >
-<option value="ALL">All Statuses</option>
+                    <option value="ALL">All Statuses</option>
                     <option value="COMPLETED">Completed</option>
                     <option value="INCOMPLETE">Incomplete</option>
                     <option value="DATA_UNAVAILABLE">No Sync Data</option>
@@ -8838,7 +8838,7 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
         </AnimatePresence>
 
         {/* Sidebar - Desktop */}
-        <aside className="w-64 bg-white border-r border-zinc-200 flex flex-col shrink-0 hidden md:flex h-full">
+        <aside className="w-64 bg-white border-r border-zinc-200 shrink-0 hidden md:flex md:flex-col h-full">
           {renderSidebarContent()}
         </aside>
 
@@ -8945,14 +8945,12 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                             {isTeamInv && myInvitations.length > 0 && (
                               <div className="flex items-center gap-2 mt-2 pt-2 border-t border-blue-200/50">
                                 <Button
-                                  size="sm"
                                   onClick={(e) => { e.stopPropagation(); handleRespondInvitation((matchingInv || myInvitations[0]).id, 'ACCEPT'); }}
                                   className="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold px-3 py-1 h-auto rounded-lg shadow-sm"
                                 >
                                   Accept
                                 </Button>
                                 <Button
-                                  size="sm"
                                   variant="ghost"
                                   onClick={(e) => { e.stopPropagation(); handleRespondInvitation((matchingInv || myInvitations[0]).id, 'DECLINE'); }}
                                   className="bg-zinc-200 hover:bg-zinc-300 text-zinc-800 text-[11px] font-bold px-3 py-1 h-auto rounded-lg"
