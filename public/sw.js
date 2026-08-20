@@ -12,12 +12,13 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('push', (event) => {
   const origin = self.location.origin || '';
   const defaultIcon = origin ? `${origin}/logo.png` : '/logo.png';
+  const defaultBadge = origin ? `${origin}/badge.png` : '/badge.png';
 
   let notificationData = {
     title: 'VSBEC IT TaskManager',
     body: 'You have a new update in IT TaskManager!',
     icon: defaultIcon,
-    badge: defaultIcon,
+    badge: defaultBadge,
     url: '/',
     tag: `vsbec-${Date.now()}`
   };
@@ -42,6 +43,7 @@ self.addEventListener('push', (event) => {
   const notificationOptions = {
     body: notificationData.body,
     icon: notificationData.icon || defaultIcon,
+    badge: notificationData.badge || defaultBadge,
     tag: notificationData.tag || `taskmanager-${Date.now()}`,
     renotify: true,
     requireInteraction: true,
