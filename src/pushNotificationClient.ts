@@ -98,14 +98,20 @@ export async function subscribeToPushNotifications(
 
     const applicationServerKey = urlBase64ToUint8Array(publicKey);
 
-    // 4. Create Push Subscription with Browser PushManager
+    // 4. Create Push Subscription with Browser PushManager using current VAPID key
     let subscription = await registration.pushManager.getSubscription();
-    if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: applicationServerKey as any
-      });
+    if (subscription) {
+      try {
+        await subscription.unsubscribe();
+      } catch (e) {
+        console.warn('[WebPush] Old subscription unsubscribe warning:', e);
+      }
     }
+
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: applicationServerKey as any
+    });
 
     // 5. Send Subscription to backend
     const subRes = await fetch(`${apiUrl}/api/push/subscribe`, {
