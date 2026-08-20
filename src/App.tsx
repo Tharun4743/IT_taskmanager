@@ -8254,61 +8254,27 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
               </div>
             </div>
 
-            {/* Step-by-Step Instructions */}
+            {/* 1-Click Instructions */}
             <div className="p-5 rounded-2xl bg-gradient-to-br from-sky-50 to-indigo-50/60 border border-sky-200 mb-5 space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black text-sky-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <Send size={14} className="text-sky-600" /> Connect in 2 Easy Steps
+                  <Send size={14} className="text-sky-600" /> 1-Click Instant Connect
                 </span>
                 <span className="bg-emerald-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
                   INSTANT
                 </span>
               </div>
 
-              {/* Step 1 */}
-              <div className="flex items-start gap-3 bg-white p-3.5 rounded-xl border border-sky-100 shadow-2xs">
-                <div className="w-6 h-6 rounded-full bg-sky-500 text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
-                  1
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-zinc-900 mb-1">Direct 1-Click Bot Link (Pre-fills command):</p>
-                  <a
-                    href={directBotUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full py-2.5 px-3 bg-sky-500 hover:bg-sky-600 active:scale-98 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all text-center"
-                  >
-                    <Send size={14} /> Open Bot & Send {linkCommand}
-                  </a>
-                </div>
-              </div>
-
-              {/* Step 2 */}
-              <div className="flex items-start gap-3 bg-white p-3.5 rounded-xl border border-sky-100 shadow-2xs">
-                <div className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
-                  2
-                </div>
-                <div className="flex-1 min-w-0 space-y-2">
-                  <p className="text-xs font-bold text-zinc-900">
-                    Send your Register Number to the bot:
-                  </p>
-                  <div className="flex items-center gap-2 bg-zinc-900 text-white p-2.5 rounded-xl font-mono text-xs justify-between">
-                    <span className="font-black text-amber-300 select-all">{linkCommand}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(linkCommand);
-                        addToast(`Copied "${linkCommand}" to clipboard!`, 'success');
-                      }}
-                      className="px-2.5 py-1 bg-sky-500 hover:bg-sky-600 text-white rounded-lg text-[11px] font-bold transition-all shrink-0 active:scale-95 shadow-sm"
-                    >
-                      Copy Command 📋
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-zinc-500 italic">
-                    Tap <b>Copy Command</b> and paste it into the Telegram chat with the bot.
-                  </p>
-                </div>
+              <div className="bg-white p-3.5 rounded-xl border border-sky-100 shadow-2xs space-y-2">
+                <p className="text-xs font-bold text-zinc-900">Direct 1-Click Bot Link (Pre-fills command):</p>
+                <a
+                  href={directBotUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full py-2.5 px-3 bg-sky-500 hover:bg-sky-600 active:scale-98 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all text-center"
+                >
+                  <Send size={14} /> Open Bot & Send {linkCommand}
+                </a>
               </div>
             </div>
 
