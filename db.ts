@@ -185,6 +185,22 @@ export async function initDB() {
       );
     `);
 
+    // Web Push Subscriptions for Mobile / PWA Lock-screen Notifications
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+        endpoint TEXT NOT NULL,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        user_agent TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT unique_user_endpoint UNIQUE (user_id, endpoint)
+      );
+      CREATE INDEX IF NOT EXISTS idx_push_subs_user_id ON push_subscriptions(user_id);
+    `);
+
     // Team Tasks Feature Tables
     await client.query(`
       CREATE TABLE IF NOT EXISTS teams (

@@ -2,6 +2,12 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { registerServiceWorker } from './pushNotificationClient.ts';
+
+// Automatically register Service Worker for PWA installation & Web Push
+if (typeof window !== 'undefined') {
+  registerServiceWorker();
+}
 
 const mountApp = () => {
   let rootElement = document.getElementById('root');
@@ -23,3 +29,4 @@ if (document.readyState === 'loading') {
 } else {
   mountApp();
 }
+

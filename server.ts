@@ -40,6 +40,16 @@ import {
   notifySubmissionBatchVerified,
   linkStudentTelegram
 } from './telegramService.js';
+import {
+  initPushNotifications,
+  getVapidPublicKey,
+  savePushSubscription,
+  removePushSubscription,
+  sendPushToUser,
+  sendPushToUsers,
+  sendPushToClasses,
+  sendPushToAll
+} from './pushNotificationService.js';
 
 function isValidStrictUrl(urlString: string | null | undefined): boolean {
   if (!urlString) return true;
@@ -361,6 +371,9 @@ async function startServer() {
 
   // Initialize Sentry Production Error Tracking
   initSentry();
+
+  // Initialize Web Push VAPID Notification Service
+  await initPushNotifications().catch(err => console.error('[WebPush] Startup init warning:', err));
 
   // Trigger initial 7-day screenshot cleanup and schedule daily background execution (every 24 hours)
   cleanupOnlyTaskScreenshots().catch(err => console.error('[ImageCleanup] Startup cleanup warning:', err));
@@ -706,6 +719,46 @@ async function startServer() {
       res.json({ success: true, message: 'Test message sent successfully!' });
     } else {
       res.status(500).json({ error: result.description || 'Failed to send test message via Telegram API' });
+    }
+  }));
+
+  // ── Web Push Notification Endpoints (PWA / Mobile / Lock Screen) ──────────
+  app.get('/api/push/public-key', (req: Request, res: Response) => {
+    const publicKey = getVapidPublicKey();
+    res.json({ publicKey });
+  });
+
+  app.post('/api/push/subscribe', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const { subscription, userAgent } = req.body;
+    if (!subscription || !subscription.endpoint || !subscription.keys) {
+      return res.status(400).json({ error: 'Valid PushSubscription payload required' });
+    }
+    await savePushSubscription(req.user.id, subscription, userAgent);
+    res.json({ success: true, message: 'Push subscription registered successfully' });
+  }));
+
+  app.post('/api/push/unsubscribe', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const { endpoint } = req.body;
+    if (endpoint) {
+      await removePushSubscription(req.user.id, endpoint);
+    }
+    res.json({ success: true, message: 'Push subscription removed' });
+  }));
+
+  app.post('/api/push/test', authenticate, asyncHandler(async (req: any, res: Response) => {
+    const result = await sendPushToUser(req.user.id, {
+      title: '🔔 VSBEC IT TaskManager',
+      body: `✅ Push notifications are working perfectly on your device!\nTime: ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}`,
+      url: '/',
+      tag: 'test-push'
+    });
+    if (result.sent > 0) {
+      res.json({ success: true, message: `Test push notification delivered to ${result.sent} device(s)!` });
+    } else {
+      res.json({
+        success: false,
+        message: 'No active push subscriptions found for your account on this device. Please tap "Enable Lock Screen Notifications" above first.'
+      });
     }
   }));
 
@@ -1911,6 +1964,15 @@ async function startServer() {
         deadline: t.deadline,
         creator_name: dbUser.full_name
       }, clsIds).catch(err => console.error('[Telegram Notify Task Error]:', err));
+
+      // Dispatch real-time Web Push notification to students' mobile/desktop lock-screens
+      const pushTitle = `📌 New Task: ${t.title}`;
+      const pushBody = `Posted by ${dbUser.full_name || 'Faculty'}. Category: ${t.category || 'General'}`;
+      if (clsIds.length > 0) {
+        sendPushToClasses(clsIds, { title: pushTitle, body: pushBody, url: '/' }).catch(e => console.error('[Push Task Error]:', e));
+      } else {
+        sendPushToAll({ title: pushTitle, body: pushBody, url: '/' }).catch(e => console.error('[Push Task Error]:', e));
+      }
 
       res.json({
         id: t.id,
@@ -3426,6 +3488,21 @@ async function startServer() {
     `, [note, submission_ids]);
 
     notifySubmissionBatchVerified(submission_ids).catch(err => console.error('[Telegram Batch Verify Error]:', err));
+    
+    // Dispatch Web Push notification to verified students
+    pool.query('SELECT DISTINCT user_id FROM task_submissions WHERE id = ANY($1)', [submission_ids])
+      .then(r => {
+        const uIds = r.rows.map(x => x.user_id);
+        if (uIds.length > 0) {
+          sendPushToUsers(uIds, {
+            title: '✅ Tasks Verified!',
+            body: `Your submissions have been approved by ${req.user.full_name || 'Faculty'}.`,
+            url: '/'
+          });
+        }
+      })
+      .catch(e => console.error('[Push Batch Verify Error]:', e));
+
     invalidateApiCache('tasks_');
     res.json({ success: true, count: submission_ids.length });
   });
@@ -3528,6 +3605,15 @@ async function startServer() {
     await pool.query('INSERT INTO notifications (user_id, message, type) VALUES ($1, $2, $3)', [sub.user_id, message, status]);
 
     notifySubmissionVerifiedOrRejected(req.params.id, status, status === 'VERIFIED' ? verification_note : rejection_reason).catch(err => console.error('[Telegram Notify Verify Error]:', err));
+
+    // Dispatch real-time Web Push notification to student's phone/desktop
+    sendPushToUser(sub.user_id, {
+      title: status === 'VERIFIED' ? '✅ Task Verified!' : '❌ Submission Rejected',
+      body: status === 'VERIFIED'
+        ? `Your submission for "${taskTitle}" has been approved.${verification_note ? ` Note: ${verification_note}` : ''}`
+        : `Your submission for "${taskTitle}" was rejected. Reason: ${rejection_reason || 'Please review and resubmit.'}`,
+      url: '/'
+    }).catch(e => console.error('[Push Verify Error]:', e));
     invalidateApiCache('tasks_');
 
     res.json({ success: true });
