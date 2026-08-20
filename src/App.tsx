@@ -9121,18 +9121,13 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
               )}
               <div className="relative group">
                 <button
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-zinc-200 hover:bg-zinc-50 hover:border-zinc-300 text-zinc-700 transition-all relative shadow-2xs bg-white"
+                  className="p-2.5 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100/80 rounded-xl transition-all relative"
                   onClick={markNotificationsRead}
                   title="Notifications"
                 >
-                  <div className="w-5 h-5 rounded-md bg-white flex items-center justify-center shrink-0">
-                    <img src="/logo.png" alt="VSBEC Logo" className="w-full h-full object-contain" />
-                  </div>
-                  <Bell size={16} className="text-zinc-600" />
+                  <Bell size={20} />
                   {notifications.filter(n => !n.is_read).length > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
-                      {notifications.filter(n => !n.is_read).length}
-                    </span>
+                    <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white" />
                   )}
                 </button>
                 <div className="absolute right-0 mt-2 w-80 bg-white border border-zinc-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-4">
