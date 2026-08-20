@@ -2959,8 +2959,8 @@ function SettingsView({
         <Card className="p-6 bg-white border-zinc-200 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-zinc-100">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/20">
-                <Smartphone size={20} />
+              <div className="w-11 h-11 rounded-2xl bg-white flex items-center justify-center border border-zinc-200 shadow-sm p-1.5 shrink-0">
+                <img src="/logo.png" alt="VSBEC IT Logo" className="w-full h-full object-contain" />
               </div>
               <div>
                 <h3 className="text-base font-black text-zinc-900 flex items-center gap-2">
@@ -9124,26 +9124,29 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                         ) || myInvitations[0];
                         const isTeamInv = n.type === 'TEAM_INVITATION' || n.message.toLowerCase().includes('invited');
                         return (
-                          <div key={n.id} className={cn("p-3 rounded-lg text-xs", n.is_read ? "bg-zinc-50" : "bg-blue-50 border border-blue-100")}>
-                            <p className="text-zinc-900 mb-1 font-medium">{n.message}</p>
-                            <p className="text-[10px] text-zinc-400 mb-2">{new Date(n.created_at).toLocaleString()}</p>
-                            {isTeamInv && myInvitations.length > 0 && (
-                              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-blue-200/50">
-                                <Button
-                                  onClick={(e) => { e.stopPropagation(); handleRespondInvitation((matchingInv || myInvitations[0]).id, 'ACCEPT'); }}
-                                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold px-3 py-1 h-auto rounded-lg shadow-sm"
-                                >
-                                  Accept
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  onClick={(e) => { e.stopPropagation(); handleRespondInvitation((matchingInv || myInvitations[0]).id, 'DECLINE'); }}
-                                  className="bg-zinc-200 hover:bg-zinc-300 text-zinc-800 text-[11px] font-bold px-3 py-1 h-auto rounded-lg"
-                                >
-                                  Decline
-                                </Button>
-                              </div>
-                            )}
+                          <div key={n.id} className={cn("p-3 rounded-xl text-xs flex items-start gap-3 transition-colors", n.is_read ? "bg-zinc-50" : "bg-indigo-50/70 border border-indigo-100")}>
+                            <img src="/logo.png" alt="VSBEC IT" className="w-8 h-8 rounded-lg object-contain bg-white p-1 border border-zinc-200 shrink-0 shadow-xs mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-zinc-900 mb-1 font-semibold leading-snug">{n.message}</p>
+                              <p className="text-[10px] text-zinc-400 font-medium">{new Date(n.created_at).toLocaleString()}</p>
+                              {isTeamInv && myInvitations.length > 0 && (
+                                <div className="flex items-center gap-2 mt-2 pt-2 border-t border-indigo-200/50">
+                                  <Button
+                                    onClick={(e) => { e.stopPropagation(); handleRespondInvitation((matchingInv || myInvitations[0]).id, 'ACCEPT'); }}
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold px-3 py-1 h-auto rounded-lg shadow-sm"
+                                  >
+                                    Accept
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    onClick={(e) => { e.stopPropagation(); handleRespondInvitation((matchingInv || myInvitations[0]).id, 'DECLINE'); }}
+                                    className="bg-zinc-200 hover:bg-zinc-300 text-zinc-800 text-[11px] font-bold px-3 py-1 h-auto rounded-lg"
+                                  >
+                                    Decline
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         );
                       })
