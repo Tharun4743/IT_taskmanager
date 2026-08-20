@@ -10,39 +10,47 @@ self.addEventListener('activate', (event) => {
 
 // ── Handle Push Notifications from Google FCM / Apple APNs ──────────────────
 self.addEventListener('push', (event) => {
+  const origin = self.location.origin || '';
+  const defaultIcon = origin ? `${origin}/logo.png` : '/logo.png';
+
   let notificationData = {
     title: 'VSBEC IT TaskManager',
     body: 'You have a new update in IT TaskManager!',
-    icon: '/logo.png',
-    badge: '/logo.png',
+    icon: defaultIcon,
+    badge: defaultIcon,
     url: '/',
-    tag: 'vsbec-it-task-update'
+    tag: `vsbec-${Date.now()}`
   };
 
   if (event.data) {
     try {
       const parsed = event.data.json();
       notificationData = { ...notificationData, ...parsed };
+      if (notificationData.icon && !notificationData.icon.startsWith('http')) {
+        notificationData.icon = `${origin}${notificationData.icon.startsWith('/') ? '' : '/'}${notificationData.icon}`;
+      }
+      if (notificationData.badge && !notificationData.badge.startsWith('http')) {
+        notificationData.badge = `${origin}${notificationData.badge.startsWith('/') ? '' : '/'}${notificationData.badge}`;
+      }
     } catch (e) {
       notificationData.body = event.data.text() || notificationData.body;
     }
   }
 
+  console.log('[ServiceWorker] 🔔 Received Push Notification:', notificationData.title, notificationData.body);
+
   const notificationOptions = {
     body: notificationData.body,
-    icon: notificationData.icon || '/logo.png',
-    badge: notificationData.badge || '/logo.png',
-    tag: notificationData.tag || 'taskmanager-alert',
+    icon: notificationData.icon || defaultIcon,
+    badge: notificationData.badge || defaultIcon,
+    tag: notificationData.tag || `taskmanager-${Date.now()}`,
     renotify: true,
-    requireInteraction: false,
+    requireInteraction: true,
     vibrate: [200, 100, 200],
     data: {
       url: notificationData.url || '/',
       timestamp: Date.now()
-    },
-    actions: [
-      { action: 'open', title: '📱 Open App' }
-    ]
+    }
   };
 
   event.waitUntil(

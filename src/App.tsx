@@ -2781,6 +2781,24 @@ function SettingsView({
   const handleSendTestPush = async () => {
     setPushTestLoading(true);
     try {
+      // Show immediate notification on laptop/desktop via active Service Worker
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          const reg = await navigator.serviceWorker.ready;
+          if (reg && reg.showNotification) {
+            reg.showNotification('🔔 VSBEC IT TaskManager', {
+              body: '✅ Desktop notification test succeeded on this laptop!',
+              icon: `${window.location.origin}/logo.png`,
+              badge: `${window.location.origin}/logo.png`,
+              tag: `test-local-${Date.now()}`,
+              requireInteraction: true
+            });
+          }
+        } catch (localErr) {
+          console.warn('[Push] Local notification warning:', localErr);
+        }
+      }
+
       const res = await sendTestPushNotification(token, API_URL);
       if (res.success) {
         addToast(res.message, 'success');
