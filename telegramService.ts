@@ -512,7 +512,6 @@ export async function registerBotCommandsMenu(): Promise<void> {
       { command: 'leetcode', description: 'Check LeetCode solved count & targets' },
       { command: 'github', description: 'Check GitHub commits & targets' },
       { command: 'stats', description: 'Your overall performance scorecard' },
-      { command: 'mismatch', description: 'Student profile mismatch audit (Staff)' },
       { command: 'defaulters', description: 'List students with pending targets (Staff)' },
       { command: 'status', description: 'Check linked student account' },
       { command: 'link', description: 'Connect account (/link <reg_no>)' },
@@ -547,14 +546,11 @@ export function getInteractiveMenuKeyboard(role?: string) {
           { text: '⚠️ Defaulters', callback_data: 'cb_defaulters' }
         ],
         [
-          { text: '📑 Mismatch Audit', callback_data: 'cb_mismatch' },
-          { text: '⏰ 24h Deadlines', callback_data: 'cb_deadlines' }
-        ],
-        [
-          { text: '🔎 Student Search', callback_data: 'cb_search_help' },
+          { text: '⏰ 24h Deadlines', callback_data: 'cb_deadlines' },
           { text: '📋 Task Status', callback_data: 'cb_task_status' }
         ],
         [
+          { text: '🔎 Student Search', callback_data: 'cb_search_help' },
           { text: '🌐 Open Portal', url: portalUrl }
         ]
       ]
@@ -2168,375 +2164,7 @@ export async function sendGroupSummary(targetChatId?: string, dateOverride?: str
   }
 }
 
-/**
- * 🧩 Validates if a LeetCode profile string or username is valid
- */
-export function isValidLeetCodeProfile(val: string | null | undefined): boolean {
-  if (!val) return false;
-  const clean = val.trim();
-  if (!clean || clean.length < 2) return false;
-  
-  const lower = clean.toLowerCase();
-  const invalidPlaceholders = [
-    'na', 'n/a', 'nil', 'none', 'null', 'undefined', '-', '--', 'no', 'not available', 'not set',
-    'http://', 'https://', 'https://leetcode.com', 'https://leetcode.com/',
-    'https://leetcode.com/u', 'https://leetcode.com/u/', 'http://leetcode.com', 'http://leetcode.com/'
-  ];
-  if (invalidPlaceholders.includes(lower)) return false;
 
-  if (lower.includes('leetcode.com')) {
-    const match = clean.match(/leetcode\.com\/(?:u\/)?([a-zA-Z0-9_-]+)/i);
-    if (!match || !match[1]) return false;
-    const handle = match[1].trim().toLowerCase();
-    const reserved = ['u', 'problems', 'problemset', 'explore', 'contest', 'discuss', 'tag', 'profile'];
-    if (reserved.includes(handle) || handle.length < 2) return false;
-    return true;
-  }
-
-  const rawHandle = clean.replace(/^@/, '').trim();
-  return /^[a-zA-Z0-9_-]{2,50}$/.test(rawHandle);
-}
-
-/**
- * 🐙 Validates if a GitHub profile string or username is valid
- */
-export function isValidGitHubProfile(val: string | null | undefined): boolean {
-  if (!val) return false;
-  const clean = val.trim();
-  if (!clean || clean.length < 2) return false;
-  
-  const lower = clean.toLowerCase();
-  const invalidPlaceholders = [
-    'na', 'n/a', 'nil', 'none', 'null', 'undefined', '-', '--', 'no', 'not available', 'not set',
-    'http://', 'https://', 'https://github.com', 'https://github.com/',
-    'http://github.com', 'http://github.com/'
-  ];
-  if (invalidPlaceholders.includes(lower)) return false;
-
-  if (lower.includes('github.com')) {
-    const match = clean.match(/github\.com\/([a-zA-Z0-9_-]+)/i);
-    if (!match || !match[1]) return false;
-    const handle = match[1].trim().toLowerCase();
-    const reserved = ['orgs', 'repositories', 'settings', 'explore', 'topics', 'trending', 'collections', 'events', 'about'];
-    if (reserved.includes(handle) || handle.length < 1) return false;
-    return true;
-  }
-
-  const rawHandle = clean.replace(/^@/, '').trim();
-  return /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/i.test(rawHandle);
-}
-
-/**
- * ✈️ Validates if a Telegram Chat ID is a valid personal student chat ID
- */
-export function isValidTelegramChatId(chatId: string | null | undefined): boolean {
-  if (!chatId) return false;
-  const clean = String(chatId).trim();
-  if (!clean) return false;
-  if (clean.startsWith('-')) return false; // Negative IDs denote group/supergroup/channel
-  if (clean === '0' || clean.toLowerCase() === 'null' || clean.toLowerCase() === 'undefined') return false;
-  return /^\d{5,20}$/.test(clean);
-}
-
-/**
- * 📝 Validates if a student has completed their detailed profile
- */
-export function isCompleteStudentProfile(s: any): boolean {
-  if (!s.profile_id) return false;
-  const hasPhone = Boolean((s.mobile_number && s.mobile_number.trim().length > 0) || (s.phone && s.phone.trim().length > 0));
-  const hasDob = Boolean(s.date_of_birth && s.date_of_birth.trim().length > 0);
-  const hasSemester = Boolean(s.semester !== null && s.semester !== undefined);
-  return hasPhone || hasDob || hasSemester;
-}
-
-/**
- * ⚠️ Send Comprehensive Student Details Mismatch & Profile Audit Report to Telegram Group (at 8:00 AM IST)
- */
-export async function sendGroupMismatchReport(targetChatId?: string): Promise<{ success: boolean; message: string; count?: number }> {
-  const destChatId = targetChatId || await getGroupChatId() || getAdminChatId();
-  if (!destChatId) {
-    return { success: false, message: 'No destination Telegram Chat ID configured for Mismatch Report.' };
-  }
-
-  try {
-    const studentsRes = await pool.query(`
-      SELECT 
-        u.id, 
-        u.full_name, 
-        u.register_number, 
-        u.email, 
-        u.gender, 
-        u.phone,
-        u.leetcode_url, 
-        u.github_url, 
-        u.linkedin_url,
-        u.telegram_chat_id, 
-        u.telegram_username,
-        c.name as class_name,
-        c.year,
-        sp.id as profile_id,
-        sp.mobile_number,
-        sp.date_of_birth,
-        sp.semester,
-        sp.cgpa
-      FROM users u
-      LEFT JOIN classes c ON u.class_id = c.id
-      LEFT JOIN student_profiles sp ON sp.user_id = u.id
-      WHERE u.role = 'STUDENT'
-      ORDER BY c.year ASC NULLS LAST, c.name ASC, u.register_number ASC
-    `);
-
-    const students = studentsRes.rows;
-    if (students.length === 0) {
-      return { success: true, message: 'No students found in database.', count: 0 };
-    }
-
-    const missingLeetCode: any[] = [];
-    const missingGithub: any[] = [];
-    const unlinkedTelegram: any[] = [];
-    const incompleteProfile: any[] = [];
-    const allDefaulters: any[] = [];
-
-    for (const s of students) {
-      const regKey = s.register_number ? s.register_number.toLowerCase().trim() : '';
-      const emailKey = s.email ? s.email.toLowerCase().trim() : '';
-      const dir = (regKey ? constantStudentByRegNoMap.get(regKey) : null) || 
-                  constantStudentByIdMap.get(s.id) || 
-                  (emailKey ? constantStudentByEmailMap.get(emailKey) : null);
-
-      const effectiveLeetCode = s.leetcode_url || dir?.leetcode || '';
-      const effectiveGitHub = s.github_url || dir?.github || '';
-
-      const hasLeetcode = isValidLeetCodeProfile(effectiveLeetCode);
-      const hasGithub = isValidGitHubProfile(effectiveGitHub);
-      const hasTelegram = isValidTelegramChatId(s.telegram_chat_id);
-      const hasFullProfile = isCompleteStudentProfile(s);
-
-      const issuesList: string[] = [];
-
-      if (!hasLeetcode) {
-        missingLeetCode.push({
-          ...s,
-          effectiveLeetCode,
-          issueDetail: !effectiveLeetCode ? 'LeetCode Profile Missing' : `Invalid Handle/URL: "${effectiveLeetCode}"`
-        });
-        issuesList.push('Missing LeetCode');
-      }
-      if (!hasGithub) {
-        missingGithub.push({
-          ...s,
-          effectiveGitHub,
-          issueDetail: !effectiveGitHub ? 'GitHub Handle Missing' : `Invalid Handle/URL: "${effectiveGitHub}"`
-        });
-        issuesList.push('Missing GitHub');
-      }
-      if (!hasTelegram) {
-        unlinkedTelegram.push({
-          ...s,
-          issueDetail: !s.telegram_chat_id ? 'Telegram Account Not Linked' : 'Improper Group Chat ID Linked'
-        });
-        issuesList.push('Unlinked Telegram');
-      }
-      if (!hasFullProfile) {
-        incompleteProfile.push({
-          ...s,
-          issueDetail: !s.profile_id ? 'Portal Bio & Profile Not Created' : 'Incomplete Contact / Academic Details'
-        });
-        issuesList.push('Incomplete Profile');
-      }
-
-      if (issuesList.length > 0) {
-        allDefaulters.push({
-          ...s,
-          effectiveLeetCode,
-          effectiveGitHub,
-          hasLeetcode,
-          hasGithub,
-          hasTelegram,
-          hasFullProfile,
-          issuesList,
-          issuesCount: issuesList.length,
-          issuesSummary: issuesList.join(' • ')
-        });
-      }
-    }
-
-    const totalStudents = students.length;
-    const totalWithIssues = allDefaulters.length;
-
-    // Build Telegram HTML Message
-    let html = `⚠️ <b>STUDENT PROFILE & DETAILS AUDIT REPORT</b>\n\n`;
-    html += `📅 <b>Date:</b> ${new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}\n`;
-    html += `👥 <b>Total Enrolled Students:</b> <b>${totalStudents}</b>\n`;
-    html += `🚨 <b>Students with Mismatching / Incomplete Details:</b> <b>${totalWithIssues}</b>\n\n`;
-
-    html += `📊 <b>Category Breakdown:</b>\n`;
-    html += `• 🧩 <b>Missing / Invalid LeetCode:</b> <code>${missingLeetCode.length}</code> students\n`;
-    html += `• 🐙 <b>Missing / Invalid GitHub:</b> <code>${missingGithub.length}</code> students\n`;
-    html += `• ✈️ <b>Unlinked Telegram Accounts:</b> <code>${unlinkedTelegram.length}</code> students\n`;
-    html += `• 📝 <b>Incomplete Portal Profiles:</b> <code>${incompleteProfile.length}</code> students\n\n`;
-
-    // Group issues class-wise
-    const classIssueMap: Record<string, { total: number; missingLc: number; missingGh: number; unlinkedTg: number; incProf: number; totalDefaulters: number }> = {};
-    for (const s of students) {
-      const cls = s.class_name || 'Unassigned Class';
-      if (!classIssueMap[cls]) {
-        classIssueMap[cls] = { total: 0, missingLc: 0, missingGh: 0, unlinkedTg: 0, incProf: 0, totalDefaulters: 0 };
-      }
-      classIssueMap[cls].total++;
-
-      const regKey = s.register_number ? s.register_number.toLowerCase().trim() : '';
-      const emailKey = s.email ? s.email.toLowerCase().trim() : '';
-      const dir = (regKey ? constantStudentByRegNoMap.get(regKey) : null) || 
-                  constantStudentByIdMap.get(s.id) || 
-                  (emailKey ? constantStudentByEmailMap.get(emailKey) : null);
-
-      const effectiveLeetCode = s.leetcode_url || dir?.leetcode || '';
-      const effectiveGitHub = s.github_url || dir?.github || '';
-
-      const hasLc = isValidLeetCodeProfile(effectiveLeetCode);
-      const hasGh = isValidGitHubProfile(effectiveGitHub);
-      const hasTg = isValidTelegramChatId(s.telegram_chat_id);
-      const hasProf = isCompleteStudentProfile(s);
-
-      if (!hasLc) classIssueMap[cls].missingLc++;
-      if (!hasGh) classIssueMap[cls].missingGh++;
-      if (!hasTg) classIssueMap[cls].unlinkedTg++;
-      if (!hasProf) classIssueMap[cls].incProf++;
-      if (!hasLc || !hasGh || !hasTg || !hasProf) {
-        classIssueMap[cls].totalDefaulters++;
-      }
-    }
-
-    html += `🏫 <b>Class-wise Mismatch Summary:</b>\n`;
-    Object.keys(classIssueMap).sort().forEach(cls => {
-      const st = classIssueMap[cls];
-      if (st.totalDefaulters > 0) {
-        html += `• <b>${escapeHtml(cls)}</b> (${st.total} students, <b>${st.totalDefaulters}</b> with issues):\n`;
-        html += `   🧩 LC: <b>${st.missingLc}</b> | 🐙 GH: <b>${st.missingGh}</b> | ✈️ TG: <b>${st.unlinkedTg}</b> | 📝 Prof: <b>${st.incProf}</b>\n`;
-      }
-    });
-
-    html += `\n👉 <i>Students listed with missing or mismatched details are requested to log in to the portal and complete their profile immediately!</i>\n`;
-    html += getWatermarkHtml();
-
-    const inlineKeyboard = {
-      inline_keyboard: [
-        [
-          { text: '🌐 Update Profile on Portal', url: getPortalUrl() },
-          { text: '🤖 Link Telegram Bot', url: 'https://t.me/IT_TaskManager_Alerts_bot' }
-        ]
-      ]
-    };
-
-    const msgRes = await sendTelegramMessage(destChatId, html, { reply_markup: inlineKeyboard });
-
-    // Generate Excel attachment if there are issues
-    if (totalWithIssues > 0) {
-      try {
-        const workbook = new ExcelJS.Workbook();
-        workbook.creator = 'IT TaskManager';
-        workbook.created = new Date();
-
-        const styleHeaderRow = (sheet: any) => {
-          const headerRow = sheet.getRow(1);
-          headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-          headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
-          headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
-          headerRow.height = 24;
-        };
-
-        // ── Sheet 1: All Issues Overview ────────────────────────────────
-        const overviewSheet = workbook.addWorksheet('Defaulters Overview', { views: [{ showGridLines: true }] });
-        overviewSheet.columns = [
-          { header: 'S.No', key: 'sno', width: 8 },
-          { header: 'Class', key: 'class_name', width: 14 },
-          { header: 'Register No', key: 'register_number', width: 18 },
-          { header: 'Student Name', key: 'full_name', width: 26 },
-          { header: 'Gender', key: 'gender', width: 10 },
-          { header: 'Email', key: 'email', width: 28 },
-          { header: 'Phone', key: 'phone', width: 16 },
-          { header: 'LeetCode Status', key: 'lc_status', width: 22 },
-          { header: 'GitHub Status', key: 'gh_status', width: 22 },
-          { header: 'Telegram Status', key: 'tg_status', width: 22 },
-          { header: 'Profile Status', key: 'prof_status', width: 22 },
-          { header: 'Issues Summary', key: 'issues_summary', width: 42 }
-        ];
-        styleHeaderRow(overviewSheet);
-
-        allDefaulters.forEach((s, idx) => {
-          const row = overviewSheet.addRow({
-            sno: idx + 1,
-            class_name: s.class_name || 'N/A',
-            register_number: s.register_number || 'N/A',
-            full_name: s.full_name || 'N/A',
-            gender: s.gender || 'N/A',
-            email: s.email || 'N/A',
-            phone: s.phone || s.mobile_number || 'N/A',
-            lc_status: s.hasLeetcode ? '✅ Valid' : '❌ Missing/Invalid',
-            gh_status: s.hasGithub ? '✅ Valid' : '❌ Missing/Invalid',
-            tg_status: s.hasTelegram ? '✅ Connected' : '❌ Not Linked',
-            prof_status: s.hasFullProfile ? '✅ Complete' : '❌ Incomplete',
-            issues_summary: s.issuesSummary
-          });
-          row.alignment = { vertical: 'middle' };
-        });
-
-        // Helper for specialized issue sheets
-        const addSpecializedSheet = (sheetTitle: string, list: any[], extraHeader: string, extraKey: string) => {
-          const sheet = workbook.addWorksheet(sheetTitle, { views: [{ showGridLines: true }] });
-          sheet.columns = [
-            { header: 'S.No', key: 'sno', width: 8 },
-            { header: 'Class', key: 'class_name', width: 14 },
-            { header: 'Register No', key: 'register_number', width: 18 },
-            { header: 'Student Name', key: 'full_name', width: 26 },
-            { header: 'Gender', key: 'gender', width: 10 },
-            { header: 'Email', key: 'email', width: 28 },
-            { header: extraHeader, key: extraKey, width: 34 },
-            { header: 'Issue Status', key: 'issue', width: 32 }
-          ];
-          styleHeaderRow(sheet);
-
-          list.forEach((s, idx) => {
-            const rowData: any = {
-              sno: idx + 1,
-              class_name: s.class_name || 'N/A',
-              register_number: s.register_number || 'N/A',
-              full_name: s.full_name || 'N/A',
-              gender: s.gender || 'N/A',
-              email: s.email || 'N/A',
-              issue: s.issueDetail || 'Action Required'
-            };
-            rowData[extraKey] = s[extraKey] || s.effectiveLeetCode || s.effectiveGitHub || 'N/A';
-            const row = sheet.addRow(rowData);
-            row.alignment = { vertical: 'middle' };
-          });
-        };
-
-        if (missingLeetCode.length > 0) addSpecializedSheet('Missing LeetCode', missingLeetCode, 'Recorded LeetCode Value', 'effectiveLeetCode');
-        if (missingGithub.length > 0) addSpecializedSheet('Missing GitHub', missingGithub, 'Recorded GitHub Value', 'effectiveGitHub');
-        if (unlinkedTelegram.length > 0) addSpecializedSheet('Unlinked Telegram', unlinkedTelegram, 'Telegram Username', 'telegram_username');
-        if (incompleteProfile.length > 0) addSpecializedSheet('Incomplete Profile', incompleteProfile, 'Portal Profile Status', 'issueDetail');
-
-        const buffer = await workbook.xlsx.writeBuffer();
-        const dateStr = getISTDateStr();
-        await sendTelegramDocument(
-          destChatId,
-          Buffer.from(buffer),
-          `IT_Student_Details_Mismatch_Report_${dateStr}.xlsx`,
-          `📋 Comprehensive Student Profile & Details Audit Report — ${dateStr}`
-        );
-      } catch (excelErr) {
-        console.error('[Telegram Mismatch Report] Error generating/sending Excel:', excelErr);
-      }
-    }
-
-    return { success: msgRes.ok, message: `Mismatch audit report dispatched to ${destChatId}`, count: totalWithIssues };
-  } catch (err: any) {
-    console.error('[Telegram] sendGroupMismatchReport error:', err);
-    return { success: false, message: err.message };
-  }
-}
 
 /**
  * ⏰ Notify Group Chat about tasks with deadlines within the next 24 hours
@@ -2908,8 +2536,6 @@ export function startTelegramPoller(): void {
               await sendTelegramMessage(cbChatId, card.html, { reply_markup: card.keyboard });
             } else if (cbData === 'cb_summary') {
               await sendGroupSummary(String(cbChatId));
-            } else if (cbData === 'cb_mismatch') {
-              await sendGroupMismatchReport(String(cbChatId));
             } else if (cbData === 'cb_deadlines') {
               await sendGroupDeadlineAlert(String(cbChatId));
             } else if (cbData === 'cb_task_status') {
@@ -3050,7 +2676,6 @@ export function startTelegramPoller(): void {
             if (user?.role === 'SUPREME_ADMIN' || user?.role === 'STAFF' || user?.role === 'COORDINATOR' || user?.role === 'HOD' || user?.role === 'CLASS_ADVISOR') {
               helpHtml += `\n<b>Staff / Coordinator Commands:</b>\n`;
               helpHtml += `• <code>/defaulters [class]</code> - Target defaulters report\n`;
-              helpHtml += `• <code>/mismatch</code> (or <code>/audit</code>) - Student profile mismatch audit\n`;
               helpHtml += `• <code>/broadcast &lt;msg&gt;</code> - Send announcement to all students\n`;
               helpHtml += `• <code>/summary</code> - Class daily brief\n`;
             }
@@ -3366,14 +2991,7 @@ export function startTelegramPoller(): void {
             return;
           }
 
-          // Command: /mismatch or /audit
-          if (text.startsWith('/mismatch') || text.startsWith('/audit')) {
-            const res = await sendGroupMismatchReport(String(chatId));
-            if (!res.success) {
-              await sendTelegramMessage(chatId, `⚠️ ${escapeHtml(res.message)}\n${getWatermarkHtml()}`);
-            }
-            return;
-          }
+
 
           // Command: /deadlines or /due
           if (text.startsWith('/deadlines') || text.startsWith('/due')) {

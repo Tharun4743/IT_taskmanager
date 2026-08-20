@@ -29,7 +29,6 @@ import { initSentry } from './sentryService.js';
 import {
   startTelegramPoller,
   sendGroupSummary,
-  sendGroupMismatchReport,
   sendGroupDeadlineAlert,
   triggerPendingTaskReminders,
   getTelegramStats,
@@ -395,7 +394,7 @@ async function startServer() {
       const hours = istDate.getUTCHours();
       const minutes = istDate.getUTCMinutes();
  
-      // 8:00 AM IST (08:00) -> Morning Group Summary, Mismatch Audit Report & Deadline Alerts (strictly once per day)
+      // 8:00 AM IST (08:00) -> Morning Group Summary & Deadline Alerts (strictly once per day)
       if (hours === 8 && minutes >= 0 && minutes <= 10 && lastGroupSummaryMorningDate !== todayStr) {
         const checkRes = await pool.query("SELECT value FROM system_settings WHERE key = 'telegram_last_group_summary_morning_date' LIMIT 1").catch(() => ({ rows: [] }));
         const alreadySent = checkRes.rows[0]?.value;
@@ -411,10 +410,6 @@ async function startServer() {
           const prevDayStr = prevIstDate.toISOString().split('T')[0];
           console.log(`[Telegram Scheduler] 📊 Running automated 8:00 AM IST daily group summary (for previous day: ${prevDayStr})...`);
           sendGroupSummary(undefined, prevDayStr).catch(err => console.error('[Telegram Scheduler] Error sending morning group summary:', err));
-
-          // Send 8:00 AM IST Mismatching Details & Profile Audit Report
-          console.log(`[Telegram Scheduler] ⚠️ Running automated 8:00 AM IST student details mismatch & profile audit report...`);
-          sendGroupMismatchReport().catch(err => console.error('[Telegram Scheduler] Error sending morning mismatch report:', err));
 
           // Send 8:00 AM IST 24-Hour Upcoming Deadline Alert to Group
           sendGroupDeadlineAlert().catch(err => console.error('[Telegram Scheduler] Error sending morning deadline alert:', err));
@@ -676,12 +671,7 @@ async function startServer() {
     res.json(result);
   }));
 
-  // 4. Trigger Instant Student Details Mismatch & Profile Audit Report
-  app.post('/api/telegram/send-mismatch-report', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), asyncHandler(async (req: any, res: Response) => {
-    const { targetChatId } = req.body;
-    const result = await sendGroupMismatchReport(targetChatId);
-    res.json(result);
-  }));
+
 
   // 5. Trigger Instant 24-Hour Upcoming Deadline Alert to Group
   app.post('/api/telegram/send-deadline-alert', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), asyncHandler(async (req: any, res: Response) => {
