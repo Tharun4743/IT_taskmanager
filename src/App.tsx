@@ -3129,24 +3129,44 @@ function SettingsView({
                   </div>
                 </div>
               ) : (
-                <div className="p-5 bg-gradient-to-br from-sky-50 to-indigo-50/50 rounded-2xl border border-sky-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <h4 className="font-extrabold text-zinc-900 text-sm flex items-center gap-2">
-                      <Bell size={16} className="text-sky-600" /> Never Miss a Task Deadline!
-                    </h4>
-                    <p className="text-xs text-zinc-600 max-w-md">
-                      Connect your Telegram in 1 click to get private alerts directly on your phone 24 hours before assignment deadlines.
-                    </p>
+                <div className="p-5 bg-gradient-to-br from-sky-50 to-indigo-50/50 rounded-2xl border border-sky-200 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="space-y-1">
+                      <h4 className="font-extrabold text-zinc-900 text-sm flex items-center gap-2">
+                        <Bell size={16} className="text-sky-600" /> Connect Telegram for Private Deadline Alerts
+                      </h4>
+                      <p className="text-xs text-zinc-600 max-w-md">
+                        Get private task reminders on your phone 24 hours before deadlines and live verification results.
+                      </p>
+                    </div>
+                    <a
+                      href={`https://t.me/${telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot'}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-extrabold text-xs text-white bg-sky-500 hover:bg-sky-600 shadow-md shadow-sky-500/25 transition-all shrink-0"
+                    >
+                      <Send size={14} className="-rotate-12" />
+                      <span>Open Bot @{telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot'}</span>
+                    </a>
                   </div>
-                  <a
-                    href={`https://t.me/${telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot'}?start=${user?.register_number || user?.username}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-extrabold text-xs text-white bg-sky-500 hover:bg-sky-600 shadow-md shadow-sky-500/25 transition-all whitespace-nowrap"
-                  >
-                    <Send size={14} className="-rotate-12" />
-                    <span>Connect Telegram in 1-Click</span>
-                  </a>
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 bg-white rounded-xl border border-sky-100 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-zinc-700">Link Command:</span>
+                      <code className="bg-zinc-100 text-indigo-700 font-mono font-bold px-2 py-0.5 rounded border border-zinc-200">
+                        /link {user?.register_number || user?.username}
+                      </code>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`/link ${user?.register_number || user?.username}`);
+                        addToast(`Copied "/link ${user?.register_number || user?.username}" to clipboard!`, 'success');
+                      }}
+                      className="text-xs font-bold text-sky-600 hover:text-sky-700 bg-sky-50 px-3 py-1 rounded-lg border border-sky-200 transition-colors"
+                    >
+                      Copy Command 📋
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -8233,35 +8253,61 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
               </div>
             </div>
 
-            {/* Option 1: 1-Click Bot Link */}
-            <div className="p-4 rounded-2xl bg-sky-50 border border-sky-100 mb-5 space-y-3">
+            {/* Step-by-Step Instructions */}
+            <div className="p-5 rounded-2xl bg-gradient-to-br from-sky-50 to-indigo-50/60 border border-sky-200 mb-5 space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-sky-800 uppercase tracking-wider">Method 1: Open Bot (Instant)</span>
-                <span className="bg-sky-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full">FASTEST</span>
+                <span className="text-xs font-black text-sky-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <Send size={14} className="text-sky-600" /> Connect in 2 Easy Steps
+                </span>
+                <span className="bg-emerald-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
+                  INSTANT
+                </span>
               </div>
-              <p className="text-xs text-sky-900 leading-relaxed">
-                Click below to open our official bot in Telegram and tap <b>START</b> to link automatically:
-              </p>
-              <a
-                href={botUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="w-full py-2.5 px-4 bg-sky-500 hover:bg-sky-600 active:scale-98 text-white font-bold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2 shadow-md transition-all text-center"
-              >
-                <Send size={16} /> Open @IT_TaskManager_Alerts_bot
-              </a>
-              <div className="text-[11px] text-zinc-500 flex items-center justify-between pt-1">
-                <span>Or message the bot with:</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(linkCommand);
-                    addToast('Command copied to clipboard!', 'info');
-                  }}
-                  className="font-mono font-bold text-sky-700 bg-white px-2 py-0.5 rounded border border-sky-200 hover:bg-sky-100 transition-colors"
-                >
-                  {linkCommand} 📋
-                </button>
+
+              {/* Step 1 */}
+              <div className="flex items-start gap-3 bg-white p-3.5 rounded-xl border border-sky-100 shadow-2xs">
+                <div className="w-6 h-6 rounded-full bg-sky-500 text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
+                  1
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-zinc-900 mb-1">Open our official Telegram Bot:</p>
+                  <a
+                    href="https://t.me/IT_TaskManager_Alerts_bot"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full py-2.5 px-3 bg-sky-500 hover:bg-sky-600 active:scale-98 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all text-center"
+                  >
+                    <Send size={14} /> Open @IT_TaskManager_Alerts_bot
+                  </a>
+                </div>
+              </div>
+
+              {/* Step 2 */}
+              <div className="flex items-start gap-3 bg-white p-3.5 rounded-xl border border-sky-100 shadow-2xs">
+                <div className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
+                  2
+                </div>
+                <div className="flex-1 min-w-0 space-y-2">
+                  <p className="text-xs font-bold text-zinc-900">
+                    Send your Register Number to the bot:
+                  </p>
+                  <div className="flex items-center gap-2 bg-zinc-900 text-white p-2.5 rounded-xl font-mono text-xs justify-between">
+                    <span className="font-black text-amber-300 select-all">{linkCommand}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(linkCommand);
+                        addToast(`Copied "${linkCommand}" to clipboard!`, 'success');
+                      }}
+                      className="px-2.5 py-1 bg-sky-500 hover:bg-sky-600 text-white rounded-lg text-[11px] font-bold transition-all shrink-0 active:scale-95 shadow-sm"
+                    >
+                      Copy Command 📋
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 italic">
+                    Tap <b>Copy Command</b> and paste it into the Telegram chat with the bot.
+                  </p>
+                </div>
               </div>
             </div>
 
