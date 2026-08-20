@@ -8201,7 +8201,7 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
 
   const renderTelegramLinkModal = () => {
     if (!showTelegramLinkModal) return null;
-    const botUrl = `https://t.me/IT_TaskManager_Alerts_bot?start=link_${user?.register_number || user?.username}`;
+    const botUrl = 'https://t.me/IT_TaskManager_Alerts_bot';
     const linkCommand = `/link ${user?.register_number || user?.username}`;
 
     return (
