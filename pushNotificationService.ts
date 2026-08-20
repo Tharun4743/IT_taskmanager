@@ -133,7 +133,6 @@ async function dispatchPushToSubscriptions(subs: any[], payload: PushPayload): P
     title: payload.title || 'VSBEC IT TaskManager',
     body: payload.body || '',
     icon: payload.icon || '/logo.png',
-    badge: payload.badge || '/logo.png',
     url: payload.url || '/',
     tag: payload.tag || 'taskmanager-notification',
     timestamp: Date.now(),

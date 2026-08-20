@@ -42,7 +42,6 @@ self.addEventListener('push', (event) => {
   const notificationOptions = {
     body: notificationData.body,
     icon: notificationData.icon || defaultIcon,
-    badge: notificationData.badge || defaultIcon,
     tag: notificationData.tag || `taskmanager-${Date.now()}`,
     renotify: true,
     requireInteraction: true,

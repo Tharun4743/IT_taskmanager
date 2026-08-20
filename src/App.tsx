@@ -2789,7 +2789,6 @@ function SettingsView({
             reg.showNotification('🔔 VSBEC IT TaskManager', {
               body: '✅ Desktop notification test succeeded on this laptop!',
               icon: `${window.location.origin}/logo.png`,
-              badge: `${window.location.origin}/logo.png`,
               tag: `test-local-${Date.now()}`,
               requireInteraction: true
             });
