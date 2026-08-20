@@ -2729,13 +2729,25 @@ function SettingsView({
       const supported = isPushSupported();
       setPushSupported(supported);
       if (supported) {
-        setPushPermission(getNotificationPermissionState());
+        const perm = getNotificationPermissionState();
+        setPushPermission(perm);
         const isSub = await checkIsPushSubscribed();
         setPushSubscribed(isSub);
+
+        // If user already granted permission in browser, ensure subscription is synced to DB
+        if (perm === 'granted' && token) {
+          subscribeToPushNotifications(token, API_URL)
+            .then(res => {
+              if (res.success) {
+                setPushSubscribed(true);
+              }
+            })
+            .catch(() => {});
+        }
       }
     };
     checkPush();
-  }, []);
+  }, [token]);
 
   const handleTogglePush = async () => {
     setPushLoading(true);
