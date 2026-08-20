@@ -1157,8 +1157,8 @@ const Footer = ({ onShowModal }: { onShowModal: (type: 'PRIVACY' | 'TERMS' | 'SU
     <div className="w-full flex flex-col lg:flex-row items-center justify-between gap-3 text-xs min-w-0">
       {/* Brand Logo & Name */}
       <div className="flex items-center gap-2.5 shrink-0 min-w-0">
-        <div className="w-7 h-7 rounded-full overflow-hidden shrink-0 border border-zinc-200 shadow-sm">
-          <img src="/logo.png" alt="VSBEC Logo" className="w-full h-full object-cover" />
+        <div className="w-8 h-8 rounded-lg bg-white p-0.5 overflow-hidden shrink-0 border border-zinc-200 shadow-2xs flex items-center justify-center">
+          <img src="/logo.png" alt="VSBEC Logo" className="w-full h-full object-contain" />
         </div>
         <span className="font-extrabold text-zinc-900 text-xs tracking-tight whitespace-nowrap">VSBEC IT Task Manager</span>
       </div>
@@ -6468,8 +6468,8 @@ const githubTop3 = useMemo(() => {
           className="w-full max-w-4xl"
         >
           <div className="flex flex-col items-center mb-12">
-            <div className="w-24 h-24 rounded-full overflow-hidden mb-6 shadow-2xl border-4 border-white ring-2 ring-zinc-200">
-              <img src="/logo.png" alt="VSBEC Logo" className="w-full h-full object-cover" />
+            <div className="w-24 h-24 rounded-3xl bg-white p-3 mb-6 shadow-2xl border-2 border-zinc-200 ring-4 ring-indigo-50 flex items-center justify-center">
+              <img src="/logo.png" alt="VSBEC Logo" className="w-full h-full object-contain" />
             </div>
             <h1 className="text-4xl font-black text-zinc-900 tracking-tight">Academic Portal</h1>
             <p className="text-zinc-500 mt-2 text-lg">VSBEC IT Task Management System</p>
@@ -8636,8 +8636,8 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
     <div className="flex flex-col h-full bg-white">
       <div className="p-4 border-b border-zinc-100 flex items-center justify-between shrink-0 h-20">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 shadow-md border-2 border-zinc-200">
-            <img src="/logo.png" alt="VSBEC Logo" className="w-full h-full object-cover" />
+          <div className="w-11 h-11 rounded-2xl bg-white p-1.5 overflow-hidden shrink-0 shadow-sm border border-zinc-200 flex items-center justify-center">
+            <img src="/logo.png" alt="VSBEC Logo" className="w-full h-full object-contain" />
           </div>
           <span className={cn(
             "font-bold px-2 py-0.5 rounded text-xs tracking-wider",
@@ -9122,16 +9122,30 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
               )}
               <div className="relative group">
                 <button
-                  className="p-2 text-zinc-400 hover:text-zinc-900 transition-colors relative"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-zinc-200 hover:bg-zinc-50 hover:border-zinc-300 text-zinc-700 transition-all relative shadow-2xs bg-white"
                   onClick={markNotificationsRead}
+                  title="Notifications"
                 >
-                  <Bell size={20} />
+                  <div className="w-5 h-5 rounded-md bg-white flex items-center justify-center shrink-0">
+                    <img src="/logo.png" alt="VSBEC Logo" className="w-full h-full object-contain" />
+                  </div>
+                  <Bell size={16} className="text-zinc-600" />
                   {notifications.filter(n => !n.is_read).length > 0 && (
-                    <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
+                      {notifications.filter(n => !n.is_read).length}
+                    </span>
                   )}
                 </button>
                 <div className="absolute right-0 mt-2 w-80 bg-white border border-zinc-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-4">
-                  <h3 className="text-sm font-bold mb-3">Notifications</h3>
+                  <div className="flex items-center justify-between mb-3 pb-2 border-b border-zinc-100">
+                    <div className="flex items-center gap-2">
+                      <img src="/logo.png" alt="VSBEC Logo" className="w-5 h-5 object-contain" />
+                      <h3 className="text-sm font-extrabold text-zinc-900">Notifications</h3>
+                    </div>
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                      {notifications.length} updates
+                    </span>
+                  </div>
                   <div className="space-y-3 max-h-96 overflow-y-auto">
                     {notifications.length === 0 ? (
                       <p className="text-xs text-zinc-400 text-center py-4">No notifications yet</p>
