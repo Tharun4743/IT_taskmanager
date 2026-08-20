@@ -3140,13 +3140,13 @@ function SettingsView({
                       </p>
                     </div>
                     <a
-                      href={`https://t.me/${telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot'}`}
+                      href={`https://t.me/${telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot'}?text=${encodeURIComponent(`/link ${user?.register_number || user?.username || ''}`)}`}
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-extrabold text-xs text-white bg-sky-500 hover:bg-sky-600 shadow-md shadow-sky-500/25 transition-all shrink-0"
                     >
                       <Send size={14} className="-rotate-12" />
-                      <span>Open Bot @{telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot'}</span>
+                      <span>1-Click Open & Send /link {user?.register_number || user?.username}</span>
                     </a>
                   </div>
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 bg-white rounded-xl border border-sky-100 text-xs">
@@ -8201,8 +8201,9 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
 
   const renderTelegramLinkModal = () => {
     if (!showTelegramLinkModal) return null;
-    const botUrl = 'https://t.me/IT_TaskManager_Alerts_bot';
-    const linkCommand = `/link ${user?.register_number || user?.username}`;
+    const regNo = user?.register_number || user?.username || '';
+    const linkCommand = `/link ${regNo}`;
+    const directBotUrl = `https://t.me/IT_TaskManager_Alerts_bot?text=${encodeURIComponent(linkCommand)}`;
 
     return (
       <AnimatePresence>
@@ -8270,14 +8271,14 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                   1
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-zinc-900 mb-1">Open our official Telegram Bot:</p>
+                  <p className="text-xs font-bold text-zinc-900 mb-1">Direct 1-Click Bot Link (Pre-fills command):</p>
                   <a
-                    href="https://t.me/IT_TaskManager_Alerts_bot"
+                    href={directBotUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="w-full py-2.5 px-3 bg-sky-500 hover:bg-sky-600 active:scale-98 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all text-center"
                   >
-                    <Send size={14} /> Open @IT_TaskManager_Alerts_bot
+                    <Send size={14} /> Open Bot & Send {linkCommand}
                   </a>
                 </div>
               </div>

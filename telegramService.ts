@@ -2396,7 +2396,8 @@ export async function linkStudentTelegram(
   telegramUsername?: string
 ): Promise<{ success: boolean; studentName?: string; message: string }> {
   try {
-    const rawClean = identifier.trim();
+    let rawClean = identifier.trim().replace(/^[\/#]?(?:link|start|user)[_\s-]+/i, '').trim();
+    if (!rawClean) rawClean = identifier.trim();
     const cleanNoSpaces = rawClean.replace(/\s+/g, '').toLowerCase();
 
     const strChatId = String(personalChatId).trim();
