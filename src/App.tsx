@@ -2184,13 +2184,21 @@ function StudentProfileView({
                         </code>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                        <a
+                          href="https://t.me/it_taskmanager"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-3.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0"
+                        >
+                          <Send size={13} className="text-sky-500" /> Join Group
+                        </a>
                         <button
                           type="button"
                           onClick={() => {
                             navigator.clipboard.writeText(`/link ${effectiveRegNo}`);
                             addToast(`Copied "/link ${effectiveRegNo}" to clipboard! Reply this to @${telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot'} on Telegram.`, 'success');
                           }}
-                          className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shrink-0"
+                          className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 border border-zinc-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shrink-0"
                         >
                           <Copy size={13} /> Copy Command
                         </button>
@@ -9709,14 +9717,25 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                                   </div>
                                 </div>
 
-                                <div className="flex items-center gap-3 w-full md:w-auto shrink-0 relative z-10">
-                                  <button
-                                    onClick={() => setShowTelegramLinkModal(true)}
-                                    className="w-full md:w-auto px-5 py-2.5 bg-white text-indigo-900 rounded-xl font-bold text-xs sm:text-sm shadow-lg hover:bg-sky-50 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+                                <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto shrink-0 relative z-10">
+                                  <a
+                                    href="https://t.me/it_taskmanager"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="w-full sm:w-auto px-4 py-2.5 bg-white/15 hover:bg-white/25 text-white border border-white/30 rounded-xl font-bold text-xs sm:text-sm backdrop-blur-md shadow-sm transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
                                   >
-                                    <Send size={16} className="text-sky-500" />
-                                    Connect 1-Click ({getStudentRegisterNumber(user) || 'Link'})
-                                  </button>
+                                    <Send size={15} className="text-sky-200" />
+                                    Join Telegram Group
+                                  </a>
+                                  <a
+                                    href={`https://t.me/IT_TaskManager_Alerts_bot?start=${encodeURIComponent(getStudentRegisterNumber(user) || '')}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="w-full sm:w-auto px-5 py-2.5 bg-white text-indigo-900 rounded-xl font-bold text-xs sm:text-sm shadow-lg hover:bg-sky-50 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+                                  >
+                                    <Send size={15} className="text-sky-500 -rotate-12" />
+                                    1-Click Link Bot ({getStudentRegisterNumber(user) || 'Link'})
+                                  </a>
                                 </div>
                               </div>
                             )}
