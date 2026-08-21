@@ -416,22 +416,6 @@ export async function initDB() {
       );
     `);
 
-    // ─── Module 1: Task Discussion Forum ────────────────────────────────────────
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS task_discussions (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        task_id UUID REFERENCES tasks(id) ON DELETE CASCADE NOT NULL,
-        parent_id UUID REFERENCES task_discussions(id) ON DELETE CASCADE,
-        user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
-        message TEXT NOT NULL,
-        is_pinned BOOLEAN DEFAULT FALSE,
-        is_edited BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        deleted_at TIMESTAMP
-      );
-    `);
-
     // ─── Module 2: Digital Notice Board ─────────────────────────────────────────
     await client.query(`
       CREATE TABLE IF NOT EXISTS notices (
@@ -532,9 +516,6 @@ export async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);`);
 
     // Create indexes — new module tables
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_task_discussions_task ON task_discussions(task_id);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_task_discussions_parent ON task_discussions(parent_id);`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_task_discussions_user ON task_discussions(user_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_notices_scope_dept ON notices(scope, department_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_notices_class ON notices(class_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_notices_publish ON notices(publish_at);`);
@@ -623,9 +604,13 @@ export async function initDB() {
       END $$;
     `);
 
-    // Drop legacy GitHub tables
+    // Drop legacy & obsolete tables
     await client.query(`DROP TABLE IF EXISTS github_daily_progress CASCADE;`);
     await client.query(`DROP TABLE IF EXISTS github_targets CASCADE;`);
+    await client.query(`DROP TABLE IF EXISTS system_vapid_keys CASCADE;`);
+    await client.query(`DROP TABLE IF EXISTS user_push_subscriptions CASCADE;`);
+    await client.query(`DROP TABLE IF EXISTS email_notifications CASCADE;`);
+    await client.query(`DROP TABLE IF EXISTS task_discussions CASCADE;`);
 
     // Ensure leetcode_url and github_url columns exist on users table
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS leetcode_url VARCHAR(255);`);
@@ -712,6 +697,25 @@ export async function initDB() {
     // Update batch definitions for Year 2 (2025-2029) and Year 3 (2024-2028)
     await client.query(`UPDATE classes SET batch = '2025-2029', updated_at = NOW() WHERE year = 2;`);
     await client.query(`UPDATE classes SET batch = '2024-2028', updated_at = NOW() WHERE year = 3;`);
+
+    // ─── 🛡️ Supabase Security & Row Level Security (RLS) Auto-Enforcement ───
+    try {
+      await client.query(`
+        DO $$
+        DECLARE
+          r RECORD;
+        BEGIN
+          FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+            EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' ENABLE ROW LEVEL SECURITY;';
+            EXECUTE 'DROP POLICY IF EXISTS service_role_all_policy ON public.' || quote_ident(r.tablename) || ';';
+            EXECUTE 'CREATE POLICY service_role_all_policy ON public.' || quote_ident(r.tablename) || ' FOR ALL TO service_role USING (true) WITH CHECK (true);';
+          END LOOP;
+        END $$;
+      `);
+      console.log('[PostgreSQL] Row Level Security (RLS) successfully enforced on all public schema tables.');
+    } catch (rlsErr: any) {
+      console.warn('[PostgreSQL] RLS auto-enforcement notice:', rlsErr.message);
+    }
 
   } catch (err) {
     console.error('Error initializing PostgreSQL tables:', err);

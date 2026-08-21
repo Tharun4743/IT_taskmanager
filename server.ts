@@ -3113,6 +3113,7 @@ async function startServer() {
          OR (t.department_id = $2 AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
          OR (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
       GROUP BY t.id
+      ORDER BY t.created_at DESC
     `, [classId, deptId]);
     const tasks = tasksRes.rows;
 
@@ -3902,6 +3903,7 @@ async function startServer() {
       WHERE EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id AND class_id = $1)
          OR (t.department_id = $2 AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
          OR (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
+      ORDER BY t.created_at DESC
     `, [classId, deptId]);
     const tasks = tasksRes.rows;
 
@@ -4029,6 +4031,7 @@ async function startServer() {
       WHERE tc.class_id = ANY($1)
          OR (t.department_id = $2 AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
          OR (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
+      ORDER BY t.created_at DESC
     `, [classIds, deptId]);
     const tasks = tasksRes.rows;
 
@@ -4574,102 +4577,6 @@ async function startServer() {
     res.json({ message: 'Password changed successfully in database' });
   }));
 
-
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-  // MODULE 1 â€” TASK DISCUSSION FORUM
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-
-  // GET /api/tasks/:taskId/discussions
-  app.get('/api/tasks/:taskId/discussions', authenticate, asyncHandler(async (req: any, res: Response) => {
-    const { taskId } = req.params;
-    const { sort = 'newest' } = req.query;
-    const orderDir = sort === 'oldest' ? 'ASC' : 'DESC';
-
-    const result = await pool.query(`
-      SELECT d.id, d.task_id, d.parent_id, d.user_id, d.message,
-        d.is_pinned, d.is_edited, d.created_at, d.updated_at, d.deleted_at,
-        u.full_name AS author_name, u.role AS author_role,
-        COALESCE(u.register_number, u.username) AS author_regno
-      FROM task_discussions d
-      JOIN users u ON d.user_id = u.id
-      WHERE d.task_id = $1 AND d.deleted_at IS NULL
-      ORDER BY d.is_pinned DESC, d.created_at ${orderDir}
-    `, [taskId]);
-
-    const topLevel = result.rows.filter((r: any) => !r.parent_id);
-    const replies = result.rows.filter((r: any) => r.parent_id);
-    const threaded = topLevel.map((post: any) => ({
-      ...post,
-      replies: replies
-        .filter((r: any) => r.parent_id === post.id)
-        .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
-      reply_count: replies.filter((r: any) => r.parent_id === post.id).length,
-    }));
-
-    res.json(threaded);
-  }));
-
-  // POST /api/tasks/:taskId/discussions
-  app.post('/api/tasks/:taskId/discussions', authenticate, asyncHandler(async (req: any, res: Response) => {
-    const { taskId } = req.params;
-    const { message, parent_id } = req.body;
-    if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
-
-    const result = await pool.query(`
-      INSERT INTO task_discussions (task_id, parent_id, user_id, message)
-      VALUES ($1, $2, $3, $4) RETURNING *
-    `, [taskId, parent_id || null, req.user.id, message.trim()]);
-
-    const post = result.rows[0];
-
-    if (!parent_id) {
-      const taskRes = await pool.query('SELECT created_by, title FROM tasks WHERE id = $1', [taskId]);
-      if (taskRes.rows[0] && String(taskRes.rows[0].created_by) !== String(req.user.id)) {
-        await pool.query(
-          `INSERT INTO notifications (user_id, message, type) VALUES ($1, $2, 'DISCUSSION_REPLY')`,
-          [taskRes.rows[0].created_by, `New question on task "${taskRes.rows[0].title}" by ${req.user.username}`]
-        );
-      }
-    } else {
-      const origRes = await pool.query('SELECT user_id FROM task_discussions WHERE id = $1', [parent_id]);
-      if (origRes.rows[0] && String(origRes.rows[0].user_id) !== String(req.user.id)) {
-        await pool.query(
-          `INSERT INTO notifications (user_id, message, type) VALUES ($1, $2, 'DISCUSSION_REPLY')`,
-          [origRes.rows[0].user_id, `${req.user.username} replied to your discussion post`]
-        );
-      }
-    }
-
-    res.status(201).json(post);
-  }));
-
-  // PATCH /api/discussions/:id â€” edit post (own within 10 min, or staff)
-  app.patch('/api/discussions/:id', authenticate, asyncHandler(async (req: any, res: Response) => {
-    const { message } = req.body;
-    if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
-
-    const postRes = await pool.query(
-      'SELECT * FROM task_discussions WHERE id = $1 AND deleted_at IS NULL', [req.params.id]
-    );
-    if (!postRes.rows[0]) return res.status(404).json({ error: 'Post not found' });
-    const post = postRes.rows[0];
-
-    const isOwner = String(post.user_id) === String(req.user.id);
-    const isStaff = ['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN'].includes(req.user.role);
-    const withinWindow = isOwner && (Date.now() - new Date(post.created_at).getTime()) < 10 * 60 * 1000;
-
-    if (!withinWindow && !isStaff) {
-      return res.status(403).json({ error: 'You can only edit your own posts within 10 minutes' });
-    }
-
-    const updated = await pool.query(
-      `UPDATE task_discussions SET message = $1, is_edited = TRUE, updated_at = NOW() WHERE id = $2 RETURNING *`,
-      [message.trim(), req.params.id]
-    );
-    res.json(updated.rows[0]);
-  }));
-
-  // DELETE /api/discussions/:id â€” soft delete
   app.delete('/api/discussions/:id', authenticate, asyncHandler(async (req: any, res: Response) => {
     const postRes = await pool.query(
       'SELECT * FROM task_discussions WHERE id = $1 AND deleted_at IS NULL', [req.params.id]

@@ -5097,11 +5097,16 @@ export default function App() {
 
       const sortClassesList = (clsList: Class[]) => [...(clsList || [])].sort((a, b) => (a.year || 0) - (b.year || 0) || (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
       const sortDeptsList = (deptList: Department[]) => [...(deptList || [])].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
+      const sortTasksDescending = (taskList: Task[]) => [...(taskList || [])].sort((a, b) => {
+        const timeA = a.created_at ? new Date(a.created_at).getTime() : (a.deadline ? new Date(a.deadline).getTime() : 0);
+        const timeB = b.created_at ? new Date(b.created_at).getTime() : (b.deadline ? new Date(b.deadline).getTime() : 0);
+        return timeB - timeA;
+      });
 
       setDepartments(sortDeptsList(depts));
       setClasses(sortClassesList(classes));
       setUsers(users);
-      setTasks(tasks);
+      setTasks(sortTasksDescending(tasks));
       setSubmissions(submissions);
       setNotifications(notifications);
 
@@ -5149,7 +5154,15 @@ export default function App() {
   const fetchTasks = async () => {
     try {
       const res = await fetch(`${API_URL}/api/tasks`, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) setTasks(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        const sortDescending = (list: Task[]) => [...(list || [])].sort((a, b) => {
+          const timeA = a.created_at ? new Date(a.created_at).getTime() : (a.deadline ? new Date(a.deadline).getTime() : 0);
+          const timeB = b.created_at ? new Date(b.created_at).getTime() : (b.deadline ? new Date(b.deadline).getTime() : 0);
+          return timeB - timeA;
+        });
+        setTasks(sortDescending(data));
+      }
     } catch (e) { }
   };
 

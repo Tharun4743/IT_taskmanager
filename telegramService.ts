@@ -41,7 +41,7 @@ export function getPortalUrl(): string {
 }
 
 export function getWatermarkHtml(): string {
-  return `\n─────────────────────────\n👨‍💻 Developed and maintained by <a href="https://tharunkumark4743.netlify.app/">Tharunkumar K</a>\n🏛️ <i>Department of Information Technology, VSB Engineering College</i>`;
+  return `\n───────────────────────────────\n👨‍💻 Developed by <a href="https://tharunkumark4743.netlify.app/">Tharunkumar K</a>\n🏛️ <i>Department of Information Technology, VSBEC</i>`;
 }
 
 export function getISTDateStr(): string {
@@ -85,6 +85,65 @@ export async function setGroupChatId(chatId: string): Promise<void> {
   `, [chatId]);
 }
 
+let cachedGroupInviteLink: string | null = null;
+
+export async function getGroupInviteLink(): Promise<string | null> {
+  if (cachedGroupInviteLink) return cachedGroupInviteLink;
+
+  // 1. Check system_settings table
+  try {
+    const res = await pool.query(`SELECT value FROM system_settings WHERE key = 'telegram_group_invite_link' LIMIT 1`);
+    if (res.rows.length > 0 && res.rows[0].value && res.rows[0].value.trim()) {
+      cachedGroupInviteLink = res.rows[0].value.trim();
+      return cachedGroupInviteLink;
+    }
+  } catch (err) {
+    // Ignore error
+  }
+
+  // 2. Check process.env
+  if (process.env.TELEGRAM_GROUP_INVITE_LINK && process.env.TELEGRAM_GROUP_INVITE_LINK.trim()) {
+    cachedGroupInviteLink = process.env.TELEGRAM_GROUP_INVITE_LINK.trim();
+    return cachedGroupInviteLink;
+  }
+
+  // 3. Try to dynamically export or create invite link via Telegram API
+  const token = getBotToken();
+  const groupChatId = await getGroupChatId();
+  if (token && groupChatId) {
+    try {
+      const resp = await fetch(`https://api.telegram.org/bot${token}/exportChatInviteLink`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: groupChatId })
+      });
+      const data = await resp.json();
+      if (data.ok && data.result) {
+        cachedGroupInviteLink = data.result;
+        pool.query(`
+          INSERT INTO system_settings (key, value, updated_at)
+          VALUES ('telegram_group_invite_link', $1, CURRENT_TIMESTAMP)
+          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
+        `, [cachedGroupInviteLink]).catch(() => {});
+        return cachedGroupInviteLink;
+      }
+    } catch (err) {
+      console.warn('[Telegram] Could not export chat invite link automatically:', err);
+    }
+  }
+
+  return null;
+}
+
+export async function setGroupInviteLink(link: string): Promise<void> {
+  cachedGroupInviteLink = link.trim();
+  await pool.query(`
+    INSERT INTO system_settings (key, value, updated_at)
+    VALUES ('telegram_group_invite_link', $1, CURRENT_TIMESTAMP)
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
+  `, [link.trim()]);
+}
+
 /**
  * Escape HTML special characters to prevent message formatting errors
  */
@@ -99,23 +158,24 @@ export function escapeHtml(str: string | null | undefined): string {
 }
 
 /**
- * Visual Colorful Progress Bar generator for Telegram Reports
- * e.g. 🟩🟩🟩🟩🟩🟩⬜⬜⬜⬜ 60%
+ * Visual Multi-Color Tiered Progress Bar generator for Telegram Reports
+ * e.g. 🟩🟩🟩🟩🟩🟩🟨🟨⬜⬜ 60%
  */
 export function makeProgressBar(completed: number, total: number, size = 10): string {
   if (total <= 0) return '⬜'.repeat(size) + ' <b>0%</b>';
   const ratio = Math.min(Math.max(completed / total, 0), 1);
   const filled = Math.round(ratio * size);
-  const empty = size - filled;
+  const empty = Math.max(0, size - filled);
   const percentage = Math.round(ratio * 100);
 
   let fillChar = '🟩';
   if (percentage < 30) fillChar = '🟥';
-  else if (percentage < 65) fillChar = '🟧';
-  else if (percentage < 90) fillChar = '🟨';
+  else if (percentage < 60) fillChar = '🟧';
+  else if (percentage < 85) fillChar = '🟨';
   else fillChar = '🟩';
 
-  return `${fillChar.repeat(filled)}${'⬜'.repeat(empty)} <b>${percentage}%</b>`;
+  const badge = percentage === 100 ? ' 🌟' : '';
+  return `${fillChar.repeat(filled)}${'⬜'.repeat(empty)} <b>${percentage}%</b>${badge}`;
 }
 
 /**
@@ -275,6 +335,28 @@ export async function sendTelegramDocument(
   } catch (err: any) {
     console.error(`[Telegram] Error sending document to ${chatId}:`, err.message);
     return { ok: false, description: err.message };
+  }
+}
+
+/**
+ * Delete a Telegram message (e.g., when tapping Close ❌)
+ */
+export async function deleteTelegramMessage(chatId: string | number, messageId: number): Promise<boolean> {
+  const token = getBotToken();
+  if (!token) return false;
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${token}/deleteMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: messageId
+      })
+    });
+    const data = await response.json();
+    return Boolean(data.ok);
+  } catch {
+    return false;
   }
 }
 
@@ -559,7 +641,7 @@ export async function registerBotCommandsMenu(): Promise<void> {
 }
 
 /**
- * Generates an interactive keyboard with one-tap action buttons
+ * Generates an interactive keyboard with one-tap action buttons (2-Column Grid)
  */
 export function getInteractiveMenuKeyboard(role?: string) {
   const portalUrl = getPortalUrl();
@@ -568,7 +650,7 @@ export function getInteractiveMenuKeyboard(role?: string) {
     return {
       inline_keyboard: [
         [
-          { text: '📊 Group Summary', callback_data: 'cb_summary' },
+          { text: '📊 Group Brief', callback_data: 'cb_summary' },
           { text: '⚠️ Defaulters', callback_data: 'cb_defaulters' }
         ],
         [
@@ -576,8 +658,12 @@ export function getInteractiveMenuKeyboard(role?: string) {
           { text: '📋 Task Status', callback_data: 'cb_task_status' }
         ],
         [
-          { text: '🔎 Student Search', callback_data: 'cb_search_help' },
-          { text: '🌐 Open Portal', url: portalUrl }
+          { text: '🏆 Leaderboard', callback_data: 'cb_leaderboard' },
+          { text: '🔎 Student Search', callback_data: 'cb_search_help' }
+        ],
+        [
+          { text: '👥 Dept Group', callback_data: 'cb_group_link' },
+          { text: '🌐 Admin Portal', url: portalUrl }
         ]
       ]
     };
@@ -594,14 +680,137 @@ export function getInteractiveMenuKeyboard(role?: string) {
         { text: '💻 GitHub', callback_data: 'cb_github' }
       ],
       [
-        { text: '📊 My Progress', callback_data: 'cb_stats' },
+        { text: '📊 Scorecard', callback_data: 'cb_stats' },
         { text: '👤 My Profile', callback_data: 'cb_profile' }
       ],
       [
-        { text: '🌐 Open Portal', url: portalUrl }
+        { text: '🏆 Leaderboard', callback_data: 'cb_leaderboard' },
+        { text: '🌐 Web Portal', url: portalUrl }
+      ],
+      [
+        { text: '👥 Join Telegram Group', callback_data: 'cb_group_link' }
       ]
     ]
   };
+}
+
+/**
+ * 👥 Telegram Group Invitation & Recommendation Card
+ */
+export async function getGroupRecommendationCard(): Promise<{ html: string; keyboard: any }> {
+  const inviteLink = await getGroupInviteLink();
+  const groupChatId = await getGroupChatId();
+
+  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  👥  <b>OFFICIAL TELEGRAM GROUP</b>  🏛️\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  html += `<blockquote>📢 <b>Join Your Department Community!</b>\n`;
+  html += `Connect with classmates and faculty to stay ahead on all academic updates.</blockquote>\n\n`;
+
+  html += `🌟 <b>WHAT YOU GET IN THE GROUP:</b>\n`;
+  html += ` ├ 🏆 <b>Daily Coding Leaderboards</b> (Top Solvers & Committers)\n`;
+  html += ` ├ 📊 <b>Section & Year Performance Briefs</b> (Morning & Evening)\n`;
+  html += ` ├ ⏰ <b>Live Assignment Deadlines & Reminders</b>\n`;
+  html += ` └ 📢 <b>Department & Faculty Official Announcements</b>\n\n`;
+
+  if (inviteLink) {
+    html += `👉 <b>Tap the button below to join the group directly!</b>\n`;
+  } else if (groupChatId) {
+    html += `👉 <i>Ask your Class Advisor or Coordinator to add you to Group ID:</i> <code>${escapeHtml(groupChatId)}</code>\n`;
+  } else {
+    html += `👉 <i>Contact your Department Administrator for the official group invite link!</i>\n`;
+  }
+
+  html += getWatermarkHtml();
+
+  const keyboard: any = {
+    inline_keyboard: []
+  };
+
+  if (inviteLink) {
+    keyboard.inline_keyboard.push([
+      { text: '🚀 Join Telegram Group Now', url: inviteLink }
+    ]);
+  }
+
+  keyboard.inline_keyboard.push([
+    { text: '📋 My Tasks', callback_data: 'cb_tasks' },
+    { text: '📊 My Scorecard', callback_data: 'cb_stats' }
+  ]);
+  keyboard.inline_keyboard.push([
+    { text: '📱 Main Menu', callback_data: 'cb_menu' },
+    { text: '🌐 Open Portal', url: getPortalUrl() }
+  ]);
+
+  return { html, keyboard };
+}
+
+/**
+ * 🏆 Dedicated Coding Leaderboard Card (Top Solvers & Committers)
+ */
+export async function getLeaderboardCard(): Promise<{ html: string; keyboard: any }> {
+  const dateStr = getISTDateStr();
+  const [ghRes, lcRes] = await Promise.all([
+    pool.query(`
+      SELECT u.full_name, COALESCE(gh.daily_commit_count, 0) as commits_today
+      FROM users u
+      JOIN github_daily_commits gh ON gh.student_id = u.id AND gh.date = $1
+      WHERE u.role = 'STUDENT' AND gh.daily_commit_count > 0
+      ORDER BY gh.daily_commit_count DESC, u.full_name ASC
+      LIMIT 5
+    `, [dateStr]),
+    pool.query(`
+      SELECT u.full_name, COALESCE(lp.solved_today, 0) as solved_today
+      FROM users u
+      JOIN leetcode_daily_progress lp ON lp.user_id = u.id AND lp.date = $1
+      WHERE u.role = 'STUDENT' AND lp.solved_today > 0
+      ORDER BY lp.solved_today DESC, u.full_name ASC
+      LIMIT 5
+    `, [dateStr])
+  ]);
+
+  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  🏆  <b>TODAY'S CODING LEADERBOARD</b>  🏆\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  html += `<blockquote>📅 <b>Date:</b> <i>${dateStr} (IST)</i>\n💡 <i>Live rankings updated automatically!</i></blockquote>\n\n`;
+
+  html += `💻 <b>GITHUB TOP COMMITTERS:</b>\n`;
+  if (ghRes.rows.length === 0) {
+    html += ` └ <i>No commits recorded today yet.</i>\n\n`;
+  } else {
+    ghRes.rows.forEach((r, idx) => {
+      const rankEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🎖️';
+      const isLast = idx === ghRes.rows.length - 1;
+      html += ` ${isLast ? '└' : '├'} ${rankEmoji} <b>${escapeHtml(r.full_name)}</b> ➔ <code>${r.commits_today}</code> commits 🔥\n`;
+    });
+    html += `\n`;
+  }
+
+  html += `🧩 <b>LEETCODE TOP SOLVERS:</b>\n`;
+  if (lcRes.rows.length === 0) {
+    html += ` └ <i>No problems solved today yet.</i>\n\n`;
+  } else {
+    lcRes.rows.forEach((r, idx) => {
+      const rankEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🎖️';
+      const isLast = idx === lcRes.rows.length - 1;
+      html += ` ${isLast ? '└' : '├'} ${rankEmoji} <b>${escapeHtml(r.full_name)}</b> ➔ <code>${r.solved_today}</code> solved 💎\n`;
+    });
+    html += `\n`;
+  }
+
+  html += `<blockquote>🚀 <b>Keep coding and climb the daily leaderboard!</b></blockquote>\n`;
+  html += getWatermarkHtml();
+
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: '🔄 Refresh Board', callback_data: 'cb_leaderboard' },
+        { text: '📊 My Scorecard', callback_data: 'cb_stats' }
+      ],
+      [
+        { text: '📱 Main Menu', callback_data: 'cb_menu' },
+        { text: '🌐 Open Portal', url: getPortalUrl() }
+      ]
+    ]
+  };
+
+  return { html, keyboard };
 }
 
 /**
@@ -628,26 +837,46 @@ export async function getStudentLeetCodeCard(user: any): Promise<{ html: string;
   const dailyTarget = Number(targetRes.rows[0]?.daily_target) || 0;
   const weeklyTarget = Number(targetRes.rows[0]?.weekly_target) || 0;
 
-  const statusEmoji = (dailyTarget > 0 && solvedToday >= dailyTarget) ? '🟢 MET' : (dailyTarget > 0 ? '🟡 PENDING' : '⚪ NO TARGET');
-  const weeklyStatusEmoji = (weeklyTarget > 0 && solvedWeek >= weeklyTarget) ? '🟢 MET' : (weeklyTarget > 0 ? '🟡 PENDING' : '⚪ NO TARGET');
+  const statusBadge = (dailyTarget > 0 && solvedToday >= dailyTarget)
+    ? '🟢 [ MET ]'
+    : (dailyTarget > 0 ? '🟡 [ PENDING ]' : '⚪ [ NO TARGET ]');
+
+  const weeklyBadge = (weeklyTarget > 0 && solvedWeek >= weeklyTarget)
+    ? '🟢 [ MET ]'
+    : (weeklyTarget > 0 ? '🟡 [ PENDING ]' : '⚪ [ NO TARGET ]');
+
   const progressBar = dailyTarget > 0 ? makeProgressBar(solvedToday, dailyTarget, 8) : '';
 
-  let html = `🧩 <b>LEETCODE PROGRESS SCORECARD</b>\n\n`;
-  html += `<blockquote>👤 <b>Student:</b> ${escapeHtml(user.full_name || 'Student')}\n`;
-  html += `🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number || user.username)}</code></blockquote>\n\n`;
+  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  🧩  <b>LEETCODE PROGRESS SCORECARD</b>  ⚡\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(user.full_name || 'Student')}</b>\n`;
+  html += `🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number || user.username)}</code>\n`;
+  html += `📅 <b>Date:</b> <i>${dateStr} (IST)</i></blockquote>\n\n`;
 
-  html += `📊 <b>Today's Daily Target (${dateStr}):</b>\n`;
-  html += `• ⚡ <b>Solved Today:</b> <b>${solvedToday}</b> / ${dailyTarget || '—'} [${statusEmoji}]\n`;
-  if (progressBar) html += `• 📈 <b>Daily Progress:</b> ${progressBar}\n`;
-  html += `\n📅 <b>Weekly Performance:</b>\n`;
-  html += `• 🏆 <b>Solved This Week:</b> <b>${solvedWeek}</b> / ${weeklyTarget || '—'} [${weeklyStatusEmoji}]\n`;
-  html += `• 🌟 <b>All-Time Solved:</b> <b>${totalSolved}</b> problems\n`;
+  html += `📊 <b>TODAY'S DAILY TARGET:</b>\n`;
+  html += ` ├ 🎯 <b>Target:</b> <code>${dailyTarget || '—'}</code> problems\n`;
+  html += ` ├ ⚡ <b>Solved Today:</b> <b>${solvedToday}</b> / ${dailyTarget || '—'} ${statusBadge}\n`;
+  if (progressBar) html += ` └ 📈 <b>Daily Progress:</b> ${progressBar}\n`;
+  else html += ` └ 📈 <b>Daily Progress:</b> <i>No target configured for today</i>\n`;
+
+  html += `\n📅 <b>WEEKLY PERFORMANCE:</b>\n`;
+  html += ` ├ 🏆 <b>This Week:</b> <b>${solvedWeek}</b> / ${weeklyTarget || '—'} ${weeklyBadge}\n`;
+  html += ` └ 🌟 <b>All-Time Solved:</b> <code>${totalSolved}</code> problems\n`;
+
+  if (user.leetcode_url) {
+    html += `\n🔗 <b>Profile Link:</b> <a href="${escapeHtml(user.leetcode_url)}">View LeetCode Profile</a>\n`;
+  }
+
   html += getWatermarkHtml();
 
   const keyboard = {
     inline_keyboard: [
       [
-        { text: '🔄 Sync LeetCode', callback_data: 'cb_leetcode' }
+        { text: '🔄 Sync LeetCode', callback_data: 'cb_leetcode' },
+        { text: '💻 GitHub Card', callback_data: 'cb_github' }
+      ],
+      [
+        { text: '📊 My Scorecard', callback_data: 'cb_stats' },
+        { text: '📋 My Tasks', callback_data: 'cb_tasks' }
       ],
       [
         { text: '📱 Main Menu', callback_data: 'cb_menu' },
@@ -674,22 +903,33 @@ export async function getStudentGitHubCard(user: any): Promise<{ html: string; k
   const commitsToday = Number(dailyRes.rows[0]?.daily_commit_count) || 0;
   const commitsWeek = Number(weeklyRes.rows[0]?.commits_week) || 0;
 
-  const commitBadge = commitsToday > 0 ? '🔥 ACTIVE' : '⚪ NO COMMITS';
+  const commitBadge = commitsToday > 0 ? '🔥 [ ACTIVE ]' : '⚪ [ NO COMMITS ]';
 
-  let html = `💻 <b>GITHUB ACTIVITY SCORECARD</b>\n\n`;
-  html += `<blockquote>👤 <b>Student:</b> ${escapeHtml(user.full_name || 'Student')}\n`;
-  html += `🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number || user.username)}</code></blockquote>\n\n`;
+  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  💻  <b>GITHUB ACTIVITY SCORECARD</b>  🐙\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(user.full_name || 'Student')}</b>\n`;
+  html += `🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number || user.username)}</code>\n`;
+  html += `📅 <b>Date:</b> <i>${dateStr} (IST)</i></blockquote>\n\n`;
 
-  html += `📊 <b>Commit Velocity (${dateStr}):</b>\n`;
-  html += `• 🚀 <b>Today's Commits:</b> <b>${commitsToday}</b> commit${commitsToday === 1 ? '' : 's'} [${commitBadge}]\n`;
-  html += `• 📈 <b>This Week's Commits:</b> <b>${commitsWeek}</b> commit${commitsWeek === 1 ? '' : 's'}\n`;
-  html += `• 🐙 <b>GitHub URL:</b> <code>${escapeHtml(user.github_url || 'Not set')}</code>\n`;
+  html += `📊 <b>COMMIT VELOCITY:</b>\n`;
+  html += ` ├ 🚀 <b>Today's Commits:</b> <code>${commitsToday}</code> commits ${commitBadge}\n`;
+  html += ` ├ 📈 <b>This Week's Total:</b> <code>${commitsWeek}</code> commits pushed\n`;
+  html += ` └ 🐙 <b>GitHub Handle:</b> <code>${escapeHtml(user.github_url ? user.github_url.replace(/https?:\/\/(?:www\.)?github\.com\/?/i, '@') : 'Not linked')}</code>\n`;
+
+  if (user.github_url) {
+    html += `\n🔗 <b>Repository Link:</b> <a href="${escapeHtml(user.github_url)}">View GitHub Profile</a>\n`;
+  }
+
   html += getWatermarkHtml();
 
   const keyboard = {
     inline_keyboard: [
       [
-        { text: '🔄 Sync GitHub', callback_data: 'cb_github' }
+        { text: '🔄 Sync GitHub', callback_data: 'cb_github' },
+        { text: '🧩 LeetCode Card', callback_data: 'cb_leetcode' }
+      ],
+      [
+        { text: '📊 My Scorecard', callback_data: 'cb_stats' },
+        { text: '📋 My Tasks', callback_data: 'cb_tasks' }
       ],
       [
         { text: '📱 Main Menu', callback_data: 'cb_menu' },
@@ -734,35 +974,46 @@ export async function getStudentStatsCard(user: any): Promise<{ html: string; ke
   const completedTasks = Number(tasksRes.rows[0]?.completed_tasks) || 0;
   const pendingTasks = Math.max(0, totalTasks - completedTasks);
 
-  let overall = 'Good Progress';
+  let overall = '🌟 Good Progress';
   if (pendingTasks === 0 && (lcTarget === 0 || lcSolved >= lcTarget)) {
-    overall = '🔥 All Targets Met!';
+    overall = '🔥 Outstanding — All Targets Met!';
   } else if (pendingTasks > 0 && lcSolved === 0 && ghCommits === 0) {
-    overall = '⚠️ Needs Attention';
+    overall = '⚠️ Action Required — Targets Pending';
   }
 
-  let html = `📊 <b>COMBINED PERFORMANCE DASHBOARD</b>\n\n`;
-  html += `<blockquote>👤 <b>${escapeHtml(user.full_name)}</b> (<code>${escapeHtml(user.register_number || user.username)}</code>)\n`;
-  html += `🏫 <b>Class:</b> <code>${escapeHtml(user.class_name || 'IT Dept')}</code></blockquote>\n\n`;
+  const taskMeter = totalTasks > 0 ? makeProgressBar(completedTasks, totalTasks, 8) : '✨ No tasks';
 
-  html += `📋 <b>Academic Assignments:</b>\n`;
-  html += `• <b>Completed:</b> <b>${completedTasks}/${totalTasks}</b> ${completedTasks === totalTasks && totalTasks > 0 ? '🟢' : '🟡'}\n`;
-  html += `• <b>Status:</b> ${pendingTasks === 0 ? '✨ <i>All tasks completed! 🎉</i>' : `⏳ <b>${pendingTasks}</b> task${pendingTasks === 1 ? '' : 's'} pending`}\n\n`;
+  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📊  <b>STUDENT PERFORMANCE SCORECARD</b>  🎯\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(user.full_name)}</b>\n`;
+  html += `🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number || user.username)}</code>\n`;
+  html += `🏫 <b>Class:</b> <code>${escapeHtml(user.class_name || 'IT Dept')}</code>\n`;
+  html += `📅 <b>Date:</b> <i>${dateStr} (IST)</i></blockquote>\n\n`;
 
-  html += `🧩 <b>LeetCode Coding Target:</b>\n`;
-  html += `• <b>Today:</b> <b>${lcSolved}</b> / ${lcTarget || '—'} ${lcTarget > 0 && lcSolved >= lcTarget ? '🟢 MET' : '🟡 PENDING'}\n\n`;
+  html += `📋 <b>ACADEMIC ASSIGNMENTS:</b>\n`;
+  html += ` ├ 🎯 <b>Completed:</b> <code>${completedTasks} / ${totalTasks}</code>\n`;
+  html += ` ├ 📊 <b>Progress:</b> ${taskMeter}\n`;
+  html += ` └ ⏳ <b>Status:</b> ${pendingTasks === 0 ? '✨ <i>All assignments completed! 🎉</i>' : `<b>${pendingTasks}</b> assignment${pendingTasks === 1 ? '' : 's'} pending`}\n\n`;
 
-  html += `💻 <b>GitHub Commits:</b>\n`;
-  html += `• <b>Today:</b> <b>${ghCommits}</b> commit${ghCommits === 1 ? '' : 's'} ${ghCommits > 0 ? '🔥 ACTIVE' : '⚪ NONE'}\n\n`;
+  html += `🧩 <b>LEETCODE CODING TARGET:</b>\n`;
+  html += ` ├ ⚡ <b>Today:</b> <code>${lcSolved} / ${lcTarget || '—'}</code>\n`;
+  html += ` └ 🏷️ <b>Status:</b> ${lcTarget > 0 && lcSolved >= lcTarget ? '🟢 [ MET ]' : (lcTarget > 0 ? '🟡 [ PENDING ]' : '⚪ [ NO TARGET ]')}\n\n`;
 
-  html += `<blockquote>🎯 <b>Overall Evaluation:</b> ${overall}</blockquote>\n`;
+  html += `💻 <b>GITHUB COMMITS:</b>\n`;
+  html += ` ├ 🚀 <b>Today's Commits:</b> <code>${ghCommits}</code> commit${ghCommits === 1 ? '' : 's'}\n`;
+  html += ` └ 🏷️ <b>Status:</b> ${ghCommits > 0 ? '🔥 [ ACTIVE ]' : '⚪ [ NO COMMITS ]'}\n\n`;
+
+  html += `<blockquote>🎯 <b>EVALUATION:</b> ${overall}</blockquote>\n`;
   html += getWatermarkHtml();
 
   const keyboard = {
     inline_keyboard: [
       [
         { text: '📋 View Tasks', callback_data: 'cb_tasks' },
-        { text: '🔄 Refresh Progress', callback_data: 'cb_stats' }
+        { text: '🔄 Refresh Stats', callback_data: 'cb_stats' }
+      ],
+      [
+        { text: '🧩 LeetCode', callback_data: 'cb_leetcode' },
+        { text: '💻 GitHub', callback_data: 'cb_github' }
       ],
       [
         { text: '📱 Main Menu', callback_data: 'cb_menu' },
@@ -811,34 +1062,33 @@ export async function getProfileCard(user: any): Promise<{ html: string; keyboar
     const effectiveLc = p.leetcode_url || dir?.leetcode || 'Not set';
     const effectiveGh = p.github_url || dir?.github || 'Not set';
 
-    let html = `👤 <b>STUDENT COMPREHENSIVE PROFILE</b>\n\n`;
-    html += `📌 <b>Full Name:</b> <b>${escapeHtml(p.full_name)}</b>\n`;
+    let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  👤  <b>STUDENT COMPREHENSIVE PROFILE</b>  🎓\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+    html += `<blockquote>📌 <b>Full Name:</b> <b>${escapeHtml(p.full_name)}</b>\n`;
     html += `🆔 <b>Register No:</b> <code>${escapeHtml(p.register_number || p.username)}</code>\n`;
     html += `🏫 <b>Class & Year:</b> <code>${escapeHtml(p.class_name || 'N/A')}</code> (${p.year ? `Year ${p.year}` : 'IT Dept'})\n`;
     if (p.batch) html += `🎓 <b>Batch:</b> <code>${escapeHtml(p.batch)}</code>\n`;
-    if (p.gender) html += `⚧ <b>Gender:</b> ${escapeHtml(p.gender)}\n`;
-    if (p.email) html += `📧 <b>Email:</b> <code>${escapeHtml(p.email)}</code>\n`;
-    if (p.mobile_number || p.phone) html += `📱 <b>Phone:</b> <code>${escapeHtml(p.mobile_number || p.phone)}</code>\n`;
     if (p.semester) html += `📚 <b>Semester:</b> <code>Sem ${p.semester}</code>\n`;
     if (p.cgpa) html += `🎯 <b>CGPA:</b> <code>${p.cgpa}</code>\n`;
-    html += `─────────────────────────\n\n`;
+    html += `📧 <b>Email:</b> <code>${escapeHtml(p.email || 'N/A')}</code>\n`;
+    if (p.mobile_number || p.phone) html += `📱 <b>Phone:</b> <code>${escapeHtml(p.mobile_number || p.phone)}</code>\n`;
+    html += `</blockquote>\n\n`;
 
-    html += `🌐 <b>Coding & Social Profiles:</b>\n`;
-    html += `• 🧩 <b>LeetCode:</b> <code>${escapeHtml(effectiveLc)}</code>\n`;
-    html += `• 🐙 <b>GitHub:</b> <code>${escapeHtml(effectiveGh)}</code>\n`;
-    html += `• ✈️ <b>Telegram:</b> 🟢 Connected (${p.telegram_username ? `@${escapeHtml(p.telegram_username)}` : 'Personal DM'})\n\n`;
+    html += `🌐 <b>CODING & SOCIAL PROFILES:</b>\n`;
+    html += ` ├ 🧩 <b>LeetCode:</b> <code>${escapeHtml(effectiveLc)}</code>\n`;
+    html += ` ├ 🐙 <b>GitHub:</b> <code>${escapeHtml(effectiveGh)}</code>\n`;
+    html += ` └ ✈️ <b>Telegram:</b> 🟢 Connected (${p.telegram_username ? `@${escapeHtml(p.telegram_username)}` : 'Personal DM'})\n\n`;
 
-    html += `📊 <b>Overall Portal Performance:</b>\n`;
-    html += `• 📋 <b>Tasks Completed:</b> <b>${s.verified_tasks || 0}/${s.total_tasks || 0}</b>\n`;
-    html += `• 🧩 <b>LeetCode Problems Solved:</b> <b>${s.lc_solved || 0}</b>\n`;
-    html += `• 💻 <b>GitHub Commits:</b> <b>${s.gh_commits || 0}</b>\n`;
+    html += `📊 <b>PORTAL PERFORMANCE METRICS:</b>\n`;
+    html += ` ├ 📋 <b>Tasks Verified:</b> <b>${s.verified_tasks || 0} / ${s.total_tasks || 0}</b>\n`;
+    html += ` ├ 🧩 <b>LeetCode Solved:</b> <b>${s.lc_solved || 0}</b> problems\n`;
+    html += ` └ 💻 <b>GitHub Commits:</b> <b>${s.gh_commits || 0}</b> commits\n`;
     html += getWatermarkHtml();
 
     const keyboard = {
       inline_keyboard: [
         [
           { text: '📋 My Tasks', callback_data: 'cb_tasks' },
-          { text: '📊 My Progress', callback_data: 'cb_stats' }
+          { text: '📊 My Scorecard', callback_data: 'cb_stats' }
         ],
         [
           { text: '🧩 LeetCode Card', callback_data: 'cb_leetcode' },
@@ -878,7 +1128,7 @@ export async function getFacultyTaskStatusCard(): Promise<{ html: string; keyboa
     LIMIT 6
   `);
 
-  let html = `📋 <b>ACTIVE TASK STATUS OVERVIEW</b>\n\n`;
+  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📋  <b>ACTIVE TASK STATUS OVERVIEW</b>  🏛️\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n\n`;
   if (tasksRes.rows.length === 0) {
     html += `✨ <i>No active assignments currently open.</i>\n`;
   } else {
@@ -886,8 +1136,8 @@ export async function getFacultyTaskStatusCard(): Promise<{ html: string; keyboa
       const dStr = t.deadline
         ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
         : 'No deadline';
-      html += `${i + 1}. 📌 <b>${escapeHtml(t.title)}</b>\n`;
-      html += `   ⏰ Due: <i>${dStr}</i> | ✅ Submissions: <b>${t.completed_count}</b>\n\n`;
+      html += `📌 <b>${i + 1}. ${escapeHtml(t.title)}</b>\n`;
+      html += `   ⏰ <i>Due:</i> ${dStr}  |  ✅ <i>Submissions:</i> <b>${t.completed_count}</b>\n\n`;
     });
   }
   html += getWatermarkHtml();
@@ -895,7 +1145,7 @@ export async function getFacultyTaskStatusCard(): Promise<{ html: string; keyboa
   const keyboard = {
     inline_keyboard: [
       [
-        { text: '📢 Group Summary', callback_data: 'cb_summary' },
+        { text: '📢 Group Brief', callback_data: 'cb_summary' },
         { text: '⚠️ Defaulters', callback_data: 'cb_defaulters' }
       ],
       [
@@ -997,8 +1247,8 @@ export async function getComprehensiveStudentProgressCard(identifierOrUser: stri
   const lcWeeklyTarget = Number(lcTargetRes.rows[0]?.weekly_target) || 0;
 
   const lcDailyStatus = lcDailyTarget > 0
-    ? (lcSolvedToday >= lcDailyTarget ? '✅ Completed' : '⏳ In Progress')
-    : '⚪ No Target';
+    ? (lcSolvedToday >= lcDailyTarget ? '🟢 [ MET ]' : '🟡 [ IN PROGRESS ]')
+    : '⚪ [ NO TARGET ]';
 
   // GitHub calculations
   const ghCommitsToday = Number(ghDailyRes.rows[0]?.daily_commit_count) || 0;
@@ -1007,52 +1257,50 @@ export async function getComprehensiveStudentProgressCard(identifierOrUser: stri
   // Tasks calculations
   const totalTasks = Number(tasksAssignedRes.rows[0]?.total_assigned) || 0;
   const completedTasks = Number(tasksAssignedRes.rows[0]?.completed_tasks) || 0;
-  const taskProgress = totalTasks > 0 ? makeProgressBar(completedTasks, totalTasks, 8) : '[░░░░░░░░] 0%';
+  const taskProgress = totalTasks > 0 ? makeProgressBar(completedTasks, totalTasks, 8) : '✨ 0%';
   const pendingTasksList = activePendingTasksRes.rows;
 
-  let html = `📊 <b>STUDENT COMPREHENSIVE PERFORMANCE CARD</b>\n`;
-  html += `👤 <b>${escapeHtml(user.full_name)}</b>\n`;
-  html += `🆔 <b>Register No:</b> <code>${escapeHtml(user.register_number || user.username)}</code>\n`;
-  html += `🏫 <b>Class:</b> ${escapeHtml(user.class_name || 'IT Department')}\n`;
-  html += `📅 <b>Date:</b> <i>${dateStr} (IST)</i>\n`;
-  html += `─────────────────────────\n\n`;
+  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📊  <b>STUDENT PERFORMANCE CARD</b>  🎓\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(user.full_name)}</b>\n`;
+  html += `🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number || user.username)}</code>\n`;
+  html += `🏫 <b>Class:</b> <code>${escapeHtml(user.class_name || 'IT Department')}</code>\n`;
+  html += `📅 <b>Date:</b> <i>${dateStr} (IST)</i></blockquote>\n\n`;
 
-  html += `📝 <b>Academic Tasks Progress:</b>\n`;
-  html += `• Completed: <b>${completedTasks}</b> / ${totalTasks} ${taskProgress}\n`;
+  html += `📋 <b>ACADEMIC TASKS:</b>\n`;
+  html += ` ├ 🎯 <b>Completed:</b> <code>${completedTasks} / ${totalTasks}</code>\n`;
+  html += ` ├ 📊 <b>Progress:</b> ${taskProgress}\n`;
   if (pendingTasksList.length === 0) {
-    html += `• ✨ <i>Status: All active assignments completed!</i> 🎉\n\n`;
+    html += ` └ ✨ <i>Status: All active assignments completed! 🎉</i>\n\n`;
   } else {
-    html += `• ⏳ <b>Active Pending Tasks (${pendingTasksList.length}):</b>\n`;
+    html += ` └ ⏳ <b>Pending Assignments (${pendingTasksList.length}):</b>\n`;
     pendingTasksList.forEach((t, i) => {
       const dStr = t.deadline
         ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
         : 'No deadline';
-      html += `   ${i + 1}. <b>${escapeHtml(t.title)}</b> (<i>Due: ${dStr}</i>)\n`;
+      html += `    • <b>${escapeHtml(t.title)}</b> (<i>Due: ${dStr}</i>)\n`;
     });
     html += `\n`;
   }
 
-  html += `🧩 <b>LeetCode Progress:</b>\n`;
-  html += `• Today's Target: <b>${lcSolvedToday}</b> / ${lcDailyTarget} (${lcDailyStatus})\n`;
-  html += `• This Week: <b>${lcSolvedWeek}</b> / ${lcWeeklyTarget} problems\n`;
-  html += `• Total Solved: <b>${lcTotalSolved}</b> problems\n`;
-  if (user.leetcode_url) {
-    html += `• 🔗 <a href="${escapeHtml(user.leetcode_url)}">LeetCode Profile</a>\n`;
-  }
-  html += `\n`;
+  html += `🧩 <b>LEETCODE TARGET:</b>\n`;
+  html += ` ├ ⚡ <b>Today:</b> <code>${lcSolvedToday} / ${lcDailyTarget}</code> ${lcDailyStatus}\n`;
+  html += ` ├ 🏆 <b>This Week:</b> <code>${lcSolvedWeek} / ${lcWeeklyTarget}</code> problems\n`;
+  html += ` └ 🌟 <b>Total Solved:</b> <code>${lcTotalSolved}</code> problems\n\n`;
 
-  html += `💻 <b>GitHub Progress:</b>\n`;
-  html += `• Today's Commits: <b>${ghCommitsToday}</b> commits\n`;
-  html += `• This Week: <b>${ghCommitsWeek}</b> commits\n`;
-  if (user.github_url) {
-    html += `• 🔗 <a href="${escapeHtml(user.github_url)}">GitHub Profile</a>\n`;
-  }
+  html += `💻 <b>GITHUB COMMITS:</b>\n`;
+  html += ` ├ 🚀 <b>Today's Commits:</b> <code>${ghCommitsToday}</code> commits\n`;
+  html += ` └ 📈 <b>This Week:</b> <code>${ghCommitsWeek}</code> commits\n`;
 
   html += getWatermarkHtml();
 
   const keyboard = {
     inline_keyboard: [
       [
+        { text: '📋 View Tasks', callback_data: 'cb_tasks' },
+        { text: '📊 Full Stats', callback_data: 'cb_stats' }
+      ],
+      [
+        { text: '📱 Main Menu', callback_data: 'cb_menu' },
         { text: '🌐 Open Portal', url: getPortalUrl() }
       ]
     ]
@@ -1239,15 +1487,15 @@ export async function getClassOrYearAnalysisCard(
     if (commits > 0) ghActiveCommitters++;
   });
 
-  let html = `📊 <b>${isYearOnly ? 'YEAR' : 'CLASS'} ANALYSIS REPORT — ${escapeHtml(classNamesHeader)}</b>\n`;
-  html += `👥 <b>Students:</b> <b>${totalStudents}</b> | 📱 <b>Telegram Linked:</b> <b>${linkedTelegram}</b> (${linkedPct}%)\n`;
-  html += `📅 <i>${dateStr} (IST)</i>\n`;
-  html += `─────────────────────────\n\n`;
+  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📊  <b>${isYearOnly ? 'YEAR' : 'CLASS'} ANALYSIS REPORT</b>  🏛️\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  html += `<blockquote>🏫 <b>Target:</b> <b>${escapeHtml(classNamesHeader)}</b>\n`;
+  html += `👥 <b>Students:</b> <code>${totalStudents}</code>  |  📱 <b>Linked Telegram:</b> <code>${linkedTelegram} (${linkedPct}%)</code>\n`;
+  html += `📅 <b>Date:</b> <i>${dateStr} (IST)</i></blockquote>\n\n`;
 
   // Section-Wise Breakdown for Year Queries
   if (isYearOnly && matchedClasses.length > 1) {
-    html += `🏢 <b>Section-Wise Overview:</b>\n`;
-    matchedClasses.forEach(sec => {
+    html += `🏢 <b>SECTION-WISE OVERVIEW:</b>\n`;
+    matchedClasses.forEach((sec, idx) => {
       const secStudents = students.filter(s => s.class_id === sec.id);
       const secStudentIds = new Set(secStudents.map(s => s.id));
       let secLcSolved = 0;
@@ -1273,28 +1521,28 @@ export async function getClassOrYearAnalysisCard(
         }
       });
 
+      const isLast = idx === matchedClasses.length - 1;
       const secName = sec.name.replace(/^(?:I|II|III|IV|\d+)\s*(?:Year)?\s*/i, '').trim() || sec.name;
-      html += `• <b>${escapeHtml(secName)} (${secStudents.length}):</b> LeetCode: <b>${secLcSolved}</b> solved | Target: <b>${secLcMet}/${secLcTargeted}</b> met | GitHub: <b>${secGhCommits}</b> commits\n`;
+      html += ` ${isLast ? '└' : '├'} 🎓 <b>${escapeHtml(secName)} (${secStudents.length}):</b> LeetCode: <b>${secLcSolved}</b> solved (${secLcMet}/${secLcTargeted} met) | GitHub: <b>${secGhCommits}</b> commits\n`;
     });
-    html += `\n─────────────────────────\n\n`;
+    html += `\n`;
   }
 
-  html += `🚀 <b>Today's Coding Highlights:</b>\n`;
-  html += `• <b>LeetCode:</b> <b>${lcTotalSolved}</b> problems solved (${lcActiveSolvers} active solvers)\n`;
+  html += `🚀 <b>TODAY'S CODING HIGHLIGHTS:</b>\n`;
+  html += ` ├ 🧩 <b>LeetCode:</b> <b>${lcTotalSolved}</b> solved (<b>${lcActiveSolvers}</b> active solvers)\n`;
   if (lcTargetedCount > 0) {
     const lcProgress = makeProgressBar(lcMetCount, lcTargetedCount, 8);
-    html += `• <b>Target Status:</b> ${lcMetCount}/${lcTargetedCount} met target ${lcProgress}\n`;
+    html += ` ├ 🎯 <b>Target Status:</b> <b>${lcMetCount}/${lcTargetedCount}</b> met target ${lcProgress}\n`;
   }
   if (lcDefaulters.length > 0) {
-    html += `• <b>Incomplete Solvers:</b> <b>${lcDefaulters.length}</b> student(s) pending (Full list attached in Excel)\n`;
+    html += ` ├ ⚠️ <b>Pending Solvers:</b> <code>${lcDefaulters.length}</code> student(s) pending (Listed in Excel)\n`;
   } else if (lcTargetedCount > 0) {
-    html += `• <i>All targeted students met their LeetCode goal today!</i>\n`;
+    html += ` ├ ✨ <i>All targeted students met their LeetCode goal today! 🎉</i>\n`;
   }
-  html += `• <b>GitHub:</b> <b>${ghTotalCommits}</b> commits pushed (${ghActiveCommitters} active committers)\n\n`;
+  html += ` └ 💻 <b>GitHub:</b> <b>${ghTotalCommits}</b> commits (<b>${ghActiveCommitters}</b> active)\n\n`;
 
   // ── Prominent Coding Leaderboard Section ──────────────────────────────────
-  html += `─────────────────────────\n`;
-  html += `🏆 <b>TODAY'S CODING LEADERBOARDS:</b>\n\n`;
+  html += `🏆 <b>TODAY'S CLASS PODIUM:</b>\n\n`;
 
   // Top GitHub Committers Leaderboard
   const ghTopCommitters = ghRes.rows
@@ -1303,11 +1551,12 @@ export async function getClassOrYearAnalysisCard(
 
   html += `💻 <b>GitHub Top Committers:</b>\n`;
   if (ghTopCommitters.length === 0) {
-    html += `   <i>No commits recorded today yet.</i>\n\n`;
+    html += ` └ <i>No commits recorded today yet.</i>\n\n`;
   } else {
     ghTopCommitters.slice(0, 5).forEach((r, idx) => {
       const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🎖️';
-      html += `   ${medal} <b>${escapeHtml(r.full_name)}</b>: <code>${r.commits_today}</code> commits\n`;
+      const isLast = idx === Math.min(ghTopCommitters.length, 5) - 1;
+      html += ` ${isLast ? '└' : '├'} ${medal} <b>${escapeHtml(r.full_name)}</b> ➔ <code>${r.commits_today}</code> commits 🔥\n`;
     });
     html += `\n`;
   }
@@ -1319,21 +1568,21 @@ export async function getClassOrYearAnalysisCard(
 
   html += `🧩 <b>LeetCode Top Solvers:</b>\n`;
   if (lcTopSolvers.length === 0) {
-    html += `   <i>No problems solved today yet.</i>\n\n`;
+    html += ` └ <i>No problems solved today yet.</i>\n\n`;
   } else {
     lcTopSolvers.slice(0, 5).forEach((r, idx) => {
       const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🎖️';
-      html += `   ${medal} <b>${escapeHtml(r.full_name)}</b>: <code>${r.solved_today}</code> solved\n`;
+      const isLast = idx === Math.min(lcTopSolvers.length, 5) - 1;
+      html += ` ${isLast ? '└' : '├'} ${medal} <b>${escapeHtml(r.full_name)}</b> ➔ <code>${r.solved_today}</code> solved 💎\n`;
     });
     html += `\n`;
   }
 
   // Active Tasks for this class
-  html += `─────────────────────────\n`;
   if (activeTasksRes.rows.length === 0) {
-    html += `📌 <b>Active Class Assignments:</b>\n✨ <i>No active assignments pending for this class right now!</i> 🎉\n`;
+    html += `📋 <b>Active Class Assignments:</b>\n✨ <i>No active assignments pending for this class right now!</i> 🎉\n\n`;
   } else {
-    html += `📌 <b>Active Class Assignments:</b>\n\n`;
+    html += `📋 <b>ACTIVE CLASS ASSIGNMENTS:</b>\n\n`;
 
     for (let idx = 0; idx < activeTasksRes.rows.length; idx++) {
       const t = activeTasksRes.rows[idx];
@@ -1354,7 +1603,7 @@ export async function getClassOrYearAnalysisCard(
       const completedCount = totalStudents - pendingCount;
       const progressBar = makeProgressBar(completedCount, totalStudents, 8);
 
-      html += `<b>${idx + 1}. ${escapeHtml(t.title)}</b>\n`;
+      html += `📌 <b>${idx + 1}. ${escapeHtml(t.title)}</b>\n`;
       if (t.category) html += `   📂 <i>Category:</i> <code>${escapeHtml(t.category)}</code>\n`;
       html += `   ⏰ <i>Due:</i> ${deadlineStr}\n`;
       html += `   ✅ <i>Submissions:</i> <b>${completedCount} / ${totalStudents}</b> ${progressBar}\n`;
@@ -1362,20 +1611,24 @@ export async function getClassOrYearAnalysisCard(
       if (pendingCount === 0) {
         html += `   ✨ <i>Status: 100% Complete! All students submitted!</i> 🎉\n\n`;
       } else {
-        html += `   ⏳ <i>Status: ${pendingCount} pending submission(s) (Listed in Excel)</i>\n\n`;
+        html += `   ⏳ <i>Status: ${pendingCount} pending submission(s)</i>\n\n`;
       }
     }
   }
 
-  html += `📎 <b>Detailed Incomplete Report:</b>\n`;
-  html += `Detailed lists of LeetCode targets, inactive GitHub students, and pending task submissions grouped Year-wise are attached in the Excel sheet below.\n\n`;
+  html += `📎 <b>DETAILED INCOMPLETE REPORT:</b>\n`;
+  html += `<i>Full lists of pending LeetCode solvers, inactive GitHub students, and task submissions are attached in the Excel sheet below.</i>\n`;
 
   html += getWatermarkHtml();
 
   const keyboard = {
     inline_keyboard: [
       [
-        { text: '🌐 Open Portal', url: getPortalUrl() }
+        { text: '📢 Group Brief', callback_data: 'cb_summary' },
+        { text: '⚠️ Defaulters', callback_data: 'cb_defaulters' }
+      ],
+      [
+        { text: '🌐 Open Web Portal', url: getPortalUrl() }
       ]
     ]
   };
@@ -1508,21 +1761,21 @@ export async function getDefaultersCard(scopeText?: string): Promise<{ html: str
     }
   }
 
-  let html = `⚠️ <b>TODAY'S TARGET DEFAULTER REPORT</b>\n`;
-  html += `📅 <b>Date:</b> <i>${dateStr} (IST)</i>\n`;
+  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  ⚠️  <b>DAILY TARGET DEFAULTER REPORT</b>  🚨\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  html += `<blockquote>📅 <b>Date:</b> <i>${dateStr} (IST)</i>\n`;
   if (scopeText) html += `🔍 <b>Filter:</b> <code>${escapeHtml(scopeText)}</code>\n`;
-  html += `👥 <b>Total Defaulters:</b> <b>${defaulters.length}</b> student(s)\n`;
-  html += `─────────────────────────\n\n`;
+  html += `👥 <b>Total Defaulters:</b> <b>${defaulters.length}</b> student(s)</blockquote>\n\n`;
 
   if (targetedCount === 0) {
-    html += `🧩 <b>No active coding targets set for today.</b>\n`;
+    html += `🧩 <i>No active coding targets configured for today.</i>\n`;
   } else if (defaulters.length === 0) {
-    html += `🎉 <b>Awesome! All students have completed their daily targets today!</b>\n`;
+    html += `🎉 <b>Outstanding! All targeted students have completed their daily targets today! 🌟</b>\n`;
   } else {
+    html += `📋 <b>PENDING STUDENTS LIST:</b>\n`;
     defaulters.forEach((d, i) => {
-      const statusParts = [d.lcStatus, d.ghStatus].filter(Boolean).join(' | ');
-      html += `${i + 1}. <b>${escapeHtml(d.name)}</b> (<code>${escapeHtml(d.regNo)}</code>) [${escapeHtml(d.className)}]\n`;
-      html += `   ⏳ Pending: <code>${escapeHtml(statusParts)}</code>\n`;
+      const isLast = i === defaulters.length - 1;
+      html += ` ${isLast ? '└' : '├'} ⚠️ <b>${escapeHtml(d.name)}</b> (<code>${escapeHtml(d.regNo)}</code>) [${escapeHtml(d.className)}]\n`;
+      html += `     ⏳ Target Status: <code>${escapeHtml(d.lcStatus)}</code>\n`;
     });
   }
 
@@ -1535,7 +1788,8 @@ export async function getDefaultersCard(scopeText?: string): Promise<{ html: str
         { text: '📢 Group Summary', callback_data: 'cb_summary' }
       ],
       [
-        { text: '🌐 Open Admin Portal', url: getPortalUrl() }
+        { text: '📱 Main Menu', callback_data: 'cb_menu' },
+        { text: '🌐 Open Portal', url: getPortalUrl() }
       ]
     ]
   };
@@ -1593,6 +1847,7 @@ export async function getTasksCard(user: any): Promise<{ html: string; keyboard:
         WHEN ts.status = 'VERIFIED' THEN 4
         ELSE 5
       END ASC,
+      t.created_at DESC,
       t.deadline ASC NULLS LAST
   `, [user.id, user.class_id]);
 
@@ -1605,29 +1860,32 @@ export async function getTasksCard(user: any): Promise<{ html: string; keyboard:
   const totalAssigned = tasks.length;
   const totalCompleted = verifiedList.length;
   const completionPercent = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : 100;
-  const progressBar = makeProgressBar(totalCompleted, totalAssigned, 10);
+  const progressBar = makeProgressBar(totalCompleted, totalAssigned, 8);
 
-  let html = `📋 <b>STUDENT TASK DASHBOARD</b>\n\n`;
-  html += `👤 <b>Student:</b> ${escapeHtml(user.full_name)} (<code>${escapeHtml(user.register_number || user.username)}</code>)\n`;
-  html += `🏫 <b>Class:</b> <code>${escapeHtml(user.class_name || 'IT Section')}</code>\n\n`;
+  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📋  <b>STUDENT TASK DASHBOARD</b>  🎯\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(user.full_name)}</b>\n`;
+  html += `🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number || user.username)}</code>\n`;
+  html += `🏫 <b>Class:</b> <code>${escapeHtml(user.class_name || 'IT Section')}</code></blockquote>\n\n`;
 
-  html += `📊 <b>Completion Progress:</b> [${progressBar}] <b>${completionPercent}%</b>\n`;
-  html += `• ✅ <b>Verified:</b> <b>${verifiedList.length}</b> / ${totalAssigned}\n`;
-  html += `• ⏳ <b>Pending Submission:</b> <b>${pendingList.length}</b>\n`;
-  if (submittedList.length > 0) html += `• 📤 <b>Under Review:</b> <b>${submittedList.length}</b>\n`;
-  if (rejectedList.length > 0) html += `• ❌ <b>Needs Resubmission:</b> <b>${rejectedList.length}</b>\n`;
-  html += `─────────────────────────\n\n`;
+  html += `📊 <b>TASK PROGRESSION:</b>\n`;
+  html += ` ├ 📈 <b>Completion:</b> <b>${completionPercent}%</b> ${progressBar}\n`;
+  html += ` ├ ✅ <b>Verified:</b> <b>${verifiedList.length}</b> / ${totalAssigned}\n`;
+  html += ` ├ ⏳ <b>Pending Submission:</b> <b>${pendingList.length}</b>\n`;
+  if (submittedList.length > 0) html += ` ├ 📤 <b>Under Review:</b> <b>${submittedList.length}</b>\n`;
+  if (rejectedList.length > 0) html += ` └ ❌ <b>Needs Resubmission:</b> <b>${rejectedList.length}</b>\n`;
+  else html += ` └ ✨ <i>Status Updated Live</i>\n`;
+  html += `\n`;
 
   // 1. Show Rejected / Action Required first
   if (rejectedList.length > 0) {
-    html += `🚨 <b>NEEDS RESUBMISSION (${rejectedList.length}):</b>\n`;
+    html += `🚨 <b>ACTION REQUIRED — RESUBMISSIONS (${rejectedList.length}):</b>\n`;
     rejectedList.forEach((t, i) => {
       const dStr = t.deadline ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : 'No deadline';
-      html += `${i + 1}. ❌ <b>${escapeHtml(t.title)}</b>\n`;
-      if (t.category) html += `   📂 <b>Category:</b> <code>${escapeHtml(t.category)}</code>\n`;
-      html += `   ⏰ <b>Deadline:</b> <i>${dStr}</i>\n`;
-      if (t.rejection_reason) html += `   💬 <b>Reason:</b> <i>${escapeHtml(t.rejection_reason)}</i>\n`;
-      html += `\n`;
+      html += ` ├ ❌ <b>${escapeHtml(t.title)}</b>\n`;
+      if (t.category) html += ` │   📂 <code>${escapeHtml(t.category)}</code>\n`;
+      html += ` │   ⏰ <i>Due:</i> ${dStr}\n`;
+      if (t.rejection_reason) html += ` │   💬 <i>Remarks:</i> <code>${escapeHtml(t.rejection_reason)}</code>\n`;
+      html += ` │\n`;
     });
   }
 
@@ -1638,21 +1896,23 @@ export async function getTasksCard(user: any): Promise<{ html: string; keyboard:
       const dObj = t.deadline ? new Date(t.deadline) : null;
       const dStr = dObj ? dObj.toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : 'No deadline';
       const countdown = dObj ? formatCountdown(dObj) : '';
+      const isLast = i === pendingList.length - 1 && submittedList.length === 0 && verifiedList.length === 0;
 
-      html += `${i + 1}. 📌 <b>${escapeHtml(t.title)}</b>\n`;
-      if (t.category) html += `   📂 <b>Category:</b> <code>${escapeHtml(t.category)}</code>\n`;
-      html += `   ⏰ <b>Deadline:</b> <i>${dStr}</i> ${countdown ? `(${countdown})` : ''}\n`;
-      if (t.creator_name) html += `   👤 <b>Assigned by:</b> ${escapeHtml(t.creator_name)}\n`;
-      html += `\n`;
+      html += ` ${isLast ? '└' : '├'} 📌 <b>${escapeHtml(t.title)}</b>\n`;
+      if (t.category) html += `     📂 <code>${escapeHtml(t.category)}</code>\n`;
+      html += `     ⏰ <i>Due:</i> ${dStr} ${countdown ? `(<b>${countdown}</b>)` : ''}\n`;
+      if (t.creator_name) html += `     👤 <i>Assigned by:</i> ${escapeHtml(t.creator_name)}\n`;
     });
+    html += `\n`;
   }
 
   // 3. Show Submitted Under Review
   if (submittedList.length > 0) {
-    html += `📤 <b>SUBMITTED (AWAITING VERIFICATION) (${submittedList.length}):</b>\n`;
+    html += `📤 <b>UNDER REVIEW (${submittedList.length}):</b>\n`;
     submittedList.forEach((t, i) => {
       const subStr = t.submitted_at ? new Date(t.submitted_at).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : 'Recently';
-      html += `${i + 1}. 📤 <b>${escapeHtml(t.title)}</b> — <i>Submitted on ${subStr}</i>\n`;
+      const isLast = i === submittedList.length - 1 && verifiedList.length === 0;
+      html += ` ${isLast ? '└' : '├'} 📤 <b>${escapeHtml(t.title)}</b> ➔ <i>Submitted on ${subStr}</i>\n`;
     });
     html += `\n`;
   }
@@ -1661,13 +1921,14 @@ export async function getTasksCard(user: any): Promise<{ html: string; keyboard:
   if (verifiedList.length > 0) {
     html += `✅ <b>VERIFIED SUBMISSIONS (${verifiedList.length}):</b>\n`;
     verifiedList.forEach((t, i) => {
-      html += `${i + 1}. 🟢 <b>${escapeHtml(t.title)}</b>\n`;
+      const isLast = i === verifiedList.length - 1;
+      html += ` ${isLast ? '└' : '├'} 🟢 <b>${escapeHtml(t.title)}</b> [ VERIFIED ]\n`;
     });
     html += `\n`;
   }
 
   if (totalAssigned === 0) {
-    html += `✨ <i>No assignments posted for your class currently!</i>\n\n`;
+    html += `✨ <i>No assignments posted for your class currently! 🎉</i>\n\n`;
   }
 
   html += getWatermarkHtml();
@@ -1711,17 +1972,20 @@ export async function notifyNewTaskCreated(task: {
     ? new Date(task.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
     : 'No deadline set';
 
-  let html = `📢 <b>NEW ASSIGNMENT POSTED!</b>\n\n`;
-  html += `📌 <b>Task:</b> ${escapeHtml(task.title)}\n`;
+  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📢  <b>NEW ASSIGNMENT POSTED!</b>  🚀\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  html += `<blockquote>📌 <b>Assignment:</b> <b>${escapeHtml(task.title)}</b>\n`;
   if (task.category) html += `📂 <b>Category:</b> <code>${escapeHtml(task.category)}</code>\n`;
   if (task.creator_name) html += `👤 <b>Assigned By:</b> ${escapeHtml(task.creator_name)}\n`;
-  html += `⏰ <b>Deadline:</b> <i>${deadlineStr}</i>\n\n`;
+  html += `⏰ <b>Deadline:</b> <i>${deadlineStr}</i></blockquote>\n\n`;
   html += `👉 <i>Log in to the portal now to review the requirements and submit your proof!</i>\n`;
   html += getWatermarkHtml();
 
   const keyboard = {
     inline_keyboard: [
-      [{ text: '🌐 View & Submit Task', url: `${portalUrl}` }]
+      [
+        { text: '📋 View My Tasks', callback_data: 'cb_tasks' },
+        { text: '🌐 Submit on Portal', url: portalUrl }
+      ]
     ]
   };
 
@@ -1778,11 +2042,11 @@ export async function notifyTaskSubmissionReceived(studentId: string, taskId: st
     const task = taskRes.rows[0];
     if (!task) return;
 
-    let html = `📥 <b>SUBMISSION RECEIVED — PENDING REVIEW</b>\n\n`;
-    html += `Hello <b>${escapeHtml(user.full_name)}</b>,\n`;
-    html += `Your submission proof for <b>"${escapeHtml(task.title)}"</b> has been uploaded successfully!\n\n`;
-    html += `📌 <b>Current Status:</b> ⏳ <code>PENDING REVIEW</code>\n`;
-    html += `<i>Your Class Advisor / Coordinator will verify your submission soon. You will receive an instant notification here once reviewed.</i>\n`;
+    let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📥  <b>SUBMISSION RECEIVED — PENDING REVIEW</b>  ⏳\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+    html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(user.full_name)}</b>\n`;
+    html += `📌 <b>Assignment:</b> <b>"${escapeHtml(task.title)}"</b>\n`;
+    html += `🏷️ <b>Current Status:</b> <code>PENDING REVIEW</code> ⏳</blockquote>\n\n`;
+    html += `<i>Your Class Advisor / Coordinator will verify your submission proof soon. You will receive an instant notification here once reviewed.</i>\n`;
     html += getWatermarkHtml();
 
     const keyboard = {
@@ -1826,29 +2090,32 @@ export async function notifySubmissionVerifiedOrRejected(
     let keyboard: any;
 
     if (status === 'VERIFIED') {
-      html = `🎉 <b>SUBMISSION APPROVED & VERIFIED!</b>\n\n`;
-      html += `Hello <b>${escapeHtml(sub.full_name)}</b>,\n`;
-      html += `Your submission for <b>"${escapeHtml(sub.task_title)}"</b> has been verified and approved!\n\n`;
-      html += `✅ <b>Status:</b> <code>VERIFIED</code>\n`;
+      html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  🎉  <b>SUBMISSION APPROVED & VERIFIED!</b>  ✅\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+      html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(sub.full_name)}</b>\n`;
+      html += `📌 <b>Assignment:</b> <b>"${escapeHtml(sub.task_title)}"</b>\n`;
+      html += `🏷️ <b>Status:</b> 🟢 <code>VERIFIED & APPROVED</code></blockquote>\n\n`;
       if (noteOrReason) {
-        html += `📝 <b>Reviewer Note:</b> <i>${escapeHtml(noteOrReason)}</i>\n`;
+        html += `📝 <b>Reviewer Note:</b> <i>${escapeHtml(noteOrReason)}</i>\n\n`;
       }
-      html += `\nKeep up the excellent work! 🚀\n`;
+      html += `🌟 <i>Keep up the excellent momentum! 🚀</i>\n`;
       html += getWatermarkHtml();
 
       keyboard = {
         inline_keyboard: [
           [
-            { text: '📊 View My Scorecard', callback_data: 'cb_stats' },
+            { text: '📊 View Scorecard', callback_data: 'cb_stats' },
+            { text: '📋 My Tasks', callback_data: 'cb_tasks' }
+          ],
+          [
             { text: '🌐 Open Portal', url: getPortalUrl() }
           ]
         ]
       };
     } else {
-      html = `⚠️ <b>SUBMISSION REQUIRES CORRECTION</b>\n\n`;
-      html += `Hello <b>${escapeHtml(sub.full_name)}</b>,\n`;
-      html += `Your submission for <b>"${escapeHtml(sub.task_title)}"</b> was not approved.\n\n`;
-      html += `❌ <b>Status:</b> <code>REJECTED</code>\n`;
+      html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  ⚠️  <b>SUBMISSION REQUIRES CORRECTION</b>  🚨\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+      html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(sub.full_name)}</b>\n`;
+      html += `📌 <b>Assignment:</b> <b>"${escapeHtml(sub.task_title)}"</b>\n`;
+      html += `🏷️ <b>Status:</b> 🔴 <code>REJECTED / ACTION REQUIRED</code></blockquote>\n\n`;
       if (noteOrReason) {
         html += `📌 <b>Reason for Rejection:</b>\n<code>${escapeHtml(noteOrReason)}</code>\n\n`;
       }
@@ -2070,8 +2337,6 @@ export async function sendGroupSummary(targetChatId?: string, dateOverride?: str
       incompleteByClass[classNameClean].push(r);
     });
 
-
-
     // Process task pending submissions silently to compile data for the Excel sheet
     for (let idx = 0; idx < tasksRes.rows.length; idx++) {
       const t = tasksRes.rows[idx];
@@ -2109,33 +2374,34 @@ export async function sendGroupSummary(targetChatId?: string, dateOverride?: str
     }
 
     // ── Build HTML Report ──────────────────────────────────────────────────
-    let html = `📊 <b>IT TASK MANAGER — DAILY BRIEF</b>\n`;
-    html += `📅 <i>${dateStr} (IST)</i>\n`;
-    html += `👥 <b>Total Students:</b> ${totalStudents} | 📱 <b>Telegram Linked:</b> ${linkedTelegram}\n`;
-    html += `─────────────────────────\n\n`;
+    let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📊  <b>DEPARTMENT DAILY BRIEF</b>  🏛️\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+    html += `<blockquote>📅 <b>Date:</b> <i>${dateStr} (IST)</i>\n`;
+    html += `👥 <b>Students:</b> <code>${totalStudents}</code>  |  📱 <b>Linked Telegram:</b> <code>${linkedTelegram}</code></blockquote>\n\n`;
 
-    html += `🚀 <b>Today's Coding Highlights:</b>\n`;
-    html += `<b>GitHub Top Committers:</b>\n`;
+    html += `🏆 <b>TODAY'S TOP PERFORMERS:</b>\n\n`;
+    html += `💻 <b>GitHub Top Committers:</b>\n`;
     if (topGhCommitters.length === 0) {
-      html += `   <i>No commits recorded today.</i>\n`;
+      html += ` └ <i>No commits recorded today.</i>\n\n`;
     } else {
       topGhCommitters.forEach((r, idx) => {
         const rankEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
-        html += `   ${rankEmoji} ${escapeHtml(r.full_name)} (<code>${r.commits_today}</code> commits)\n`;
+        const isLast = idx === topGhCommitters.length - 1;
+        html += ` ${isLast ? '└' : '├'} ${rankEmoji} <b>${escapeHtml(r.full_name)}</b> ➔ <code>${r.commits_today}</code> commits 🔥\n`;
       });
+      html += `\n`;
     }
-    html += `\n`;
 
-    html += `<b>LeetCode Top Solvers:</b>\n`;
+    html += `🧩 <b>LeetCode Top Solvers:</b>\n`;
     if (topLcSolvers.length === 0) {
-      html += `   <i>No problems solved today.</i>\n`;
+      html += ` └ <i>No problems solved today.</i>\n\n`;
     } else {
       topLcSolvers.forEach((r, idx) => {
         const rankEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
-        html += `   ${rankEmoji} ${escapeHtml(r.full_name)} (<code>${r.solved_today}</code> solved)\n`;
+        const isLast = idx === topLcSolvers.length - 1;
+        html += ` ${isLast ? '└' : '├'} ${rankEmoji} <b>${escapeHtml(r.full_name)}</b> ➔ <code>${r.solved_today}</code> solved 💎\n`;
       });
+      html += `\n`;
     }
-    html += `\n`;
 
     // Add Year-wise Coding Summary
     let yearHtml = `🏢 <b>YEAR-WISE CODING SUMMARY:</b>\n`;
@@ -2145,8 +2411,8 @@ export async function sendGroupSummary(targetChatId?: string, dateOverride?: str
       const s = yearStats[y];
       if (s.total > 0) {
         yearHtml += `🎓 <b>${label}:</b>\n`;
-        yearHtml += `   • LeetCode: <b>${s.solves}</b> Solves (${s.activeSolvers} active)\n`;
-        yearHtml += `   • GitHub: <b>${s.commits}</b> Commits (${s.activeCommitters} active)\n\n`;
+        yearHtml += ` ├ 🧩 LeetCode: <b>${s.solves}</b> solved (<b>${s.activeSolvers}</b> active)\n`;
+        yearHtml += ` └ 💻 GitHub: <b>${s.commits}</b> commits (<b>${s.activeCommitters}</b> active)\n\n`;
         yearAdded = true;
       }
     });
@@ -2160,24 +2426,27 @@ export async function sendGroupSummary(targetChatId?: string, dateOverride?: str
     if (sortedClassKeys.length > 0) {
       sortedClassKeys.forEach(k => {
         const c = classStats[k];
-        html += `• <b>${c.name}:</b>\n`;
-        html += `   Total: <b>${c.totalStudents}</b> (Boys: ${c.boysCount} / Girls: ${c.girlsCount})\n`;
-        html += `   LeetCode Solvers: <b>${c.activeSolvers}</b> (Boys: ${c.boysActiveSolvers} / Girls: ${c.girlsActiveSolvers})\n`;
-        html += `   GitHub Active: <b>${c.activeCommitters}</b> (Boys: ${c.boysActiveCommitters} / Girls: ${c.girlsActiveCommitters})\n\n`;
+        html += `• <b>${c.name}:</b> Total: <b>${c.totalStudents}</b>\n`;
+        html += `   ├ 🧩 LeetCode: <b>${c.activeSolvers}</b> solvers (${c.solves} solves)\n`;
+        html += `   └ 💻 GitHub: <b>${c.activeCommitters}</b> committers (${c.commits} commits)\n\n`;
       });
     } else {
-      html += `• 🏫 <i>No class summaries available.</i>\n\n`;
+      html += ` └ <i>No class summaries available.</i>\n\n`;
     }
 
-    html += `📎 <b>Detailed Incomplete Report:</b>\n`;
-    html += `Detailed lists of LeetCode targets, inactive GitHub students, and pending task submissions grouped Year-wise are attached in the Excel sheet below.\n\n`;
+    html += `📎 <b>DETAILED INCOMPLETE REPORT:</b>\n`;
+    html += `<i>Full lists of pending LeetCode solvers, inactive GitHub students, and task submissions are attached in the Excel sheet below.</i>\n`;
 
     html += getWatermarkHtml();
 
     const inlineKeyboard = {
       inline_keyboard: [
         [
-          { text: '🌐 Open Portal', url: getPortalUrl() }
+          { text: '⚠️ Defaulters', callback_data: 'cb_defaulters' },
+          { text: '🏆 Leaderboard', callback_data: 'cb_leaderboard' }
+        ],
+        [
+          { text: '🌐 Open Admin Portal', url: getPortalUrl() }
         ]
       ]
     };
@@ -2208,8 +2477,6 @@ export async function sendGroupSummary(targetChatId?: string, dateOverride?: str
     return { success: false, message: err.message };
   }
 }
-
-
 
 /**
  * ⏰ Notify Group Chat about tasks with deadlines within the next 24 hours
@@ -2258,8 +2525,8 @@ export async function sendGroupDeadlineAlert(targetChatId?: string): Promise<{ s
     }
 
     const tasks = tasksRes.rows;
-    let html = `⏰ <b>UPCOMING TASK DEADLINE ALERT!</b>\n\n`;
-    html += `The following assignment(s) are closing within the next <b>24 hours</b>. Please make sure to complete and submit your proof before the deadline!\n\n`;
+    let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  ⏰  <b>UPCOMING TASK DEADLINE ALERT!</b>  ⏳\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+    html += `<blockquote>⚠️ <i>The following assignment(s) are closing within the next <b>24 hours</b>. Please complete and submit before the deadline!</i></blockquote>\n\n`;
 
     tasks.forEach((t, i) => {
       const deadlineStr = new Date(t.deadline).toLocaleString('en-IN', {
@@ -2270,12 +2537,13 @@ export async function sendGroupDeadlineAlert(targetChatId?: string): Promise<{ s
         timeZone: 'Asia/Kolkata'
       });
       const pending = Math.max(0, Number(t.total_targeted) - Number(t.submitted_count));
+      const isLast = i === tasks.length - 1;
 
-      html += `${i + 1}. 📌 <b>${escapeHtml(t.title)}</b>\n`;
-      if (t.category) html += `   📂 <b>Category:</b> <code>${escapeHtml(t.category)}</code>\n`;
+      html += `📌 <b>${i + 1}. ${escapeHtml(t.title)}</b>\n`;
+      if (t.category) html += `   📂 <code>${escapeHtml(t.category)}</code>\n`;
       html += `   🏫 <b>Classes:</b> <code>${escapeHtml(t.class_names || 'All Classes')}</code>\n`;
       html += `   ⏰ <b>Deadline:</b> <i>${deadlineStr}</i>\n`;
-      html += `   📊 <b>Submissions:</b> ${t.submitted_count}/${t.total_targeted} (${pending} pending)\n\n`;
+      html += `   📊 <b>Submissions:</b> <b>${t.submitted_count} / ${t.total_targeted}</b> (${pending} pending)\n\n`;
     });
 
     html += `👉 <i>Log in to the portal now to review the requirements and upload your proof!</i>\n`;
@@ -2283,7 +2551,10 @@ export async function sendGroupDeadlineAlert(targetChatId?: string): Promise<{ s
 
     const keyboard = {
       inline_keyboard: [
-        [{ text: '🌐 View & Submit Tasks on Portal', url: getPortalUrl() }]
+        [
+          { text: '📋 View Tasks', callback_data: 'cb_tasks' },
+          { text: '🌐 Submit on Portal', url: getPortalUrl() }
+        ]
       ]
     };
 
@@ -2376,18 +2647,21 @@ export async function triggerPendingTaskReminders(): Promise<{
         continue;
       }
 
-      let html = `🔔 <b>IT TASK MANAGER — PENDING TASK REMINDER</b>\n\n`;
-      html += `Hello <b>${escapeHtml(info.fullName)}</b>,\n`;
-      html += `You have <b>${info.tasks.length}</b> pending assignment(s) awaiting submission:\n\n`;
+      let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  🔔  <b>PENDING TASK REMINDER</b>  ⏰\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+      html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(info.fullName)}</b>\n`;
+      html += `🆔 <b>Reg No:</b> <code>${escapeHtml(info.registerNumber)}</code>\n`;
+      html += `⏳ <b>Pending Assignments:</b> <b>${info.tasks.length}</b> awaiting submission</blockquote>\n\n`;
 
       info.tasks.slice(0, 5).forEach((t, i) => {
         const dStr = t.deadline
           ? new Date(t.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
           : 'No deadline';
-        html += `${i + 1}. 📌 <b>${escapeHtml(t.title)}</b>\n`;
-        if (t.category) html += `   📂 <code>${escapeHtml(t.category)}</code>\n`;
-        html += `   ⏰ <i>Due:</i> ${dStr}\n\n`;
+        const isLast = i === Math.min(info.tasks.length, 5) - 1;
+        html += ` ${isLast ? '└' : '├'} 📌 <b>${escapeHtml(t.title)}</b>\n`;
+        if (t.category) html += `     📂 <code>${escapeHtml(t.category)}</code>\n`;
+        html += `     ⏰ <i>Due:</i> ${dStr}\n`;
       });
+      html += `\n`;
 
       if (info.tasks.length > 5) {
         html += `<i>...and ${info.tasks.length - 5} more pending task(s).</i>\n\n`;
@@ -2399,8 +2673,8 @@ export async function triggerPendingTaskReminders(): Promise<{
       const inlineKeyboard = {
         inline_keyboard: [
           [
-            { text: '🌐 Submit Proof on Portal', url: portalUrl },
-            { text: '🧩 My LeetCode', callback_data: 'cb_leetcode' }
+            { text: '📋 My Tasks', callback_data: 'cb_tasks' },
+            { text: '🌐 Submit on Portal', url: portalUrl }
           ]
         ]
       };
@@ -2577,6 +2851,9 @@ export function startTelegramPoller(): void {
             } else if (cbData === 'cb_profile') {
               const card = await getProfileCard(user);
               await sendTelegramMessage(cbChatId, card.html, { reply_markup: card.keyboard });
+            } else if (cbData === 'cb_leaderboard') {
+              const card = await getLeaderboardCard();
+              await sendTelegramMessage(cbChatId, card.html, { reply_markup: card.keyboard });
             } else if (cbData === 'cb_defaulters') {
               const card = await getDefaultersCard();
               await sendTelegramMessage(cbChatId, card.html, { reply_markup: card.keyboard });
@@ -2593,6 +2870,9 @@ export function startTelegramPoller(): void {
                 `🔎 <b>STUDENT SEARCH GUIDE</b>\n\nTo check any student's scorecard instantly, simply reply with their 12-digit Register Number or Username:\n<code>/check 922524205171</code>\n\n<i>You can also directly send the register number into the chat without any command prefix!</i>\n${getWatermarkHtml()}`,
                 { reply_markup: getInteractiveMenuKeyboard(user?.role) }
               );
+            } else if (cbData === 'cb_group_link') {
+              const card = await getGroupRecommendationCard();
+              await sendTelegramMessage(cbChatId, card.html, { reply_markup: card.keyboard });
             } else if (cbData === 'cb_menu') {
               const keyboard = getInteractiveMenuKeyboard(user?.role);
               await sendTelegramMessage(
@@ -2633,6 +2913,13 @@ export function startTelegramPoller(): void {
             return;
           }
 
+          // Command: /group, /join, /community
+          if (text.startsWith('/group') || text.startsWith('/join') || text.startsWith('/community')) {
+            const card = await getGroupRecommendationCard();
+            await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
+            return;
+          }
+
           // Command: /start <param> or /link <param>
           if (text.startsWith('/start') || text.startsWith('/link')) {
             const cleanText = text.replace(/@\w+/g, '');
@@ -2643,7 +2930,11 @@ export function startTelegramPoller(): void {
               // Check if param is a class or year query (e.g. 2ita, 3itc, 2it, 3it, year3, 4it, 1ita)
               const cleanParam = param.toLowerCase().replace(/[@#/_]/g, '').trim();
               const isClassOrYear =
-                /^(?:[1-4]\s*(?:it)?[a-d]|[1-4]\s*it|[1-4]\s*year|year\s*[1-4])$/i.test(cleanParam) ||
+                /^(?:link)?\s*(?:year|y)?\s*([1-4])\s*(?:it|year|yr)?$/i.test(cleanParam) ||
+                /^(?:link)?\s*([1-4])\s*(?:it)?\s*([a-d])$/i.test(cleanParam) ||
+                /^(?:link)?\s*(?:it)?\s*([1-4])\s*([a-d])$/i.test(cleanParam) ||
+                /^(?:class)?\s*([1-4])\s*(?:it)?\s*([a-d])$/i.test(cleanParam) ||
+                /^(?:iii|ii|iv|i)\s*(?:it)?\s*([a-d])?$/i.test(cleanParam) ||
                 cleanParam.startsWith('year') ||
                 cleanParam.startsWith('class');
 
@@ -2661,12 +2952,38 @@ export function startTelegramPoller(): void {
 
               const linkResult = await linkStudentTelegram(param, senderUserId, fromUsername);
               if (linkResult.success) {
-                const inlineKeyboard = getInteractiveMenuKeyboard();
-                await sendTelegramMessage(
-                  chatId,
-                  `🎉 <b>Welcome to IT TASK MANAGER!</b>\n\nHello <b>${escapeHtml(linkResult.studentName)}</b>,\nYour Telegram is now securely connected to <b>IT TaskManager</b>.\n\nYou will receive private alerts for upcoming deadlines and target updates here! 🚀\n${getWatermarkHtml()}`,
-                  { reply_markup: inlineKeyboard }
-                );
+                const groupInviteUrl = await getGroupInviteLink();
+                let welcomeHtml = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  🎉  <b>ACCOUNT LINKED SUCCESSFULLY!</b>  ✅\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+                welcomeHtml += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(linkResult.studentName)}</b>\n`;
+                welcomeHtml += `✨ <i>Your Telegram is now securely connected to IT TaskManager! You will receive private deadline alerts and evaluation notices here.</i></blockquote>\n\n`;
+                welcomeHtml += `👥 <b>RECOMMENDED NEXT STEP:</b>\n`;
+                welcomeHtml += `Join our <b>Official Department Telegram Group</b> to receive daily coding leaderboards, class briefs, and announcements!\n`;
+                welcomeHtml += getWatermarkHtml();
+
+                const keyboard: any = {
+                  inline_keyboard: []
+                };
+
+                if (groupInviteUrl) {
+                  keyboard.inline_keyboard.push([
+                    { text: '👥 Join Official Telegram Group', url: groupInviteUrl }
+                  ]);
+                } else {
+                  keyboard.inline_keyboard.push([
+                    { text: '👥 Join Official Telegram Group', callback_data: 'cb_group_link' }
+                  ]);
+                }
+
+                keyboard.inline_keyboard.push([
+                  { text: '📋 My Tasks', callback_data: 'cb_tasks' },
+                  { text: '📊 My Scorecard', callback_data: 'cb_stats' }
+                ]);
+                keyboard.inline_keyboard.push([
+                  { text: '📱 Main Menu', callback_data: 'cb_menu' },
+                  { text: '🌐 Open Portal', url: getPortalUrl() }
+                ]);
+
+                await sendTelegramMessage(chatId, welcomeHtml, { reply_markup: keyboard });
               } else {
                 await sendTelegramMessage(
                   chatId,
@@ -2680,10 +2997,35 @@ export function startTelegramPoller(): void {
                   `👋 <b>Welcome to IT TASK MANAGER!</b>\n\n📌 <b>Group ID:</b> <code>${chatId}</code>\n\nThis group receives automated daily task reports and department announcements.\n\n💡 <i>Students: To link your account for private alerts, message @${cachedBotUsername} directly or use 1-Click Connect from the portal!</i>\n${getWatermarkHtml()}`
                 );
               } else {
-                await sendTelegramMessage(
-                  chatId,
-                  `👋 <b>Welcome to IT TASK MANAGER!</b>\n\nHello <b>${escapeHtml(senderName)}</b>!\n\nTo link your student account and receive private task reminders, reply with:\n<code>/link YOUR_REGISTER_NUMBER</code>\n\n<i>Or simply reply with your Register Number directly!</i>\n\n<i>Example:</i> <code>/link 922524205001</code>\n\n💡 <i>Tip: You can also tap <b>1-Click Connect</b> from your IT TaskManager portal to link instantly!</i>\n${getWatermarkHtml()}`
-                );
+                const groupInviteUrl = await getGroupInviteLink();
+                let greetingHtml = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  👋  <b>WELCOME TO IT TASK MANAGER</b>  🎓\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+                greetingHtml += `<blockquote>Hello <b>${escapeHtml(senderName)}</b>!\n`;
+                greetingHtml += `Stay connected and never miss an assignment deadline or coding goal!</blockquote>\n\n`;
+                greetingHtml += `📌 <b>LINK YOUR ACCOUNT:</b>\n`;
+                greetingHtml += `Reply with your 12-digit Register Number:\n<code>/link YOUR_REGISTER_NUMBER</code>\n<i>(Or simply send your Register Number directly into the chat!)</i>\n\n`;
+                greetingHtml += `👥 <b>OFFICIAL DEPARTMENT COMMUNITY:</b>\n`;
+                greetingHtml += `Make sure to join our official Telegram group for daily coding podiums, class briefs, and announcements!\n`;
+                greetingHtml += getWatermarkHtml();
+
+                const keyboard: any = {
+                  inline_keyboard: []
+                };
+
+                if (groupInviteUrl) {
+                  keyboard.inline_keyboard.push([
+                    { text: '👥 Join Official Telegram Group', url: groupInviteUrl }
+                  ]);
+                } else {
+                  keyboard.inline_keyboard.push([
+                    { text: '👥 Join Official Telegram Group', callback_data: 'cb_group_link' }
+                  ]);
+                }
+
+                keyboard.inline_keyboard.push([
+                  { text: '🌐 Open Web Portal', url: getPortalUrl() }
+                ]);
+
+                await sendTelegramMessage(chatId, greetingHtml, { reply_markup: keyboard });
               }
             }
             return;
@@ -2702,30 +3044,32 @@ export function startTelegramPoller(): void {
           // Command: /menu or /help
           if (text.startsWith('/menu') || text.startsWith('/help')) {
             const keyboard = getInteractiveMenuKeyboard(user?.role);
-            let helpHtml = `📱 <b>IT TASK MANAGER — COMMAND MENU</b>\n\n`;
+            let helpHtml = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📱  <b>IT TASK MANAGER MENU</b>  ⚡\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
             if (user) {
-              helpHtml += `👤 <b>Connected:</b> ${escapeHtml(user.full_name)} (<code>${escapeHtml(user.register_number)}</code>)\n\n`;
+              helpHtml += `<blockquote>👤 <b>Connected:</b> <b>${escapeHtml(user.full_name)}</b>\n🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number)}</code>\n🏫 <b>Class:</b> <code>${escapeHtml(user.class_name || 'IT Department')}</code></blockquote>\n\n`;
             }
             helpHtml += `<b>Available Commands:</b>\n`;
-            helpHtml += `• <code>/check &lt;Reg_No&gt;</code> (or send Reg No) - Complete student status (Tasks + LeetCode + GitHub)\n`;
-            helpHtml += `• <code>/3ita</code>, <code>/3itb</code>, <code>/2ita</code>, <code>/2itb</code> - Instant class analysis report\n`;
+            helpHtml += `• <code>/check &lt;Reg_No&gt;</code> - Complete student scorecard (Tasks + LC + GH)\n`;
+            helpHtml += `• <code>/3ita</code>, <code>/3itb</code>, <code>/2ita</code> - Instant class analysis\n`;
             helpHtml += `• <code>/year3</code>, <code>/year2</code> - Year-wise department analysis\n`;
-            helpHtml += `• <code>/tasks</code> - View pending assignments\n`;
-            helpHtml += `• <code>/deadlines</code> (or <code>/due</code>) - View tasks ending in the next 24 hours\n`;
-            helpHtml += `• <code>/leetcode</code> (or <code>/lc</code>) - Daily LeetCode progress & targets\n`;
-            helpHtml += `• <code>/github</code> (or <code>/gh</code>) - Daily GitHub commits & targets\n`;
-            helpHtml += `• <code>/stats</code> - Overall performance scorecard\n`;
-            helpHtml += `• <code>/leaderboard</code> (or <code>/top</code>) - Daily coding leaderboards\n`;
+            helpHtml += `• <code>/tasks</code> - View assigned tasks\n`;
+            helpHtml += `• <code>/deadlines</code> - 24-hour upcoming deadlines\n`;
+            helpHtml += `• <code>/leetcode</code> - Daily LeetCode progress\n`;
+            helpHtml += `• <code>/github</code> - Daily GitHub commits\n`;
+            helpHtml += `• <code>/stats</code> - Full performance scorecard\n`;
+            helpHtml += `• <code>/leaderboard</code> - Daily coding rankings\n`;
+            helpHtml += `• <code>/group</code> - Join official department Telegram group\n`;
             helpHtml += `• <code>/status</code> - Connected profile info\n`;
             helpHtml += `• <code>/unlink</code> - Disconnect account\n`;
 
             if (user?.role === 'SUPREME_ADMIN' || user?.role === 'STAFF' || user?.role === 'COORDINATOR' || user?.role === 'HOD' || user?.role === 'CLASS_ADVISOR') {
               helpHtml += `\n<b>Staff / Coordinator Commands:</b>\n`;
               helpHtml += `• <code>/defaulters [class]</code> - Target defaulters report\n`;
-              helpHtml += `• <code>/broadcast &lt;msg&gt;</code> - Send announcement to all students\n`;
+              helpHtml += `• <code>/broadcast &lt;msg&gt;</code> - Announcement to all students\n`;
               helpHtml += `• <code>/summary</code> - Class daily brief\n`;
             }
 
+            helpHtml += `\n👥 <i>Join our Department Telegram group for live podium alerts!</i>\n`;
             helpHtml += getWatermarkHtml();
             await sendTelegramMessage(chatId, helpHtml, { reply_markup: keyboard });
             return;
@@ -2844,57 +3188,9 @@ export function startTelegramPoller(): void {
 
           // Command: /leaderboard or /top or /rank
           if (text.startsWith('/leaderboard') || text.startsWith('/top') || text.startsWith('/rank')) {
-            const dateStr = getISTDateStr();
             try {
-              const [ghRes, lcRes] = await Promise.all([
-                pool.query(`
-                  SELECT u.full_name, COALESCE(gh.daily_commit_count, 0) as commits_today
-                  FROM users u
-                  JOIN github_daily_commits gh ON gh.student_id = u.id AND gh.date = $1
-                  WHERE u.role = 'STUDENT' AND gh.daily_commit_count > 0
-                  ORDER BY gh.daily_commit_count DESC, u.full_name ASC
-                  LIMIT 3
-                `, [dateStr]),
-                pool.query(`
-                  SELECT u.full_name, COALESCE(lp.solved_today, 0) as solved_today
-                  FROM users u
-                  JOIN leetcode_daily_progress lp ON lp.user_id = u.id AND lp.date = $1
-                  WHERE u.role = 'STUDENT' AND lp.solved_today > 0
-                  ORDER BY lp.solved_today DESC, u.full_name ASC
-                  LIMIT 3
-                `, [dateStr])
-              ]);
-
-              let leadHtml = `🏆 <b>TODAY'S CODING LEADERBOARD</b> 🏆\n`;
-              leadHtml += `📅 <i>${dateStr} (IST)</i>\n`;
-              leadHtml += `─────────────────────────\n\n`;
-
-              leadHtml += `💻 <b>GitHub Top 3 Committers:</b>\n`;
-              if (ghRes.rows.length === 0) {
-                leadHtml += `   <i>No commits recorded today yet.</i>\n`;
-              } else {
-                ghRes.rows.forEach((r, idx) => {
-                  const rankEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
-                  leadHtml += `   ${rankEmoji} <b>${escapeHtml(r.full_name)}</b> — <code>${r.commits_today}</code> commits\n`;
-                });
-              }
-              leadHtml += `\n`;
-
-              leadHtml += `🧩 <b>LeetCode Top 3 Solvers:</b>\n`;
-              if (lcRes.rows.length === 0) {
-                leadHtml += `   <i>No problems solved today yet.</i>\n`;
-              } else {
-                lcRes.rows.forEach((r, idx) => {
-                  const rankEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉';
-                  leadHtml += `   ${rankEmoji} <b>${escapeHtml(r.full_name)}</b> — <code>${r.solved_today}</code> solved\n`;
-                });
-              }
-
-              leadHtml += `\n─────────────────────────\n`;
-              leadHtml += `💡 <i>Keep coding and push your code to reach the top!</i> 🚀\n`;
-              leadHtml += getWatermarkHtml();
-
-              await sendTelegramMessage(chatId, leadHtml);
+              const card = await getLeaderboardCard();
+              await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
             } catch (err: any) {
               console.error('[Telegram] leaderboard command error:', err);
               await sendTelegramMessage(chatId, `⚠️ Failed to fetch leaderboard: ${err.message}\n${getWatermarkHtml()}`);

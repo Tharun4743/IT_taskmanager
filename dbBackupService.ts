@@ -43,7 +43,6 @@ export async function generateDatabaseSnapshot(force = false) {
       'task_submissions',
       'submission_reviews',
       'notices',
-      'task_discussions',
       'teams',
       'team_members',
       'team_invitations',
