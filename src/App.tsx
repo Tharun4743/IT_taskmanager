@@ -8543,32 +8543,6 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                   </p>
                 </div>
 
-                {/* Quick Copy Command */}
-                <div className="p-3 bg-zinc-50 rounded-2xl border border-zinc-200/80 mb-4 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                      Alternative: Send Command in Bot
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-2 p-2 bg-white rounded-xl border border-zinc-200">
-                    <code className="text-indigo-700 font-mono font-bold text-xs sm:text-sm truncate">
-                      {linkCommand}
-                    </code>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(linkCommand);
-                        addToast(`Copied "${linkCommand}" to clipboard! Send this to @${botUsername} on Telegram.`, 'success');
-                      }}
-                      className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 px-3 py-1.5 rounded-lg border border-sky-200 transition-colors shrink-0"
-                    >
-                      <Copy size={13} />
-                      <span>Copy</span>
-                    </button>
-                  </div>
-                </div>
-
                 {/* Feature Highlights */}
                 <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-50 rounded-2xl border border-zinc-200/70 mb-4 text-xs text-zinc-700">
                   <div className="flex items-center gap-1.5">
