@@ -1110,7 +1110,7 @@ const FeatureComparisonView = () => {
                 </span>
               </div>
               <p className="text-zinc-600 text-xs leading-relaxed flex-1">{sec.features}</p>
-              
+
               {/* Core files metadata */}
               {sec.files && sec.files.length > 0 && (
                 <div className="space-y-1.5">
@@ -2850,7 +2850,7 @@ function SettingsView({
                 setPushSubscribed(true);
               }
             })
-            .catch(() => {});
+            .catch(() => { });
         }
       }
     };
@@ -3091,11 +3091,10 @@ function SettingsView({
               <div>
                 <h3 className="text-base font-black text-zinc-900 flex items-center gap-2">
                   Mobile & Lock Screen Notifications (PWA)
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
-                    pushSubscribed 
-                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200' 
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${pushSubscribed
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
                       : 'bg-zinc-100 text-zinc-600 border-zinc-200'
-                  }`}>
+                    }`}>
                     {pushSubscribed ? '🟢 Active & Subscribed' : '⚪ Inactive'}
                   </span>
                 </h3>
@@ -3133,11 +3132,10 @@ function SettingsView({
                 <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
                   <Button
                     variant={pushSubscribed ? 'outline' : 'primary'}
-                    className={`text-xs py-2.5 px-4 font-bold ${
-                      pushSubscribed
+                    className={`text-xs py-2.5 px-4 font-bold ${pushSubscribed
                         ? 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'
                         : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20'
-                    }`}
+                      }`}
                     disabled={pushLoading || pushPermission === 'denied'}
                     onClick={handleTogglePush}
                   >
@@ -3723,7 +3721,7 @@ function StaffStudentProfileModal({
                                 <span className={cn(
                                   "text-[9px] px-1.5 py-0.5 rounded font-bold uppercase",
                                   isLvlAdvanced ? "bg-emerald-50 text-emerald-600 border border-emerald-100" :
-                                  isLvlIntermediate ? "bg-blue-50 text-blue-600 border border-blue-100" : "bg-zinc-100 text-zinc-600"
+                                    isLvlIntermediate ? "bg-blue-50 text-blue-600 border border-blue-100" : "bg-zinc-100 text-zinc-600"
                                 )}>
                                   {sk.level || 'Unknown'}
                                 </span>
@@ -4269,7 +4267,7 @@ export default function App() {
     });
   }, [githubProgressList, leetcodeSortColumn, leetcodeSortOrder, leetcodeViewType]);
 
-const githubTop3 = useMemo(() => {
+  const githubTop3 = useMemo(() => {
     const isDaily = leetcodeViewType === 'DAILY';
     return [...githubProgressList]
       .filter(s => {
@@ -4574,7 +4572,7 @@ const githubTop3 = useMemo(() => {
     setShowCreateNoticeModal(true);
   };
 
-  
+
   const fetchNotices = async () => {
     if (!token) return;
     try {
@@ -4590,7 +4588,7 @@ const githubTop3 = useMemo(() => {
     }
   };
 
-    const handlePinNotice = async (id: string) => {
+  const handlePinNotice = async (id: string) => {
     try {
       const res = await fetch(`${API_URL}/api/notices/${id}/pin`, {
         method: 'PATCH',
@@ -4723,7 +4721,7 @@ const githubTop3 = useMemo(() => {
     }
   };
 
-    // Task Poster & Share Link State
+  // Task Poster & Share Link State
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
   const [isUploadingPoster, setIsUploadingPoster] = useState(false);
@@ -6097,7 +6095,7 @@ const githubTop3 = useMemo(() => {
           if (numCols > startCol) {
             try {
               worksheet.mergeCells(rowNum, startCol, rowNum, numCols);
-            } catch (e) {}
+            } catch (e) { }
           }
         });
 
@@ -6401,9 +6399,9 @@ const githubTop3 = useMemo(() => {
           const membersList = Array.isArray(t.members) && t.members.length > 0 ? t.members : [];
           const participantsStr = membersList.length > 0
             ? membersList.map((m: any) => {
-                const memberText = `${m.full_name || 'Student'} (${m.register_number || 'N/A'})`;
-                return m.status === 'PENDING' ? `${memberText} [Pending]` : memberText;
-              }).join(', ')
+              const memberText = `${m.full_name || 'Student'} (${m.register_number || 'N/A'})`;
+              return m.status === 'PENDING' ? `${memberText} [Pending]` : memberText;
+            }).join(', ')
             : leaderStr;
 
           teamRows.push({
@@ -7325,7 +7323,7 @@ const githubTop3 = useMemo(() => {
               <Skeleton className="h-10 w-24 rounded-xl animate-pulse" />
             </div>
           </div>
-          
+
           {/* Scrollable Content Workspace Skeleton */}
           <div className="flex-1 p-8 overflow-y-auto space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
@@ -7392,7 +7390,7 @@ const githubTop3 = useMemo(() => {
         try {
           const data = await res.json();
           errMessage = data.error || errMessage;
-        } catch (e) {}
+        } catch (e) { }
         addToast(errMessage, 'error');
         return;
       }
@@ -7930,7 +7928,7 @@ const githubTop3 = useMemo(() => {
                   <table className="w-full min-w-[850px] text-left border-collapse">
                     <thead>
                       <tr className="bg-zinc-50 border-b border-zinc-200 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-<th onClick={() => handleSortHeader('registerNumber')} className="px-6 py-4 cursor-pointer select-none">
+                        <th onClick={() => handleSortHeader('registerNumber')} className="px-6 py-4 cursor-pointer select-none">
                           REGISTER NO {leetcodeSortColumn === 'registerNumber' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
                         </th>
                         <th onClick={() => handleSortHeader('fullName')} className="px-6 py-4 cursor-pointer select-none">
@@ -7964,13 +7962,13 @@ const githubTop3 = useMemo(() => {
                           const isDaily = leetcodeViewType === 'DAILY';
                           const solved = isDaily ? (row.solvedToday ?? 0) : (row.solvedThisWeek ?? 0);
                           const target = isDaily ? (row.dailyTarget ?? 0) : (row.weeklyTarget ?? 0);
-const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
+                          const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                           const profileUrl = row.leetcodeUsername
                             ? (row.leetcodeUsername.startsWith('http') ? row.leetcodeUsername : `https://leetcode.com/u/${row.leetcodeUsername}/`)
                             : null;
 
                           const displayStatus = status === 'COMPLETED' ? 'COMPLETED' :
-                                                status === 'NO_TARGET' ? 'NO TARGET' : 'INCOMPLETE';
+                            status === 'NO_TARGET' ? 'NO TARGET' : 'INCOMPLETE';
 
                           return (
                             <tr key={row.studentId} className="hover:bg-zinc-50 transition-colors">
@@ -8007,7 +8005,7 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                                   {row.solvedYesterday ?? 0}
                                 </td>
                               )}
-<td className="px-6 py-4 text-center">
+                              <td className="px-6 py-4 text-center">
                                 <span className={cn(
                                   "inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full",
                                   displayStatus === 'COMPLETED' ? "bg-emerald-100 text-emerald-800" :
@@ -8077,11 +8075,11 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
         {/* ─── GITHUB TRACKER VIEW ─── */}
         {codingPlatformTab === 'GITHUB' && (
           <div>
-{/* GitHub Stat Cards */}
+            {/* GitHub Stat Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <StatCard title="Total Students" value={githubStats?.totalStudents || githubProgressList.length || 0} color="purple" icon={<Zap />} />
               <StatCard title="Active Committers Today" value={githubStats?.activeCommitters || 0} color="emerald" icon={<Terminal />} />
-              
+
               {/* Top 3 Leaderboard Card */}
               <Card className="p-4 border border-zinc-200 bg-white shadow-xs sm:col-span-2 lg:col-span-2 flex flex-col justify-between">
                 <div className="flex items-center justify-between mb-2">
@@ -8095,7 +8093,7 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                     Champions
                   </span>
                 </div>
-                
+
                 <div className="grid grid-cols-3 gap-2 flex-1 items-center">
                   {githubTop3.length === 0 ? (
                     <div className="col-span-3 text-center py-2 text-zinc-400 text-xs font-semibold">
@@ -8111,12 +8109,12 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                           </div>
                         );
                       }
-                      
+
                       const commits = leetcodeViewType === 'DAILY' ? (item.commitsToday ?? 0) : (item.commitsThisWeek ?? 0);
                       const rankColors = index === 0 ? "bg-amber-100 text-amber-800 border-amber-200" :
-                                         index === 1 ? "bg-slate-100 text-slate-700 border-slate-200" :
-                                         "bg-orange-100 text-orange-800 border-orange-200";
-                      
+                        index === 1 ? "bg-slate-100 text-slate-700 border-slate-200" :
+                          "bg-orange-100 text-orange-800 border-orange-200";
+
                       const rankEmoji = index === 0 ? "🥇" : index === 1 ? "🥈" : "🥉";
 
                       return (
@@ -8288,7 +8286,7 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[850px] text-left border-collapse">
                   <thead>
-<tr className="bg-zinc-50 border-b border-zinc-200 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                    <tr className="bg-zinc-50 border-b border-zinc-200 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                       <th onClick={() => handleSortHeader('registerNumber')} className="px-6 py-4 cursor-pointer select-none">
                         REGISTER NO {leetcodeSortColumn === 'registerNumber' ? (leetcodeSortOrder === 'asc' ? '↑' : '↓') : ''}
                       </th>
@@ -8373,7 +8371,7 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                               <span className={cn(
                                 "inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full",
                                 row.syncStatus === 'SUCCESS' ? "bg-emerald-100 text-emerald-800" :
-                                row.syncStatus === 'NO_PROFILE' ? "bg-zinc-100 text-zinc-600" : "bg-amber-100 text-amber-800"
+                                  row.syncStatus === 'NO_PROFILE' ? "bg-zinc-100 text-zinc-600" : "bg-amber-100 text-amber-800"
                               )}>
                                 {row.syncStatus === 'SUCCESS' ? 'SYNCED' : row.syncStatus === 'NO_PROFILE' ? 'NO HANDLE' : 'PENDING'}
                               </span>
@@ -8776,17 +8774,17 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
     const student = selectedStudentHistory;
     const isGithub = codingPlatformTab === 'GITHUB';
     const hasData = studentHistoryData && (
-      isGithub 
+      isGithub
         ? (studentHistoryData.history && studentHistoryData.history.length > 0)
         : (studentHistoryData.daily && studentHistoryData.daily.length > 0)
     );
 
     return (
-      <div 
+      <div
         className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-[200] animate-fade-in"
         onClick={() => setShowHistoryModal(false)}
       >
-        <Card 
+        <Card
           className="w-full max-w-2xl bg-white shadow-2xl rounded-2xl overflow-hidden border border-zinc-200 flex flex-col max-h-[85vh]"
           onClick={(e) => e.stopPropagation()}
         >
