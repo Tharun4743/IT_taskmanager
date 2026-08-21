@@ -8482,6 +8482,27 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
               </div>
             ) : (
               <>
+                {/* Official Community Group Join Banner */}
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white mb-4 flex items-center justify-between gap-3 shadow-md">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+                      <Send size={16} className="text-white" />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="text-xs font-black text-white truncate">Department Telegram Group</h4>
+                      <p className="text-[10px] text-sky-100 font-medium">Daily summaries, notices & discussions</p>
+                    </div>
+                  </div>
+                  <a
+                    href="https://t.me/it_taskmanager"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3.5 py-1.5 bg-white text-indigo-900 rounded-lg text-xs font-black hover:bg-sky-50 transition-all shrink-0 shadow-xs"
+                  >
+                    Join Group
+                  </a>
+                </div>
+
                 {/* Feature Highlights */}
                 <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-50 rounded-2xl border border-zinc-200/70 mb-4 text-xs text-zinc-700">
                   <div className="flex items-center gap-1.5">
