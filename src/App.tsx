@@ -8588,52 +8588,6 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                   </a>
                 </div>
 
-                {/* Method 4: Manual Telegram Chat ID Fallback (Collapsible) */}
-                <div className="border-t border-zinc-100 pt-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowManualTelegramInput(prev => !prev)}
-                    className="text-xs font-bold text-zinc-500 hover:text-zinc-800 flex items-center justify-between w-full py-1"
-                  >
-                    <span>Need to enter Telegram Chat ID manually?</span>
-                    <span className="text-xs font-mono">{showManualTelegramInput ? '▲ Hide' : '▼ Expand'}</span>
-                  </button>
-
-                  {showManualTelegramInput && (
-                    <form onSubmit={handleLinkTelegram} className="mt-3 p-3 bg-zinc-50 rounded-xl border border-zinc-200 space-y-3">
-                      <div>
-                        <label className="block text-[11px] font-bold text-zinc-600 mb-1">Telegram Chat ID *</label>
-                        <Input
-                          type="text"
-                          placeholder="e.g. 123456789 (Get from /id in bot)"
-                          value={telegramChatIdInput}
-                          onChange={e => setTelegramChatIdInput(e.target.value)}
-                          className="text-xs"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-bold text-zinc-600 mb-1">Telegram Username (Optional)</label>
-                        <Input
-                          type="text"
-                          placeholder="e.g. johndoe"
-                          value={telegramUsernameInput}
-                          onChange={e => setTelegramUsernameInput(e.target.value)}
-                          className="text-xs"
-                        />
-                      </div>
-                      <Button
-                        type="submit"
-                        disabled={isLinkingTelegram}
-                        variant="primary"
-                        className="w-full text-xs py-2"
-                      >
-                        {isLinkingTelegram ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                        <span>Save & Link Account</span>
-                      </Button>
-                    </form>
-                  )}
-                </div>
               </>
             )}
 
