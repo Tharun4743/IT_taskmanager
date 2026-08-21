@@ -99,15 +99,23 @@ export function escapeHtml(str: string | null | undefined): string {
 }
 
 /**
- * Visual Progress Bar generator for Reports e.g. [██████░░░░] 60%
+ * Visual Colorful Progress Bar generator for Telegram Reports
+ * e.g. 🟩🟩🟩🟩🟩🟩⬜⬜⬜⬜ 60%
  */
 export function makeProgressBar(completed: number, total: number, size = 10): string {
-  if (total <= 0) return '[░░░░░░░░░░] 0%';
+  if (total <= 0) return '⬜'.repeat(size) + ' <b>0%</b>';
   const ratio = Math.min(Math.max(completed / total, 0), 1);
   const filled = Math.round(ratio * size);
   const empty = size - filled;
   const percentage = Math.round(ratio * 100);
-  return `[${'█'.repeat(filled)}${'░'.repeat(empty)}] ${percentage}%`;
+
+  let fillChar = '🟩';
+  if (percentage < 30) fillChar = '🟥';
+  else if (percentage < 65) fillChar = '🟧';
+  else if (percentage < 90) fillChar = '🟨';
+  else fillChar = '🟩';
+
+  return `${fillChar.repeat(filled)}${'⬜'.repeat(empty)} <b>${percentage}%</b>`;
 }
 
 /**
@@ -620,12 +628,20 @@ export async function getStudentLeetCodeCard(user: any): Promise<{ html: string;
   const dailyTarget = Number(targetRes.rows[0]?.daily_target) || 0;
   const weeklyTarget = Number(targetRes.rows[0]?.weekly_target) || 0;
 
-  let html = `🧩 <b>LEETCODE</b>\n\n`;
-  html += `• <b>Today's Solved:</b> <b>${solvedToday}</b>\n`;
-  html += `• <b>Daily Target:</b> <b>${dailyTarget}</b>\n`;
-  html += `• <b>Weekly Solved:</b> <b>${solvedWeek}</b>\n`;
-  html += `• <b>Weekly Target:</b> <b>${weeklyTarget}</b>\n`;
-  html += `• <b>Total Solved:</b> <b>${totalSolved}</b>\n`;
+  const statusEmoji = (dailyTarget > 0 && solvedToday >= dailyTarget) ? '🟢 MET' : (dailyTarget > 0 ? '🟡 PENDING' : '⚪ NO TARGET');
+  const weeklyStatusEmoji = (weeklyTarget > 0 && solvedWeek >= weeklyTarget) ? '🟢 MET' : (weeklyTarget > 0 ? '🟡 PENDING' : '⚪ NO TARGET');
+  const progressBar = dailyTarget > 0 ? makeProgressBar(solvedToday, dailyTarget, 8) : '';
+
+  let html = `🧩 <b>LEETCODE PROGRESS SCORECARD</b>\n\n`;
+  html += `<blockquote>👤 <b>Student:</b> ${escapeHtml(user.full_name || 'Student')}\n`;
+  html += `🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number || user.username)}</code></blockquote>\n\n`;
+
+  html += `📊 <b>Today's Daily Target (${dateStr}):</b>\n`;
+  html += `• ⚡ <b>Solved Today:</b> <b>${solvedToday}</b> / ${dailyTarget || '—'} [${statusEmoji}]\n`;
+  if (progressBar) html += `• 📈 <b>Daily Progress:</b> ${progressBar}\n`;
+  html += `\n📅 <b>Weekly Performance:</b>\n`;
+  html += `• 🏆 <b>Solved This Week:</b> <b>${solvedWeek}</b> / ${weeklyTarget || '—'} [${weeklyStatusEmoji}]\n`;
+  html += `• 🌟 <b>All-Time Solved:</b> <b>${totalSolved}</b> problems\n`;
   html += getWatermarkHtml();
 
   const keyboard = {
@@ -658,9 +674,16 @@ export async function getStudentGitHubCard(user: any): Promise<{ html: string; k
   const commitsToday = Number(dailyRes.rows[0]?.daily_commit_count) || 0;
   const commitsWeek = Number(weeklyRes.rows[0]?.commits_week) || 0;
 
-  let html = `💻 <b>GITHUB</b>\n\n`;
-  html += `• <b>Today's Commits:</b> <b>${commitsToday}</b>\n`;
-  html += `• <b>This Week's Commits:</b> <b>${commitsWeek}</b>\n`;
+  const commitBadge = commitsToday > 0 ? '🔥 ACTIVE' : '⚪ NO COMMITS';
+
+  let html = `💻 <b>GITHUB ACTIVITY SCORECARD</b>\n\n`;
+  html += `<blockquote>👤 <b>Student:</b> ${escapeHtml(user.full_name || 'Student')}\n`;
+  html += `🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number || user.username)}</code></blockquote>\n\n`;
+
+  html += `📊 <b>Commit Velocity (${dateStr}):</b>\n`;
+  html += `• 🚀 <b>Today's Commits:</b> <b>${commitsToday}</b> commit${commitsToday === 1 ? '' : 's'} [${commitBadge}]\n`;
+  html += `• 📈 <b>This Week's Commits:</b> <b>${commitsWeek}</b> commit${commitsWeek === 1 ? '' : 's'}\n`;
+  html += `• 🐙 <b>GitHub URL:</b> <code>${escapeHtml(user.github_url || 'Not set')}</code>\n`;
   html += getWatermarkHtml();
 
   const keyboard = {
@@ -718,17 +741,21 @@ export async function getStudentStatsCard(user: any): Promise<{ html: string; ke
     overall = '⚠️ Needs Attention';
   }
 
-  let html = `📊 <b>MY PROGRESS</b>\n\n`;
-  html += `📋 <b>Tasks:</b>      <b>${completedTasks}/${totalTasks}</b>\n`;
-  html += `🧩 <b>LeetCode:</b>   <b>${lcSolved}/${lcTarget || '—'}</b>\n`;
-  html += `💻 <b>GitHub:</b>     <b>${ghCommits}</b> commit${ghCommits === 1 ? '' : 's'}\n\n`;
-  html += `🎯 <b>Overall:</b> ${overall}\n\n`;
+  let html = `📊 <b>COMBINED PERFORMANCE DASHBOARD</b>\n\n`;
+  html += `<blockquote>👤 <b>${escapeHtml(user.full_name)}</b> (<code>${escapeHtml(user.register_number || user.username)}</code>)\n`;
+  html += `🏫 <b>Class:</b> <code>${escapeHtml(user.class_name || 'IT Dept')}</code></blockquote>\n\n`;
 
-  if (pendingTasks > 0) {
-    html += `⏳ <i>${pendingTasks} task${pendingTasks === 1 ? '' : 's'} remaining</i>\n`;
-  } else {
-    html += `✨ <i>All tasks completed! 🎉</i>\n`;
-  }
+  html += `📋 <b>Academic Assignments:</b>\n`;
+  html += `• <b>Completed:</b> <b>${completedTasks}/${totalTasks}</b> ${completedTasks === totalTasks && totalTasks > 0 ? '🟢' : '🟡'}\n`;
+  html += `• <b>Status:</b> ${pendingTasks === 0 ? '✨ <i>All tasks completed! 🎉</i>' : `⏳ <b>${pendingTasks}</b> task${pendingTasks === 1 ? '' : 's'} pending`}\n\n`;
+
+  html += `🧩 <b>LeetCode Coding Target:</b>\n`;
+  html += `• <b>Today:</b> <b>${lcSolved}</b> / ${lcTarget || '—'} ${lcTarget > 0 && lcSolved >= lcTarget ? '🟢 MET' : '🟡 PENDING'}\n\n`;
+
+  html += `💻 <b>GitHub Commits:</b>\n`;
+  html += `• <b>Today:</b> <b>${ghCommits}</b> commit${ghCommits === 1 ? '' : 's'} ${ghCommits > 0 ? '🔥 ACTIVE' : '⚪ NONE'}\n\n`;
+
+  html += `<blockquote>🎯 <b>Overall Evaluation:</b> ${overall}</blockquote>\n`;
   html += getWatermarkHtml();
 
   const keyboard = {
