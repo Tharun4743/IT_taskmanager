@@ -8395,19 +8395,17 @@ export default function App() {
     const regNo = getStudentRegisterNumber(user);
     const studentName = user?.full_name || 'Student';
     const botUsername = telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot';
-    const linkCommand = `/link ${regNo}`;
     const directStartUrl = `https://t.me/${botUsername}?start=${encodeURIComponent(regNo)}`;
-    const directTextUrl = `https://t.me/${botUsername}?text=${encodeURIComponent(linkCommand)}`;
     const isAlreadyLinked = Boolean(user?.telegram_chat_id || telegramStats?.currentUserLinked);
 
     return (
       <AnimatePresence>
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[210] flex items-center justify-center p-4">
           <motion.div
-            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            initial={{ scale: 0.92, opacity: 0, y: 15 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-lg shadow-2xl relative overflow-hidden border border-zinc-100 max-h-[95vh] overflow-y-auto"
+            exit={{ scale: 0.92, opacity: 0, y: 15 }}
+            className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-3xl shadow-2xl relative overflow-hidden border border-zinc-100 max-h-[92vh] overflow-y-auto"
           >
             {/* Top decorative gradient bar */}
             <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-sky-400 via-indigo-500 to-violet-600" />
@@ -8416,97 +8414,101 @@ export default function App() {
               onClick={() => setShowTelegramLinkModal(false)}
               className="absolute top-5 right-5 p-2 text-zinc-400 hover:text-zinc-700 rounded-full hover:bg-zinc-100 transition-all"
             >
-              <X size={20} />
+              <X size={22} />
             </button>
 
-            <div className="flex items-center gap-3.5 mb-4">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-400 to-blue-600 text-white flex items-center justify-center shadow-lg shadow-sky-500/20 shrink-0">
-                <Send size={24} className="-rotate-12" />
+            {/* Header + Student Profile Row */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-zinc-100">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-400 to-blue-600 text-white flex items-center justify-center shadow-lg shadow-sky-500/20 shrink-0">
+                  <Send size={24} className="-rotate-12" />
+                </div>
+                <div>
+                  <h3 className="text-xl sm:text-2xl font-black text-zinc-900 tracking-tight">Connect Telegram Alerts</h3>
+                  <p className="text-xs text-zinc-500 font-medium">Instant task notifications, deadline alerts & coding reports</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-xl font-black text-zinc-900 tracking-tight">Connect Telegram Alerts</h3>
-                <p className="text-xs text-zinc-500 font-medium">Instant task notifications, deadline alerts & coding reports</p>
-              </div>
-            </div>
 
-            {/* Dynamic Student Identity Profile Card */}
-            <div className="p-3.5 bg-gradient-to-r from-zinc-50 to-sky-50/50 rounded-2xl border border-sky-100 mb-4 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-sm">
+              {/* Student Identity Badge */}
+              <div className="p-2.5 px-3.5 bg-gradient-to-r from-zinc-50 to-sky-50/50 rounded-2xl border border-sky-100 flex items-center gap-3 shrink-0">
+                <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-xs">
                   {studentName.substring(0, 2).toUpperCase()}
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs font-black text-zinc-900 truncate">{studentName}</p>
-                  <p className="text-[11px] font-bold text-sky-700 flex items-center gap-1 font-mono">
-                    <span>Register No:</span>
-                    <span className="bg-sky-100 px-1.5 py-0.2 rounded text-sky-900 font-extrabold">{regNo || 'N/A'}</span>
+                  <p className="text-[11px] font-bold text-sky-700 font-mono">
+                    Reg: <span className="bg-sky-100 px-1 py-0.2 rounded text-sky-900 font-extrabold">{regNo || 'N/A'}</span>
                   </p>
                 </div>
-              </div>
-              <span className="shrink-0 text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                {isAlreadyLinked ? '🟢 Connected' : 'Ready to Link'}
-              </span>
-            </div>
-
-            {/* Group Banner always visible for all students */}
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-sky-500 via-indigo-600 to-blue-700 text-white mb-4 shadow-md relative overflow-hidden">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 relative z-10">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner">
-                    <Send size={18} className="text-white" />
-                  </div>
-                  <div className="min-w-0">
-                    <span className="text-[10px] font-black uppercase tracking-wider bg-white/25 px-2 py-0.5 rounded-md">
-                      STEP 1 • Department Community
-                    </span>
-                    <h4 className="text-sm font-black text-white truncate mt-0.5">Join IT Department Telegram Group</h4>
-                    <p className="text-[11px] text-sky-100 font-medium">Daily morning & evening reports, notices & group discussions</p>
-                  </div>
-                </div>
-                <a
-                  href="https://t.me/it_taskmanager"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-full sm:w-auto px-4 py-2 bg-white text-indigo-900 hover:bg-sky-50 rounded-xl text-xs font-black transition-all text-center shrink-0 shadow-sm hover:scale-105 active:scale-95"
-                >
-                  🚀 Join Group
-                </a>
+                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                  {isAlreadyLinked ? '🟢 Connected' : 'Ready'}
+                </span>
               </div>
             </div>
 
             {/* Already Linked State */}
             {isAlreadyLinked ? (
-              <div className="space-y-4 mb-5">
-                <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 text-center space-y-2">
-                  <CheckCircle2 size={32} className="text-emerald-600 mx-auto" />
-                  <h4 className="font-extrabold text-emerald-950 text-sm">Your Personal Alerts Bot is Active!</h4>
-                  <p className="text-xs text-emerald-800">
+              <div className="space-y-4 mb-6">
+                <div className="p-5 bg-emerald-50 rounded-2xl border-2 border-emerald-200 text-center space-y-2">
+                  <CheckCircle2 size={36} className="text-emerald-600 mx-auto" />
+                  <h4 className="font-extrabold text-emerald-950 text-base">Your Personal Alerts Bot is Active!</h4>
+                  <p className="text-xs text-emerald-800 max-w-lg mx-auto">
                     Connected to <b>@{botUsername}</b> {telegramStats?.currentUserTelegram ? `(@${telegramStats.currentUserTelegram})` : ''}.
                     You will receive 1-to-1 deadline notifications and live coding updates privately.
                   </p>
                 </div>
-                <div className="flex items-center gap-2 justify-center">
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <a
+                    href="https://t.me/it_taskmanager"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-4 rounded-2xl bg-[#0088cc]/10 border border-[#0088cc]/30 hover:bg-[#0088cc]/20 transition-all flex items-center justify-between gap-3 text-zinc-900"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-[#0088cc] text-white flex items-center justify-center shrink-0 shadow-sm">
+                        <Send size={18} className="-rotate-12" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-zinc-500">Official Group</p>
+                        <h5 className="text-sm font-black text-zinc-900">IT Department Community</h5>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-[#0088cc] bg-white px-3 py-1.5 rounded-lg border border-[#0088cc]/30 shrink-0">Open →</span>
+                  </a>
+
                   <a
                     href={`https://t.me/${botUsername}`}
                     target="_blank"
-                    rel="noreferrer"
-                    className="text-xs py-2 px-4 rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 shadow-sm"
+                    rel="noopener noreferrer"
+                    className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-all flex items-center justify-between gap-3 text-zinc-900"
                   >
-                    <Send size={13} />
-                    <span>Open Bot DM</span>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                        <Send size={18} className="-rotate-12" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-zinc-500">Personal Bot</p>
+                        <h5 className="text-sm font-black text-zinc-900">@{botUsername}</h5>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-indigo-700 bg-white px-3 py-1.5 rounded-lg border border-indigo-200 shrink-0">Open DM →</span>
                   </a>
+                </div>
+
+                <div className="flex items-center gap-2 justify-center pt-2">
                   <Button
                     variant="outline"
-                    className="text-xs py-2 px-3 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+                    className="text-xs py-2 px-4 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
                     disabled={sendingTest}
                     onClick={() => handleSendTestMessage()}
                   >
                     {sendingTest ? <Loader2 size={14} className="animate-spin" /> : <Bell size={14} />}
-                    <span>Test Alert</span>
+                    <span>Send Test Alert</span>
                   </Button>
                   <Button
                     variant="ghost"
-                    className="text-xs py-2 px-3 text-red-600 hover:bg-red-50"
+                    className="text-xs py-2 px-4 text-red-600 hover:bg-red-50"
                     onClick={handleUnlinkTelegram}
                   >
                     Disconnect
@@ -8515,49 +8517,95 @@ export default function App() {
               </div>
             ) : (
               <>
-                {/* Step 2: Bot Connection */}
-                <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50/80 via-sky-50/50 to-white border-2 border-indigo-200 mb-4 space-y-3 shadow-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-black text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black">2</span>
-                      STEP 2 • Activate 1-to-1 Alerts Bot
-                    </span>
-                    <span className="bg-indigo-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
-                      REQUIRED
-                    </span>
+                {/* 2-Column Side-by-Side Setup Steps */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                  {/* STEP 1: Join Department Telegram Group */}
+                  <div className="p-5 rounded-2xl bg-gradient-to-br from-[#0088cc]/10 via-[#0088cc]/5 to-white border-2 border-[#0088cc]/30 flex flex-col justify-between shadow-xs">
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <span className="text-[10px] font-black uppercase tracking-wider bg-[#0088cc] text-white px-2.5 py-0.5 rounded-md shadow-xs">
+                          STEP 1 • COMMUNITY
+                        </span>
+                        <span className="text-[11px] font-extrabold text-[#0088cc]">Official Group</span>
+                      </div>
+                      <div className="flex items-start gap-3 mb-2">
+                        <div className="w-10 h-10 rounded-xl bg-[#0088cc] text-white flex items-center justify-center shrink-0 shadow-md shadow-[#0088cc]/25">
+                          <Send size={20} className="-rotate-12" />
+                        </div>
+                        <div>
+                          <h4 className="text-base font-black text-zinc-950 leading-tight">Join Telegram Group</h4>
+                          <p className="text-xs text-zinc-500 font-medium mt-1">Daily morning/evening summaries, announcements & department notices</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <a
+                      href="https://t.me/it_taskmanager"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-4 w-full py-3 px-4 bg-[#0088cc] hover:bg-[#0077b5] active:scale-98 text-white rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 shadow-md shadow-[#0088cc]/25 text-center"
+                    >
+                      <Send size={15} className="-rotate-12" />
+                      <span>Join Telegram Group</span>
+                    </a>
                   </div>
 
-                  <a
-                    href={directStartUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full py-3 px-4 bg-gradient-to-r from-indigo-600 via-sky-600 to-violet-600 hover:from-indigo-700 hover:to-sky-700 active:scale-98 text-white font-extrabold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2 shadow-md shadow-indigo-500/25 transition-all text-center"
-                  >
-                    <Send size={16} className="-rotate-12" />
-                    <span>Start Bot & Auto-Link ({regNo})</span>
-                  </a>
-                  <p className="text-[11px] text-zinc-600 text-center font-medium">
-                    Tap above to open <b>@{botUsername}</b> and click <b>START</b> — your profile will be linked automatically!
-                  </p>
+                  {/* STEP 2: Activate 1-to-1 Alerts Bot */}
+                  <div className="p-5 rounded-2xl bg-gradient-to-br from-indigo-50/90 via-sky-50/50 to-white border-2 border-indigo-300 flex flex-col justify-between shadow-xs">
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <span className="text-[10px] font-black uppercase tracking-wider bg-indigo-600 text-white px-2.5 py-0.5 rounded-md shadow-xs">
+                          STEP 2 • ALERTS BOT
+                        </span>
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
+                          REQUIRED
+                        </span>
+                      </div>
+                      <div className="flex items-start gap-3 mb-2">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 text-white flex items-center justify-center shrink-0 shadow-md shadow-indigo-500/25">
+                          <Send size={20} className="-rotate-12" />
+                        </div>
+                        <div>
+                          <h4 className="text-base font-black text-zinc-950 leading-tight">Start Personal Bot</h4>
+                          <p className="text-xs text-zinc-500 font-medium mt-1">1-to-1 private 24h deadline alerts, scorecards & submission badges</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 space-y-2">
+                      <a
+                        href={directStartUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 px-4 bg-gradient-to-r from-indigo-600 via-sky-600 to-violet-600 hover:from-indigo-700 hover:to-sky-700 active:scale-98 text-white rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 shadow-md shadow-indigo-500/25 text-center"
+                      >
+                        <Send size={15} className="-rotate-12" />
+                        <span>Start Bot & Auto-Link ({regNo})</span>
+                      </a>
+                      <p className="text-[10px] text-zinc-400 text-center font-medium">
+                        Opens <b>@{botUsername}</b> and connects automatically upon clicking <b>START</b>
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Feature Highlights */}
-                <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-50 rounded-2xl border border-zinc-200/70 mb-4 text-xs text-zinc-700">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-black">✓</span>
-                    <span className="text-[11px] font-semibold">Instant Task Alerts</span>
+                {/* Feature Highlights Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200/70 mb-4 text-xs text-zinc-700">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-black">✓</span>
+                    <span className="text-xs font-bold text-zinc-800">Instant Task Alerts</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-black">✓</span>
-                    <span className="text-[11px] font-semibold">24h Deadline Alerts</span>
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-black">✓</span>
+                    <span className="text-xs font-bold text-zinc-800">24h Deadline Alerts</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-black">✓</span>
-                    <span className="text-[11px] font-semibold">Verification Badges</span>
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-black">✓</span>
+                    <span className="text-xs font-bold text-zinc-800">Verification Badges</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-black">✓</span>
-                    <span className="text-[11px] font-semibold">Coding Scorecard</span>
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-black">✓</span>
+                    <span className="text-xs font-bold text-zinc-800">Coding Scorecard</span>
                   </div>
                 </div>
               </>
@@ -8567,7 +8615,7 @@ export default function App() {
               <Button
                 type="button"
                 variant="ghost"
-                className="text-zinc-400 hover:text-zinc-600 text-xs"
+                className="text-zinc-400 hover:text-zinc-600 text-xs font-bold"
                 onClick={() => setShowTelegramLinkModal(false)}
               >
                 Close
@@ -9658,9 +9706,6 @@ export default function App() {
                                     <h2 className="text-lg sm:text-xl font-black mt-1 text-white tracking-tight">
                                       Connect your Telegram for Live Task Alerts & Coding Reports
                                     </h2>
-                                    <p className="text-xs sm:text-sm text-sky-100/90 mt-1 max-w-2xl leading-relaxed">
-                                      Receive automatic alerts for newly assigned tasks, upcoming deadlines within 24 hours, and submission status — plus check your LeetCode and GitHub scores on Telegram anytime!
-                                    </p>
                                   </div>
                                 </div>
 
