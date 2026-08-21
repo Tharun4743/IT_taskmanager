@@ -10,6 +10,24 @@ import {
   cleanStudentName
 } from './studentDirectoryService.js';
 
+let cachedBotUsername = process.env.TELEGRAM_BOT_USERNAME || 'IT_TaskManager_Alerts_bot';
+
+export async function fetchBotUsername(): Promise<string> {
+  const token = getBotToken();
+  if (!token) return cachedBotUsername;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+    const data = await res.json();
+    if (data.ok && data.result?.username) {
+      cachedBotUsername = data.result.username;
+      return cachedBotUsername;
+    }
+  } catch (err: any) {
+    console.warn('[Telegram Bot] Could not fetch getMe:', err.message);
+  }
+  return cachedBotUsername;
+}
+
 export function getBotToken(): string {
   return process.env.TELEGRAM_BOT_TOKEN || '';
 }
@@ -2632,12 +2650,12 @@ export function startTelegramPoller(): void {
               if (isGroup) {
                 await sendTelegramMessage(
                   chatId,
-                  `👋 <b>Welcome to IT TASK MANAGER!</b>\n\n📌 <b>Group ID:</b> <code>${chatId}</code>\n\nThis group receives automated daily task reports and department announcements.\n\n💡 <i>Students: To link your account for private alerts, message @IT_TaskManager_Alerts_bot directly!</i>\n${getWatermarkHtml()}`
+                  `👋 <b>Welcome to IT TASK MANAGER!</b>\n\n📌 <b>Group ID:</b> <code>${chatId}</code>\n\nThis group receives automated daily task reports and department announcements.\n\n💡 <i>Students: To link your account for private alerts, message @${cachedBotUsername} directly or use 1-Click Connect from the portal!</i>\n${getWatermarkHtml()}`
                 );
               } else {
                 await sendTelegramMessage(
                   chatId,
-                  `👋 <b>Welcome to IT TASK MANAGER!</b>\n\nHello <b>${escapeHtml(senderName)}</b>!\n\nTo link your student account and receive private task reminders, reply with:\n<code>/link YOUR_REGISTER_NUMBER</code>\n\n<i>Example:</i> <code>/link 922524205001</code>\n${getWatermarkHtml()}`
+                  `👋 <b>Welcome to IT TASK MANAGER!</b>\n\nHello <b>${escapeHtml(senderName)}</b>!\n\nTo link your student account and receive private task reminders, reply with:\n<code>/link YOUR_REGISTER_NUMBER</code>\n\n<i>Or simply reply with your Register Number directly!</i>\n\n<i>Example:</i> <code>/link 922524205001</code>\n\n💡 <i>Tip: You can also tap <b>1-Click Connect</b> from your IT TaskManager portal to link instantly!</i>\n${getWatermarkHtml()}`
                 );
               }
             }
@@ -2770,11 +2788,11 @@ export function startTelegramPoller(): void {
             }
           }
 
-          // ── Automatic Register Number / Username Lookup ──────────────────
+          // ── Automatic Register Number / Username Lookup & Auto-Link ─────────
           // If anyone in a private DM simply types a Register Number
           if (!isGroup && !text.startsWith('/') && cleanCandidate.length >= 4 && cleanCandidate.length <= 25) {
             const studentCheck = await pool.query(`
-              SELECT id FROM users 
+              SELECT id, full_name, register_number, username, telegram_chat_id FROM users 
               WHERE (REPLACE(LOWER(register_number), ' ', '') = $1 
                  OR LOWER(register_number) = $2 
                  OR REPLACE(LOWER(username), ' ', '') = $1
@@ -2784,6 +2802,11 @@ export function startTelegramPoller(): void {
             `, [cleanCandidate.toLowerCase().replace(/\s+/g, ''), cleanCandidate.toLowerCase()]);
 
             if (studentCheck.rows.length > 0) {
+              const matchedStudent = studentCheck.rows[0];
+              // If sender doesn't have an account linked yet, auto-link to this student account!
+              if (!user && (!matchedStudent.telegram_chat_id || matchedStudent.telegram_chat_id === String(senderUserId))) {
+                await linkStudentTelegram(cleanCandidate, senderUserId, fromUsername);
+              }
               const card = await getComprehensiveStudentProgressCard(cleanCandidate);
               if (card.found) {
                 await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
@@ -3042,6 +3065,7 @@ export async function getTelegramStats(): Promise<any> {
   const token = getBotToken();
   const adminChatId = getAdminChatId();
   const groupChatId = await getGroupChatId();
+  const botUsername = (await fetchBotUsername()) || cachedBotUsername || 'IT_TaskManager_Alerts_bot';
 
   const res = await pool.query(`
     SELECT 
@@ -3053,7 +3077,7 @@ export async function getTelegramStats(): Promise<any> {
 
   return {
     botConfigured: Boolean(token),
-    botUsername: 'IT_TaskManager_Alerts_bot',
+    botUsername,
     adminChatId,
     groupChatId,
     totalStudents: parseInt(res.rows[0]?.total_students || '0', 10),

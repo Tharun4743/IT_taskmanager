@@ -1384,14 +1384,32 @@ const Skeleton = ({ className }: { className?: string }) => (
   <div className={cn("animate-pulse bg-zinc-200 rounded-lg", className)} />
 );
 
+export const getStudentRegisterNumber = (userObj: any, profileObj?: any): string => {
+  const possible = [
+    userObj?.register_number,
+    profileObj?.academic?.register_number,
+    userObj?.username
+  ];
+  for (const val of possible) {
+    if (val && typeof val === 'string' && val.trim() && val.trim().toUpperCase() !== 'N/A' && !val.includes('@')) {
+      return val.trim();
+    }
+  }
+  return (userObj?.register_number || profileObj?.academic?.register_number || userObj?.username || '').trim();
+};
+
 function StudentProfileView({
   user,
   token,
-  addToast
+  addToast,
+  telegramStats,
+  onOpenTelegramModal
 }: {
   user: User | null;
   token: string | null;
   addToast: (message: string, type: 'success' | 'error' | 'info') => void;
+  telegramStats?: any;
+  onOpenTelegramModal?: () => void;
 }) {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -2107,6 +2125,88 @@ function StudentProfileView({
                   <p className="text-sm font-bold text-zinc-900 truncate">{acad.gender}</p>
                 </div>
               </div>
+            </Card>
+
+            {/* Telegram Notification Alerts Card */}
+            <Card className="p-5 md:p-6 bg-gradient-to-br from-sky-50/80 via-indigo-50/40 to-white border-sky-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3 pb-3 border-b border-sky-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 text-white flex items-center justify-center shadow-md shadow-sky-500/20 shrink-0">
+                    <Send size={20} className="-rotate-12" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-zinc-900 uppercase tracking-wider flex items-center gap-2">
+                      Telegram 1-to-1 Deadline Alerts
+                    </h3>
+                    <p className="text-xs text-zinc-500">
+                      Automated task reminders 24 hours before deadlines & instant live coding progress cards.
+                    </p>
+                  </div>
+                </div>
+                <span className={cn(
+                  "px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shrink-0 border self-start sm:self-auto",
+                  (user?.telegram_chat_id || profile?.academic?.telegram_chat_id || telegramStats?.currentUserLinked)
+                    ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+                    : "bg-amber-100 text-amber-800 border-amber-200"
+                )}>
+                  {(user?.telegram_chat_id || profile?.academic?.telegram_chat_id || telegramStats?.currentUserLinked) ? '🟢 Connected' : '⚡ Not Linked'}
+                </span>
+              </div>
+
+              {(user?.telegram_chat_id || profile?.academic?.telegram_chat_id || telegramStats?.currentUserLinked) ? (
+                <div className="p-3.5 bg-emerald-50/90 rounded-xl border border-emerald-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="text-xs text-emerald-950 font-medium">
+                    <p className="font-bold flex items-center gap-1.5 text-emerald-900">
+                      <CheckCircle2 size={15} className="text-emerald-600" />
+                      Active Telegram Alert Connection
+                    </p>
+                    <p className="text-[11px] text-emerald-800 mt-0.5">
+                      Bot: <b>@{telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot'}</b> {user?.telegram_username ? `(@${user.telegram_username})` : ''}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onOpenTelegramModal ? onOpenTelegramModal() : null}
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all shrink-0"
+                  >
+                    Manage Telegram Connection
+                  </button>
+                </div>
+              ) : (() => {
+                const effectiveRegNo = getStudentRegisterNumber(user, profile) || acad.register_number;
+                return (
+                  <div className="space-y-3">
+                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 p-3.5 bg-white rounded-xl border border-sky-100">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xs font-bold text-zinc-700 shrink-0">Command:</span>
+                        <code className="bg-zinc-100 text-indigo-700 font-mono font-bold px-2 py-0.5 rounded text-xs border border-zinc-200 truncate">
+                          /link {effectiveRegNo}
+                        </code>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(`/link ${effectiveRegNo}`);
+                            addToast(`Copied "/link ${effectiveRegNo}" to clipboard! Reply this to @${telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot'} on Telegram.`, 'success');
+                          }}
+                          className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shrink-0"
+                        >
+                          <Copy size={13} /> Copy Command
+                        </button>
+                        <a
+                          href={`https://t.me/${telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot'}?start=${encodeURIComponent(effectiveRegNo)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-4 py-1.5 bg-gradient-to-r from-sky-500 via-indigo-600 to-violet-600 hover:from-sky-600 hover:to-indigo-700 text-white rounded-lg text-xs font-extrabold shadow-sm transition-all flex items-center gap-1.5 shrink-0"
+                        >
+                          <Send size={13} className="-rotate-12" /> 1-Click Auto-Link
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </Card>
 
             {/* Editable Personal Form */}
@@ -3128,47 +3228,71 @@ function SettingsView({
                     </Button>
                   </div>
                 </div>
-              ) : (
-                <div className="p-5 bg-gradient-to-br from-sky-50 to-indigo-50/50 rounded-2xl border border-sky-200 space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="space-y-1">
-                      <h4 className="font-extrabold text-zinc-900 text-sm flex items-center gap-2">
-                        <Bell size={16} className="text-sky-600" /> Connect Telegram for Private Deadline Alerts
-                      </h4>
-                      <p className="text-xs text-zinc-600 max-w-md">
-                        Get private task reminders on your phone 24 hours before deadlines and live verification results.
-                      </p>
+              ) : (() => {
+                const studentRegNo = getStudentRegisterNumber(user);
+                return (
+                  <div className="p-5 bg-gradient-to-br from-sky-50 via-indigo-50/40 to-violet-50/40 rounded-2xl border border-sky-200 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-extrabold text-zinc-900 text-sm flex items-center gap-2">
+                            <Bell size={16} className="text-sky-600" /> Connect Telegram for Private Deadline Alerts
+                          </h4>
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 font-mono">
+                            {studentRegNo || 'Student'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-zinc-600 max-w-lg">
+                          Get private task reminders on your phone 24 hours before deadlines, verification results, and check your LeetCode/GitHub stats anytime.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <a
+                          href={`https://t.me/${telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot'}?start=${encodeURIComponent(studentRegNo)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-extrabold text-xs text-white bg-gradient-to-r from-sky-500 via-indigo-600 to-violet-600 hover:from-sky-600 hover:to-indigo-700 shadow-md shadow-sky-500/25 transition-all shrink-0"
+                        >
+                          <Send size={14} className="-rotate-12" />
+                          <span>1-Click Auto-Link ({studentRegNo})</span>
+                        </a>
+                      </div>
                     </div>
-                    <a
-                      href={`https://t.me/${telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot'}?text=${encodeURIComponent(`/link ${user?.register_number || user?.username || ''}`)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-extrabold text-xs text-white bg-sky-500 hover:bg-sky-600 shadow-md shadow-sky-500/25 transition-all shrink-0"
-                    >
-                      <Send size={14} className="-rotate-12" />
-                      <span>1-Click Open & Send /link {user?.register_number || user?.username}</span>
-                    </a>
-                  </div>
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 bg-white rounded-xl border border-sky-100 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-zinc-700">Link Command:</span>
-                      <code className="bg-zinc-100 text-indigo-700 font-mono font-bold px-2 py-0.5 rounded border border-zinc-200">
-                        /link {user?.register_number || user?.username}
-                      </code>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="flex items-center justify-between gap-2 p-2.5 bg-white rounded-xl border border-sky-100 text-xs">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-bold text-zinc-700 shrink-0">Command:</span>
+                          <code className="bg-zinc-100 text-indigo-700 font-mono font-bold px-2 py-0.5 rounded border border-zinc-200 truncate">
+                            /link {studentRegNo}
+                          </code>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(`/link ${studentRegNo}`);
+                            addToast(`Copied "/link ${studentRegNo}" to clipboard! Reply to @${telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot'}.`, 'success');
+                          }}
+                          className="text-xs font-bold text-sky-600 hover:text-sky-700 bg-sky-50 hover:bg-sky-100 px-3 py-1 rounded-lg border border-sky-200 transition-colors shrink-0 flex items-center gap-1"
+                        >
+                          <Copy size={12} />
+                          <span>Copy</span>
+                        </button>
+                      </div>
+
+                      <a
+                        href={`https://t.me/${telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot'}?text=${encodeURIComponent(`/link ${studentRegNo}`)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-center gap-1.5 p-2.5 bg-white hover:bg-zinc-50 rounded-xl border border-sky-100 text-xs font-bold text-zinc-700 hover:text-zinc-900 transition-colors"
+                      >
+                        <ExternalLink size={13} className="text-sky-600" />
+                        <span>Open Pre-filled /link Command</span>
+                      </a>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(`/link ${user?.register_number || user?.username}`);
-                        addToast(`Copied "/link ${user?.register_number || user?.username}" to clipboard!`, 'success');
-                      }}
-                      className="text-xs font-bold text-sky-600 hover:text-sky-700 bg-sky-50 px-3 py-1 rounded-lg border border-sky-200 transition-colors"
-                    >
-                      Copy Command 📋
-                    </button>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           )}
 
@@ -4307,11 +4431,70 @@ const githubTop3 = useMemo(() => {
   const [userDeptFilter, setUserDeptFilter] = useState('');
   const [userYearFilter, setUserYearFilter] = useState('');
   const [userClassFilter, setUserClassFilter] = useState('');
-  // Telegram Link Prompt State
+  // Telegram Link & Bot State
   const [showTelegramLinkModal, setShowTelegramLinkModal] = useState(false);
   const [telegramChatIdInput, setTelegramChatIdInput] = useState('');
   const [telegramUsernameInput, setTelegramUsernameInput] = useState('');
   const [isLinkingTelegram, setIsLinkingTelegram] = useState(false);
+  const [telegramStats, setTelegramStats] = useState<any>(null);
+  const [sendingTest, setSendingTest] = useState(false);
+
+  const fetchTelegramStatus = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_URL}/api/telegram/status`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTelegramStats(data);
+      }
+    } catch (err) {
+      console.error('Error fetching Telegram status:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchTelegramStatus();
+  }, [token]);
+
+  const handleSendTestMessage = async (targetId?: string) => {
+    setSendingTest(true);
+    try {
+      const res = await fetch(`${API_URL}/api/telegram/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ targetChatId: targetId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast('Test notification sent successfully to Telegram!', 'success');
+      } else {
+        addToast(data.error || 'Failed to send test message', 'error');
+      }
+    } catch {
+      addToast('Error sending test message', 'error');
+    } finally {
+      setSendingTest(false);
+    }
+  };
+
+  const handleUnlinkTelegram = async () => {
+    if (!confirm('Are you sure you want to disconnect your Telegram account from IT TaskManager?')) return;
+    try {
+      const res = await fetch(`${API_URL}/api/student/unlink-telegram`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        addToast('Telegram disconnected successfully.', 'info');
+        setUser((prev: any) => prev ? { ...prev, telegram_chat_id: null, telegram_username: null } : prev);
+        fetchTelegramStatus();
+      }
+    } catch {
+      addToast('Error disconnecting Telegram', 'error');
+    }
+  };
 
   const handleLinkTelegram = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -4345,6 +4528,7 @@ const githubTop3 = useMemo(() => {
         setShowTelegramLinkModal(false);
         setTelegramChatIdInput('');
         setTelegramUsernameInput('');
+        fetchTelegramStatus();
       } else {
         addToast(data.error || 'Failed to link Telegram account', 'error');
       }
@@ -8199,11 +8383,17 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
     );
   };
 
+  const [showManualTelegramInput, setShowManualTelegramInput] = useState(false);
+
   const renderTelegramLinkModal = () => {
     if (!showTelegramLinkModal) return null;
-    const regNo = user?.register_number || user?.username || '';
+    const regNo = getStudentRegisterNumber(user);
+    const studentName = user?.full_name || 'Student';
+    const botUsername = telegramStats?.botUsername || 'IT_TaskManager_Alerts_bot';
     const linkCommand = `/link ${regNo}`;
-    const directBotUrl = `https://t.me/IT_TaskManager_Alerts_bot?text=${encodeURIComponent(linkCommand)}`;
+    const directStartUrl = `https://t.me/${botUsername}?start=${encodeURIComponent(regNo)}`;
+    const directTextUrl = `https://t.me/${botUsername}?text=${encodeURIComponent(linkCommand)}`;
+    const isAlreadyLinked = Boolean(user?.telegram_chat_id || telegramStats?.currentUserLinked);
 
     return (
       <AnimatePresence>
@@ -8224,7 +8414,7 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
               <X size={20} />
             </button>
 
-            <div className="flex items-center gap-3.5 mb-5">
+            <div className="flex items-center gap-3.5 mb-4">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-400 to-blue-600 text-white flex items-center justify-center shadow-lg shadow-sky-500/20 shrink-0">
                 <Send size={24} className="-rotate-12" />
               </div>
@@ -8234,58 +8424,199 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
               </div>
             </div>
 
-            {/* Feature Highlights */}
-            <div className="grid grid-cols-2 gap-2.5 p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200/70 mb-5 text-xs text-zinc-700">
-              <div className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-black">✓</span>
-                <span>Instant New Tasks</span>
+            {/* Dynamic Student Identity Profile Card */}
+            <div className="p-3.5 bg-gradient-to-r from-zinc-50 to-sky-50/50 rounded-2xl border border-sky-100 mb-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-sm">
+                  {studentName.substring(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-zinc-900 truncate">{studentName}</p>
+                  <p className="text-[11px] font-bold text-sky-700 flex items-center gap-1 font-mono">
+                    <span>Register No:</span>
+                    <span className="bg-sky-100 px-1.5 py-0.2 rounded text-sky-900 font-extrabold">{regNo || 'N/A'}</span>
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-black">✓</span>
-                <span>24h Deadline Alerts</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-black">✓</span>
-                <span>Verification Results</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-black">✓</span>
-                <span>LeetCode / GitHub Cards</span>
-              </div>
+              <span className="shrink-0 text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                {isAlreadyLinked ? '🟢 Connected' : 'Ready to Link'}
+              </span>
             </div>
 
-            {/* 1-Click Instructions */}
-            <div className="p-5 rounded-2xl bg-gradient-to-br from-sky-50 to-indigo-50/60 border border-sky-200 mb-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-sky-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <Send size={14} className="text-sky-600" /> 1-Click Instant Connect
-                </span>
-                <span className="bg-emerald-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
-                  INSTANT
-                </span>
+            {/* Already Linked State */}
+            {isAlreadyLinked ? (
+              <div className="space-y-4 mb-5">
+                <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 text-center space-y-2">
+                  <CheckCircle2 size={32} className="text-emerald-600 mx-auto" />
+                  <h4 className="font-extrabold text-emerald-950 text-sm">Your Telegram Account is Active!</h4>
+                  <p className="text-xs text-emerald-800">
+                    Connected to <b>@{botUsername}</b> {telegramStats?.currentUserTelegram ? `(@${telegramStats.currentUserTelegram})` : ''}.
+                    You will receive 1-to-1 deadline notifications 24 hours prior to due dates.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 justify-center">
+                  <Button
+                    variant="outline"
+                    className="text-xs py-2 px-3 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+                    disabled={sendingTest}
+                    onClick={() => handleSendTestMessage()}
+                  >
+                    {sendingTest ? <Loader2 size={14} className="animate-spin" /> : <Bell size={14} />}
+                    <span>Send Test Alert</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="text-xs py-2 px-3 text-red-600 hover:bg-red-50"
+                    onClick={handleUnlinkTelegram}
+                  >
+                    Disconnect
+                  </Button>
+                </div>
               </div>
+            ) : (
+              <>
+                {/* Feature Highlights */}
+                <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-50 rounded-2xl border border-zinc-200/70 mb-4 text-xs text-zinc-700">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-black">✓</span>
+                    <span className="text-[11px] font-semibold">Instant New Tasks</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-black">✓</span>
+                    <span className="text-[11px] font-semibold">24h Deadline Alerts</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-black">✓</span>
+                    <span className="text-[11px] font-semibold">Verification Results</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-black">✓</span>
+                    <span className="text-[11px] font-semibold">Live Coding Scorecard</span>
+                  </div>
+                </div>
 
-              <div className="bg-white p-3.5 rounded-xl border border-sky-100 shadow-2xs space-y-2">
-                <p className="text-xs font-bold text-zinc-900">Direct 1-Click Bot Link (Pre-fills command):</p>
-                <a
-                  href={directBotUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-full py-2.5 px-3 bg-sky-500 hover:bg-sky-600 active:scale-98 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all text-center"
-                >
-                  <Send size={14} /> Open Bot & Send {linkCommand}
-                </a>
-              </div>
-            </div>
+                {/* Method 1: Primary 1-Click Instant Connect (Auto-Start) */}
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-sky-50 via-indigo-50/50 to-violet-50/50 border border-sky-200 mb-4 space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-sky-950 uppercase tracking-wider flex items-center gap-1.5">
+                      <Send size={14} className="text-sky-600" /> Option 1: 1-Click Auto-Connect
+                    </span>
+                    <span className="bg-emerald-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
+                      RECOMMENDED
+                    </span>
+                  </div>
 
-            <div className="flex items-center justify-center pt-2">
+                  <a
+                    href={directStartUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full py-3 px-4 bg-gradient-to-r from-sky-500 via-indigo-600 to-violet-600 hover:from-sky-600 hover:to-indigo-700 active:scale-98 text-white font-extrabold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2 shadow-md shadow-sky-500/25 transition-all text-center"
+                  >
+                    <Send size={16} className="-rotate-12" />
+                    <span>Open Telegram & Auto-Link ({regNo})</span>
+                  </a>
+                  <p className="text-[11px] text-zinc-500 text-center font-medium">
+                    Opens <b>@{botUsername}</b> and automatically connects upon clicking <b>START</b> — zero typing needed!
+                  </p>
+                </div>
+
+                {/* Method 2: Fast Copy Command */}
+                <div className="p-3.5 bg-white rounded-2xl border border-zinc-200 mb-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-zinc-800 uppercase tracking-wider">
+                      Option 2: Copy Link Command
+                    </span>
+                    <span className="text-[10px] font-bold text-zinc-400">Direct Bot Command</span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 p-2.5 bg-zinc-50 rounded-xl border border-zinc-200/80">
+                    <code className="text-indigo-700 font-mono font-bold text-xs sm:text-sm truncate">
+                      {linkCommand}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(linkCommand);
+                        addToast(`Copied "${linkCommand}" to clipboard! Reply this to @${botUsername} to connect.`, 'success');
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 hover:text-sky-800 bg-sky-100/80 hover:bg-sky-200/80 px-3 py-1.5 rounded-lg border border-sky-200 transition-colors shrink-0"
+                    >
+                      <Copy size={13} />
+                      <span>Copy</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Method 3: Pre-filled /link Command Link */}
+                <div className="mb-4">
+                  <a
+                    href={directTextUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full py-2 px-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors border border-zinc-200 text-center"
+                  >
+                    <ExternalLink size={13} />
+                    <span>Open Telegram with Pre-filled "{linkCommand}"</span>
+                  </a>
+                </div>
+
+                {/* Method 4: Manual Telegram Chat ID Fallback (Collapsible) */}
+                <div className="border-t border-zinc-100 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowManualTelegramInput(prev => !prev)}
+                    className="text-xs font-bold text-zinc-500 hover:text-zinc-800 flex items-center justify-between w-full py-1"
+                  >
+                    <span>Need to enter Telegram Chat ID manually?</span>
+                    <span className="text-xs font-mono">{showManualTelegramInput ? '▲ Hide' : '▼ Expand'}</span>
+                  </button>
+
+                  {showManualTelegramInput && (
+                    <form onSubmit={handleLinkTelegram} className="mt-3 p-3 bg-zinc-50 rounded-xl border border-zinc-200 space-y-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-zinc-600 mb-1">Telegram Chat ID *</label>
+                        <Input
+                          type="text"
+                          placeholder="e.g. 123456789 (Get from /id in bot)"
+                          value={telegramChatIdInput}
+                          onChange={e => setTelegramChatIdInput(e.target.value)}
+                          className="text-xs"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-zinc-600 mb-1">Telegram Username (Optional)</label>
+                        <Input
+                          type="text"
+                          placeholder="e.g. johndoe"
+                          value={telegramUsernameInput}
+                          onChange={e => setTelegramUsernameInput(e.target.value)}
+                          className="text-xs"
+                        />
+                      </div>
+                      <Button
+                        type="submit"
+                        disabled={isLinkingTelegram}
+                        variant="primary"
+                        className="w-full text-xs py-2"
+                      >
+                        {isLinkingTelegram ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                        <span>Save & Link Account</span>
+                      </Button>
+                    </form>
+                  )}
+                </div>
+              </>
+            )}
+
+            <div className="flex items-center justify-center pt-3 border-t border-zinc-100 mt-2">
               <Button
                 type="button"
                 variant="ghost"
                 className="text-zinc-400 hover:text-zinc-600 text-xs"
                 onClick={() => setShowTelegramLinkModal(false)}
               >
-                Maybe Later
+                Close
               </Button>
             </div>
           </motion.div>
@@ -9385,7 +9716,7 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                                     className="w-full md:w-auto px-5 py-2.5 bg-white text-indigo-900 rounded-xl font-bold text-xs sm:text-sm shadow-lg hover:bg-sky-50 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
                                   >
                                     <Send size={16} className="text-sky-500" />
-                                    Connect in 1-Click
+                                    Connect 1-Click ({getStudentRegisterNumber(user) || 'Link'})
                                   </button>
                                 </div>
                               </div>
@@ -11775,6 +12106,8 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                         user={user}
                         token={token}
                         addToast={addToast}
+                        telegramStats={telegramStats}
+                        onOpenTelegramModal={() => setShowTelegramLinkModal(true)}
                       />
                     ) : (
                       <PageLayout>

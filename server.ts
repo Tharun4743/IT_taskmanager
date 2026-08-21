@@ -943,6 +943,18 @@ async function startServer() {
       year_scope: user.year_scope,
     }, JWT_SECRET);
 
+    let officialRegNo = user.register_number;
+    if ((!officialRegNo || officialRegNo === 'N/A' || officialRegNo.includes('@')) && user.role === 'STUDENT') {
+      const dirStudent = (user.email && constantStudentByEmailMap.get(user.email.toLowerCase().trim())) ||
+                         (user.username && constantStudentByRegNoMap.get(user.username.toLowerCase().trim())) ||
+                         (loginId && constantStudentByRegNoMap.get(loginId.toLowerCase().trim())) ||
+                         (loginId && constantStudentByEmailMap.get(loginId.toLowerCase().trim()));
+      if (dirStudent?.register_number) {
+        officialRegNo = dirStudent.register_number.trim();
+        pool.query("UPDATE users SET register_number = $1 WHERE id = $2 AND (register_number IS NULL OR register_number = '' OR register_number = 'N/A')", [officialRegNo, user.id]).catch(() => {});
+      }
+    }
+
     res.json({
       token,
       user: {
@@ -951,7 +963,7 @@ async function startServer() {
         role: user.role,
         full_name: user.full_name,
         email: user.email,
-        register_number: user.register_number,
+        register_number: officialRegNo || user.register_number || user.username,
         gender: user.gender,
         department_id: user.department_id,
         class_id: user.class_id,
@@ -979,13 +991,24 @@ async function startServer() {
     `, [req.user.id]);
     const user = userRes.rows[0];
     if (!user) return res.status(404).json({ error: 'User not found' });
+
+    let officialRegNo = user.register_number;
+    if ((!officialRegNo || officialRegNo === 'N/A' || officialRegNo.includes('@')) && user.role === 'STUDENT') {
+      const dirStudent = (user.email && constantStudentByEmailMap.get(user.email.toLowerCase().trim())) ||
+                         (user.username && constantStudentByRegNoMap.get(user.username.toLowerCase().trim()));
+      if (dirStudent?.register_number) {
+        officialRegNo = dirStudent.register_number.trim();
+        pool.query("UPDATE users SET register_number = $1 WHERE id = $2 AND (register_number IS NULL OR register_number = '' OR register_number = 'N/A')", [officialRegNo, user.id]).catch(() => {});
+      }
+    }
+
     res.json({
       id: user.id,
       username: user.username,
       role: user.role,
       full_name: user.full_name,
       email: user.email,
-      register_number: user.register_number,
+      register_number: officialRegNo || user.register_number || user.username,
       gender: user.gender,
       phone: user.phone || '',
       bio: user.bio || '',
@@ -4088,6 +4111,7 @@ async function startServer() {
       // Academic identity details from users table
       const userRes = await client.query(`
         SELECT u.id, u.full_name, u.register_number, u.email, u.gender, u.role, u.avatar_url,
+               u.telegram_chat_id, u.telegram_username, u.telegram_linked_at,
                d.name as department_name, c.name as class_name, c.batch, c.year
         FROM users u
         LEFT JOIN departments d ON u.department_id = d.id
