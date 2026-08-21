@@ -461,7 +461,7 @@ async function startServer() {
         }
       }
 
-      // 11:55 PM IST (23:55) -> Daily Database Snapshot (LeetCode & GitHub auto-sync disabled for DB connection stability)
+      // 11:55 PM IST (23:55) -> Daily LeetCode Progress Sync & CSV/JSON GitHub Auto-Push
       if (hours === 23 && minutes >= 55 && minutes <= 59 && lastLeetcodePushDate !== todayStr) {
         const checkRes = await pool.query("SELECT value FROM system_settings WHERE key = 'leetcode_last_daily_csv_push_date' LIMIT 1").catch(() => ({ rows: [] }));
         const alreadyPushed = checkRes.rows[0]?.value;
@@ -472,9 +472,11 @@ async function startServer() {
             VALUES ('leetcode_last_daily_csv_push_date', $1, CURRENT_TIMESTAMP)
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
           `, [todayStr]).catch(() => {});
-          console.log(`[Database Backup] 🚀 Running automated 11:55 PM IST daily database snapshot for ${todayStr}... (LeetCode/GitHub automatic sync disabled)`);
-          generateDatabaseSnapshot()
-            .catch(err => console.error('[Database Backup] Nightly snapshot error:', err));
+          console.log(`[LeetCode AutoSync] 🚀 Running automated 11:55 PM IST daily LeetCode sync & CSV export for ${todayStr}...`);
+          syncLeetcodeProgressForScope()
+            .then(() => exportAndPushLeetcodeDailyProgress(todayStr))
+            .then(() => generateDatabaseSnapshot())
+            .catch(err => console.error('[LeetCode AutoSync] Nightly sync error:', err));
         }
       }
     } catch (schedErr) {
@@ -6254,9 +6256,9 @@ async function startServer() {
     }, timeUntilSync);
   }
 
-  // [TEMPORARILY DISABLED] Trigger startup sync & start daemon scheduler to prevent Supabase connection exhaustion
-  // syncLeetcodeProgressForScope().catch(err => console.error('[LeetCode Sync] Startup sync error:', err));
-  // scheduleDailySync();
+  // Trigger startup sync & start daemon scheduler
+  syncLeetcodeProgressForScope().catch(err => console.error('[LeetCode Sync] Startup sync error:', err));
+  scheduleDailySync();
 
   // ── GitHub Daily Commit Tracking Module ──────────────────────────────────────
 
@@ -7280,13 +7282,11 @@ async function startServer() {
     }
   }
 
-  // [TEMPORARILY DISABLED] GitHub startup sync + schedule daemon to prevent Supabase connection exhaustion
-  /*
+  // GitHub startup sync + schedule daemon
   if (process.env.GITHUB_TOKEN) {
     syncGitHubProgressForScope().catch(err => console.error('[GitHub Sync] Startup sync error:', err));
     scheduleGitHubDailySync();
   }
-  */
 
   // Telegram Bot startup poller
   if (process.env.TELEGRAM_BOT_TOKEN) {
