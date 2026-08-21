@@ -2,6 +2,7 @@ services:
   - type: web
     name: vsbec-task-manager
     env: node
+    plan: free
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /health
@@ -9,18 +10,38 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        fromDatabase:
-          name: vsbec-db
-          property: connectionString
+        sync: false
+      - key: DB_POOL_MAX
+        value: "25"
+      - key: DB_POOL_MIN
+        value: "4"
+      - key: DB_CONNECTION_TIMEOUT_MS
+        value: "20000"
+      - key: DB_STATEMENT_TIMEOUT_MS
+        value: "30000"
+      - key: RATE_LIMIT_MAX
+        value: "10000"
       - key: JWT_SECRET
         sync: false
+      - key: FRONTEND_URL
+        value: "https://it-taskmanager.onrender.com"
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
-
-databases:
-  - name: vsbec-db
-    plan: free
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_ADMIN_CHAT_ID
+        sync: false
+      - key: TELEGRAM_GROUP_CHAT_ID
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: "mailto:vsbecitc2428@gmail.com"
