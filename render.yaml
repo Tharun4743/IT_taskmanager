@@ -3,6 +3,8 @@ services:
     name: vsbec-task-manager
     env: node
     plan: free
+    branch: main
+    autoDeploy: true
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /health
