@@ -21,7 +21,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { pool, initDB } from './db.js';
+import { pool, initDB, getPoolStatus } from './db.js';
 import { syncAndGenerateStudentDirectory, updateStudentCodingProfileInDirectory, constantStudentByIdMap, constantStudentByRegNoMap, constantStudentByEmailMap, constantStudentsByClassMap, updateGitHubFileViaAPI, cleanStudentName } from './studentDirectoryService.js';
 import { cleanupOnlyTaskScreenshots } from './imageCleanupService.js';
 import { generateDatabaseSnapshot } from './dbBackupService.js';
@@ -489,16 +489,11 @@ async function startServer() {
   // Enable trust proxy so express-rate-limit correctly identifies individual client IPs behind reverse proxies (Render, Cloudflare, Nginx)
   app.set('trust proxy', 1);
 
-  // Lightweight Health Check Endpoint (for keep-alive pings)
-  app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', uptime: Math.floor(process.uptime()), timestamp: new Date().toISOString() });
-  });
-
   // ── Security configuration ───────────────────────────────────────────────────
-  const maxRequests = process.env.RATE_LIMIT_MAX ? parseInt(process.env.RATE_LIMIT_MAX, 10) : 3000;
+  const maxRequests = process.env.RATE_LIMIT_MAX ? parseInt(process.env.RATE_LIMIT_MAX, 10) : 10000;
   const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: maxRequests, // Dynamic request limit (defaults to 3000 requests per 15 minutes)
+    max: maxRequests, // Dynamic request limit (defaults to 10000 requests per 15 minutes for high concurrency)
     standardHeaders: true,
     legacyHeaders: false,
     skip: () => process.env.DISABLE_RATE_LIMIT === 'true' || process.env.NODE_ENV === 'development',
@@ -510,7 +505,7 @@ async function startServer() {
   app.use('/api/', apiLimiter);
   // Gzip/Brotli compression — reduces JSON response sizes by ~70%, critical for slow mobile connections
   app.use(compression());
-  app.use(express.json({ limit: '2mb' }));
+  app.use(express.json({ limit: '10mb' }));
   app.use(cors({
     origin: function (origin, callback) {
       const allowedOrigins = ['http://localhost:5173', 'http://localhost:3000', 'https://vsbec.unaux.com', 'https://it-taskmanager.onrender.com'];
@@ -527,10 +522,21 @@ async function startServer() {
   const healthCheckHandler = async (req: Request, res: Response) => {
     try {
       await pool.query('SELECT 1');
-      res.status(200).json({ status: 'ok', database: 'connected', timestamp: new Date().toISOString() });
+      res.status(200).json({
+        status: 'ok',
+        database: 'connected',
+        uptime: Math.floor(process.uptime()),
+        pool: getPoolStatus(),
+        timestamp: new Date().toISOString()
+      });
     } catch (err: any) {
       console.error('[Health Check Error]: Database connectivity failed:', err.message);
-      res.status(503).json({ status: 'error', database: 'disconnected', error: err.message });
+      res.status(503).json({
+        status: 'error',
+        database: 'disconnected',
+        pool: getPoolStatus(),
+        error: err.message
+      });
     }
   };
 

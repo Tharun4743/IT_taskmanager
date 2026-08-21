@@ -12,18 +12,40 @@ if (!databaseUrl) {
   process.exit(1);
 }
 
+const poolMax = process.env.DB_POOL_MAX ? parseInt(process.env.DB_POOL_MAX, 10) : (process.env.PGMAXCONNECTIONS ? parseInt(process.env.PGMAXCONNECTIONS, 10) : 30);
+const poolMin = process.env.DB_POOL_MIN ? parseInt(process.env.DB_POOL_MIN, 10) : 4;
+const connectionTimeoutMillis = process.env.DB_CONNECTION_TIMEOUT_MS ? parseInt(process.env.DB_CONNECTION_TIMEOUT_MS, 10) : 20000;
+const idleTimeoutMillis = process.env.DB_IDLE_TIMEOUT_MS ? parseInt(process.env.DB_IDLE_TIMEOUT_MS, 10) : 30000;
+const statementTimeout = process.env.DB_STATEMENT_TIMEOUT_MS ? parseInt(process.env.DB_STATEMENT_TIMEOUT_MS, 10) : 30000;
+const maxUses = process.env.DB_POOL_MAX_USES ? parseInt(process.env.DB_POOL_MAX_USES, 10) : 7500;
+
 export const pool = new Pool({
   connectionString: databaseUrl,
-  max: 10,
-  min: 2,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
-  statement_timeout: 15000,
+  max: poolMax,
+  min: poolMin,
+  idleTimeoutMillis: idleTimeoutMillis,
+  connectionTimeoutMillis: connectionTimeoutMillis,
+  statement_timeout: statementTimeout,
+  maxUses: maxUses,
   keepAlive: true,
   ssl: databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1')
     ? false
     : { rejectUnauthorized: false }
 });
+
+pool.on('error', (err: any) => {
+  console.error('[PostgreSQL Pool] Unexpected error on idle client:', err?.message || err);
+});
+
+export function getPoolStatus() {
+  return {
+    total: pool.totalCount,
+    idle: pool.idleCount,
+    waiting: pool.waitingCount,
+    max: poolMax,
+    min: poolMin,
+  };
+}
 
 export async function initDB() {
   let client;
