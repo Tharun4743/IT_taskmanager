@@ -8450,18 +8450,53 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
               </span>
             </div>
 
+            {/* Group Banner always visible for all students */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-sky-500 via-indigo-600 to-blue-700 text-white mb-4 shadow-md relative overflow-hidden">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 relative z-10">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0 shadow-inner">
+                    <Send size={18} className="text-white" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-white/25 px-2 py-0.5 rounded-md">
+                      STEP 1 • Department Community
+                    </span>
+                    <h4 className="text-sm font-black text-white truncate mt-0.5">Join IT Department Telegram Group</h4>
+                    <p className="text-[11px] text-sky-100 font-medium">Daily morning & evening reports, notices & group discussions</p>
+                  </div>
+                </div>
+                <a
+                  href="https://t.me/it_taskmanager"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full sm:w-auto px-4 py-2 bg-white text-indigo-900 hover:bg-sky-50 rounded-xl text-xs font-black transition-all text-center shrink-0 shadow-sm hover:scale-105 active:scale-95"
+                >
+                  🚀 Join Group
+                </a>
+              </div>
+            </div>
+
             {/* Already Linked State */}
             {isAlreadyLinked ? (
               <div className="space-y-4 mb-5">
                 <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 text-center space-y-2">
                   <CheckCircle2 size={32} className="text-emerald-600 mx-auto" />
-                  <h4 className="font-extrabold text-emerald-950 text-sm">Your Telegram Account is Active!</h4>
+                  <h4 className="font-extrabold text-emerald-950 text-sm">Your Personal Alerts Bot is Active!</h4>
                   <p className="text-xs text-emerald-800">
                     Connected to <b>@{botUsername}</b> {telegramStats?.currentUserTelegram ? `(@${telegramStats.currentUserTelegram})` : ''}.
-                    You will receive 1-to-1 deadline notifications 24 hours prior to due dates.
+                    You will receive 1-to-1 deadline notifications and live coding updates privately.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 justify-center">
+                  <a
+                    href={`https://t.me/${botUsername}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs py-2 px-4 rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Send size={13} />
+                    <span>Open Bot DM</span>
+                  </a>
                   <Button
                     variant="outline"
                     className="text-xs py-2 px-3 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
@@ -8469,7 +8504,7 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                     onClick={() => handleSendTestMessage()}
                   >
                     {sendingTest ? <Loader2 size={14} className="animate-spin" /> : <Bell size={14} />}
-                    <span>Send Test Alert</span>
+                    <span>Test Alert</span>
                   </Button>
                   <Button
                     variant="ghost"
@@ -8482,55 +8517,15 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
               </div>
             ) : (
               <>
-                {/* Official Community Group Join Banner */}
-                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white mb-4 flex items-center justify-between gap-3 shadow-md">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
-                      <Send size={16} className="text-white" />
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="text-xs font-black text-white truncate">Department Telegram Group</h4>
-                      <p className="text-[10px] text-sky-100 font-medium">Daily summaries, notices & discussions</p>
-                    </div>
-                  </div>
-                  <a
-                    href="https://t.me/it_taskmanager"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-3.5 py-1.5 bg-white text-indigo-900 rounded-lg text-xs font-black hover:bg-sky-50 transition-all shrink-0 shadow-xs"
-                  >
-                    Join Group
-                  </a>
-                </div>
-
-                {/* Feature Highlights */}
-                <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-50 rounded-2xl border border-zinc-200/70 mb-4 text-xs text-zinc-700">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-black">✓</span>
-                    <span className="text-[11px] font-semibold">Instant New Tasks</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-black">✓</span>
-                    <span className="text-[11px] font-semibold">24h Deadline Alerts</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-black">✓</span>
-                    <span className="text-[11px] font-semibold">Verification Results</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-black">✓</span>
-                    <span className="text-[11px] font-semibold">Live Coding Scorecard</span>
-                  </div>
-                </div>
-
-                {/* Method 1: Primary 1-Click Instant Connect (Auto-Start) */}
-                <div className="p-4 rounded-2xl bg-gradient-to-br from-sky-50 via-indigo-50/50 to-violet-50/50 border border-sky-200 mb-4 space-y-3 shadow-xs">
+                {/* Step 2: Bot Connection */}
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50/80 via-sky-50/50 to-white border-2 border-indigo-200 mb-4 space-y-3 shadow-xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-sky-950 uppercase tracking-wider flex items-center gap-1.5">
-                      <Send size={14} className="text-sky-600" /> Option 1: 1-Click Auto-Connect
+                    <span className="text-[11px] font-black text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black">2</span>
+                      STEP 2 • Activate 1-to-1 Alerts Bot
                     </span>
-                    <span className="bg-emerald-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
-                      RECOMMENDED
+                    <span className="bg-indigo-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
+                      REQUIRED
                     </span>
                   </div>
 
@@ -8538,26 +8533,25 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                     href={directStartUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="w-full py-3 px-4 bg-gradient-to-r from-sky-500 via-indigo-600 to-violet-600 hover:from-sky-600 hover:to-indigo-700 active:scale-98 text-white font-extrabold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2 shadow-md shadow-sky-500/25 transition-all text-center"
+                    className="w-full py-3 px-4 bg-gradient-to-r from-indigo-600 via-sky-600 to-violet-600 hover:from-indigo-700 hover:to-sky-700 active:scale-98 text-white font-extrabold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2 shadow-md shadow-indigo-500/25 transition-all text-center"
                   >
                     <Send size={16} className="-rotate-12" />
-                    <span>Open Telegram & Auto-Link ({regNo})</span>
+                    <span>Start Bot & Auto-Link ({regNo})</span>
                   </a>
-                  <p className="text-[11px] text-zinc-500 text-center font-medium">
-                    Opens <b>@{botUsername}</b> and automatically connects upon clicking <b>START</b> — zero typing needed!
+                  <p className="text-[11px] text-zinc-600 text-center font-medium">
+                    Tap above to open <b>@{botUsername}</b> and click <b>START</b> — your profile will be linked automatically!
                   </p>
                 </div>
 
-                {/* Method 2: Fast Copy Command */}
-                <div className="p-3.5 bg-white rounded-2xl border border-zinc-200 mb-4 space-y-2">
+                {/* Quick Copy Command */}
+                <div className="p-3 bg-zinc-50 rounded-2xl border border-zinc-200/80 mb-4 space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-zinc-800 uppercase tracking-wider">
-                      Option 2: Copy Link Command
+                    <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                      Alternative: Send Command in Bot
                     </span>
-                    <span className="text-[10px] font-bold text-zinc-400">Direct Bot Command</span>
                   </div>
 
-                  <div className="flex items-center justify-between gap-2 p-2.5 bg-zinc-50 rounded-xl border border-zinc-200/80">
+                  <div className="flex items-center justify-between gap-2 p-2 bg-white rounded-xl border border-zinc-200">
                     <code className="text-indigo-700 font-mono font-bold text-xs sm:text-sm truncate">
                       {linkCommand}
                     </code>
@@ -8565,9 +8559,9 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                       type="button"
                       onClick={() => {
                         navigator.clipboard.writeText(linkCommand);
-                        addToast(`Copied "${linkCommand}" to clipboard! Reply this to @${botUsername} to connect.`, 'success');
+                        addToast(`Copied "${linkCommand}" to clipboard! Send this to @${botUsername} on Telegram.`, 'success');
                       }}
-                      className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 hover:text-sky-800 bg-sky-100/80 hover:bg-sky-200/80 px-3 py-1.5 rounded-lg border border-sky-200 transition-colors shrink-0"
+                      className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 px-3 py-1.5 rounded-lg border border-sky-200 transition-colors shrink-0"
                     >
                       <Copy size={13} />
                       <span>Copy</span>
@@ -8575,19 +8569,25 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                   </div>
                 </div>
 
-                {/* Method 3: Pre-filled /link Command Link */}
-                <div className="mb-4">
-                  <a
-                    href={directTextUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full py-2 px-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors border border-zinc-200 text-center"
-                  >
-                    <ExternalLink size={13} />
-                    <span>Open Telegram with Pre-filled "{linkCommand}"</span>
-                  </a>
+                {/* Feature Highlights */}
+                <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-50 rounded-2xl border border-zinc-200/70 mb-4 text-xs text-zinc-700">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-black">✓</span>
+                    <span className="text-[11px] font-semibold">Instant Task Alerts</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-black">✓</span>
+                    <span className="text-[11px] font-semibold">24h Deadline Alerts</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-black">✓</span>
+                    <span className="text-[11px] font-semibold">Verification Badges</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[9px] font-black">✓</span>
+                    <span className="text-[11px] font-semibold">Coding Scorecard</span>
+                  </div>
                 </div>
-
               </>
             )}
 
@@ -9697,19 +9697,56 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
                                     href="https://t.me/it_taskmanager"
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="w-full sm:w-auto px-4 py-2.5 bg-white/15 hover:bg-white/25 text-white border border-white/30 rounded-xl font-bold text-xs sm:text-sm backdrop-blur-md shadow-sm transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+                                    className="w-full sm:w-auto px-4 py-2.5 bg-white/20 hover:bg-white/30 text-white border border-white/30 rounded-xl font-black text-xs sm:text-sm backdrop-blur-md shadow-sm transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
                                   >
                                     <Send size={15} className="text-sky-200" />
-                                    Join Telegram Group
+                                    <span>1️⃣ Join Telegram Group</span>
                                   </a>
                                   <a
                                     href={`https://t.me/IT_TaskManager_Alerts_bot?start=${encodeURIComponent(getStudentRegisterNumber(user) || '')}`}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="w-full sm:w-auto px-5 py-2.5 bg-white text-indigo-900 rounded-xl font-bold text-xs sm:text-sm shadow-lg hover:bg-sky-50 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+                                    className="w-full sm:w-auto px-5 py-2.5 bg-white text-indigo-950 rounded-xl font-black text-xs sm:text-sm shadow-lg hover:bg-sky-50 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
                                   >
                                     <Send size={15} className="text-sky-500 -rotate-12" />
-                                    1-Click Link Bot ({getStudentRegisterNumber(user) || 'Link'})
+                                    <span>2️⃣ Link Bot ({getStudentRegisterNumber(user) || 'Link'})</span>
+                                  </a>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Connected Student Quick Shortcut Card */}
+                            {isStudent && user?.telegram_chat_id && (
+                              <div className="mb-6 p-4 rounded-2xl bg-white border border-emerald-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                                    <CheckCircle2 size={18} />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <h4 className="text-xs font-black text-zinc-900 truncate flex items-center gap-1.5">
+                                      Telegram Alerts Connected 🟢
+                                    </h4>
+                                    <p className="text-[11px] text-zinc-500 font-medium truncate">
+                                      Receiving 1-to-1 task reminders & daily updates
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                                  <a
+                                    href="https://t.me/it_taskmanager"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="px-3.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
+                                  >
+                                    <Send size={12} className="text-sky-500" /> Open Group
+                                  </a>
+                                  <a
+                                    href="https://t.me/IT_TaskManager_Alerts_bot"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
+                                  >
+                                    <Send size={12} className="text-indigo-500" /> Open Bot
                                   </a>
                                 </div>
                               </div>
