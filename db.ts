@@ -6,14 +6,22 @@ import bcrypt from 'bcryptjs';
 
 const { Pool } = pg;
 
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
+const rawDatabaseUrl = process.env.DATABASE_URL;
+if (!rawDatabaseUrl) {
   console.error("FATAL DATABASE ERROR: DATABASE_URL environment variable is missing!");
   process.exit(1);
 }
 
-const poolMax = process.env.DB_POOL_MAX ? parseInt(process.env.DB_POOL_MAX, 10) : (process.env.PGMAXCONNECTIONS ? parseInt(process.env.PGMAXCONNECTIONS, 10) : 30);
-const poolMin = process.env.DB_POOL_MIN ? parseInt(process.env.DB_POOL_MIN, 10) : 4;
+// Automatically upgrade Supabase pooler from Session mode (port 5432, hard limit 15 clients)
+// to Transaction mode (port 6543, unlimited concurrent clients) to prevent EMAXCONNSESSION crashes
+let databaseUrl = rawDatabaseUrl;
+if (databaseUrl.includes('pooler.supabase.com:5432')) {
+  console.log('[PostgreSQL Pool] Automatically routing Supabase connection to Port 6543 (Transaction Mode) to eliminate EMAXCONNSESSION limit.');
+  databaseUrl = databaseUrl.replace('pooler.supabase.com:5432', 'pooler.supabase.com:6543');
+}
+
+const poolMax = process.env.DB_POOL_MAX ? parseInt(process.env.DB_POOL_MAX, 10) : (process.env.PGMAXCONNECTIONS ? parseInt(process.env.PGMAXCONNECTIONS, 10) : 25);
+const poolMin = process.env.DB_POOL_MIN ? parseInt(process.env.DB_POOL_MIN, 10) : 2;
 const connectionTimeoutMillis = process.env.DB_CONNECTION_TIMEOUT_MS ? parseInt(process.env.DB_CONNECTION_TIMEOUT_MS, 10) : 20000;
 const idleTimeoutMillis = process.env.DB_IDLE_TIMEOUT_MS ? parseInt(process.env.DB_IDLE_TIMEOUT_MS, 10) : 30000;
 const statementTimeout = process.env.DB_STATEMENT_TIMEOUT_MS ? parseInt(process.env.DB_STATEMENT_TIMEOUT_MS, 10) : 30000;

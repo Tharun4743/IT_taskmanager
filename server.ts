@@ -6402,9 +6402,9 @@ async function startServer() {
       const totalStudents = students.length;
       console.log(`[GitHub Daily Sync] Starting commit sync for ${totalStudents} students on date ${dateStr}...`);
 
-      // Controlled concurrency in batches of 10
-      const BATCH_SIZE = 10;
-      const BATCH_DELAY_MS = 300;
+      // Controlled concurrency in batches of 4 to keep database connections available for web users
+      const BATCH_SIZE = 4;
+      const BATCH_DELAY_MS = 250;
 
       for (let i = 0; i < students.length; i += BATCH_SIZE) {
         const batch = students.slice(i, i + BATCH_SIZE);
