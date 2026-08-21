@@ -4438,6 +4438,7 @@ const githubTop3 = useMemo(() => {
   const [isLinkingTelegram, setIsLinkingTelegram] = useState(false);
   const [telegramStats, setTelegramStats] = useState<any>(null);
   const [sendingTest, setSendingTest] = useState(false);
+  const [showManualTelegramInput, setShowManualTelegramInput] = useState(false);
 
   const fetchTelegramStatus = async () => {
     if (!token) return;
@@ -8382,8 +8383,6 @@ const status = (isDaily ? row.dailyStatus : row.weeklyStatus) || 'PENDING';
       </PageLayout>
     );
   };
-
-  const [showManualTelegramInput, setShowManualTelegramInput] = useState(false);
 
   const renderTelegramLinkModal = () => {
     if (!showTelegramLinkModal) return null;
