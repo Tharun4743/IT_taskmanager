@@ -2392,7 +2392,7 @@ async function startServer() {
   });
 
   // ── Fetch Incomplete / Pending Students for a Task ───────────────────────────
-  app.get('/api/tasks/:id/pending-students', authenticate, authorize(['HOD', 'SUPREME_ADMIN', 'YEAR_COORDINATOR', 'CLASS_ADVISOR', 'STUDENT_COORDINATOR']), async (req: any, res) => {
+  app.get('/api/tasks/:id/pending-students', authenticate, authorize(['HOD', 'SUPREME_ADMIN']), async (req: any, res) => {
     try {
       const taskId = req.params.id;
       const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [taskId]);
@@ -2446,7 +2446,7 @@ async function startServer() {
   });
 
   // ── Trigger Pending Task Email Reminders via Load Balancer ───────────────────
-  app.post('/api/tasks/:id/send-pending-reminder', authenticate, authorize(['HOD', 'SUPREME_ADMIN', 'YEAR_COORDINATOR', 'CLASS_ADVISOR']), async (req: any, res) => {
+  app.post('/api/tasks/:id/send-pending-reminder', authenticate, authorize(['HOD', 'SUPREME_ADMIN']), async (req: any, res) => {
     try {
       const taskId = req.params.id;
       const { customMessage } = req.body;

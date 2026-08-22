@@ -11998,7 +11998,7 @@ export default function App() {
                                 )}
                               </div>
                             )}
-                            {(isAdmin || isHOD || isAdvisor || user?.is_year_coordinator || (isCoordinator && myClass && Array.isArray(task.class_ids) && task.class_ids.some(cid => String(cid) === String(myClass.id)))) && (
+                            {(isAdmin || isHOD) && (
                               <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-zinc-100 pt-4">
                                 <Button
                                   variant="secondary"
@@ -12009,37 +12009,33 @@ export default function App() {
                                   <Mail size={14} className="text-amber-600" /> Send Pending Email Alert
                                 </Button>
 
-                                {(isHOD || isAdmin) && (
-                                  <>
-                                    <Button
-                                      variant="secondary"
-                                      className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 text-xs font-bold flex items-center gap-1.5"
-                                      onClick={() => {
-                                        setExtendingTask(task);
-                                        const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
-                                        const pad = (n: number) => String(n).padStart(2, '0');
-                                        setExtendedDeadline(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
-                                      }}
-                                    >
-                                      <Clock size={14} /> Extend Deadline & Reopen
-                                    </Button>
+                                <Button
+                                  variant="secondary"
+                                  className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 text-xs font-bold flex items-center gap-1.5"
+                                  onClick={() => {
+                                    setExtendingTask(task);
+                                    const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
+                                    const pad = (n: number) => String(n).padStart(2, '0');
+                                    setExtendedDeadline(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
+                                  }}
+                                >
+                                  <Clock size={14} /> Extend Deadline & Reopen
+                                </Button>
 
-                                    <Button
-                                      variant="ghost"
-                                      className="text-zinc-500 hover:text-zinc-900 text-xs font-semibold"
-                                      onClick={() => toggleTaskStatus(task.id, task.status)}
-                                    >
-                                      {task.status === 'OPEN' ? 'Close Task' : 'Open Task'}
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      className="text-zinc-400 hover:text-red-500 text-xs font-semibold"
-                                      onClick={() => deleteTask(task.id)}
-                                    >
-                                      <Trash2 size={16} /> Delete
-                                    </Button>
-                                  </>
-                                )}
+                                <Button
+                                  variant="ghost"
+                                  className="text-zinc-500 hover:text-zinc-900 text-xs font-semibold"
+                                  onClick={() => toggleTaskStatus(task.id, task.status)}
+                                >
+                                  {task.status === 'OPEN' ? 'Close Task' : 'Open Task'}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  className="text-zinc-400 hover:text-red-500 text-xs font-semibold"
+                                  onClick={() => deleteTask(task.id)}
+                                >
+                                  <Trash2 size={16} /> Delete
+                                </Button>
                               </div>
                             )}
                           </Card>
