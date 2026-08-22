@@ -2825,7 +2825,7 @@ export function startTelegramPoller(): void {
 
             if (cbIsGroup && personalCallbackKeys.includes(cbData)) {
               if (cb.id) {
-                await answerCallbackQuery(cb.id, '⚠️ Personal actions are disabled in group chats. Message the bot privately!', true);
+                await answerCallbackQuery(cb.id, '⚠️ Personal actions are private. Please message @' + (cachedBotUsername || 'the bot') + ' directly to view your tasks or scorecard!', true);
               }
               return;
             }
@@ -2845,11 +2845,18 @@ export function startTelegramPoller(): void {
 
             const user = userRes.rows[0];
 
-            if (!user && cbData !== 'cb_help') {
-              await sendTelegramMessage(
-                cbChatId,
-                `ℹ️ Your Telegram is not yet connected to a student profile.\n\nReply with <code>/link YOUR_REGISTER_NUMBER</code> to connect!\n${getWatermarkHtml()}`
-              );
+            // Only require a connected student profile for personal actions
+            if (!user && personalCallbackKeys.includes(cbData)) {
+              if (cbIsGroup) {
+                if (cb.id) {
+                  await answerCallbackQuery(cb.id, 'ℹ️ Please message @' + (cachedBotUsername || 'the bot') + ' privately to link your student profile.', true);
+                }
+              } else {
+                await sendTelegramMessage(
+                  cbChatId,
+                  `ℹ️ Your Telegram is not yet connected to a student profile.\n\nReply with <code>/link YOUR_REGISTER_NUMBER</code> to connect!\n${getWatermarkHtml()}`
+                );
+              }
               return;
             }
 
