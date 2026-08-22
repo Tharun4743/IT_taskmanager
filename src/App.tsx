@@ -4352,6 +4352,77 @@ export default function App() {
   const [extendingTask, setExtendingTask] = useState<Task | null>(null);
   const [extendedDeadline, setExtendedDeadline] = useState('');
 
+  // Pending Task Email Alert Modal State
+  const [emailAlertTask, setEmailAlertTask] = useState<Task | null>(null);
+  const [emailAlertPendingData, setEmailAlertPendingData] = useState<{
+    task: any;
+    assignedClasses: { id: string; name: string }[];
+    totalIncomplete: number;
+    students: {
+      id: string;
+      full_name: string;
+      register_number: string;
+      email: string;
+      class_name: string;
+      submission_status?: string;
+    }[];
+  } | null>(null);
+  const [emailAlertLoading, setEmailAlertLoading] = useState(false);
+  const [emailAlertSending, setEmailAlertSending] = useState(false);
+  const [emailAlertCustomMsg, setEmailAlertCustomMsg] = useState('');
+  const [emailAlertSuccessStats, setEmailAlertSuccessStats] = useState<any>(null);
+
+  const openTaskPendingEmailModal = async (task: Task) => {
+    setEmailAlertTask(task);
+    setEmailAlertLoading(true);
+    setEmailAlertPendingData(null);
+    setEmailAlertSuccessStats(null);
+    setEmailAlertCustomMsg('');
+    try {
+      const res = await fetch(`${API_URL}/api/tasks/${task.id}/pending-students`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEmailAlertPendingData(data);
+      } else {
+        addToast('Failed to fetch pending students for this task', 'error');
+      }
+    } catch {
+      addToast('Network error fetching pending students', 'error');
+    } finally {
+      setEmailAlertLoading(false);
+    }
+  };
+
+  const handleDispatchTaskPendingEmails = async () => {
+    if (!emailAlertTask) return;
+    setEmailAlertSending(true);
+    try {
+      const res = await fetch(`${API_URL}/api/tasks/${emailAlertTask.id}/send-pending-reminder`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          customMessage: emailAlertCustomMsg.trim() || undefined
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setEmailAlertSuccessStats(data);
+        addToast(data.message || `Dispatched pending reminders to ${data.sentCount} students!`, 'success');
+      } else {
+        addToast(data.error || 'Failed to dispatch email reminders', 'error');
+      }
+    } catch (err: any) {
+      addToast('Network error sending email alerts', 'error');
+    } finally {
+      setEmailAlertSending(false);
+    }
+  };
+
   // Forms
   const [newDept, setNewDept] = useState('');
   const [newClass, setNewClass] = useState({ name: '', department_id: '', year: '', batch: '' });
@@ -9434,6 +9505,222 @@ export default function App() {
     </div>
   );
 
+  const renderTaskPendingEmailModal = () => {
+    if (!emailAlertTask) return null;
+
+    const assignedClassNames = emailAlertPendingData?.assignedClasses?.map(c => c.name).join(', ') || 'All Assigned Classes';
+    const pendingStudents = emailAlertPendingData?.students || [];
+
+    return (
+      <AnimatePresence>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="bg-white rounded-3xl p-6 md:p-8 w-full max-w-2xl shadow-2xl relative max-h-[92vh] flex flex-col border border-zinc-200"
+          >
+            <button
+              onClick={() => {
+                setEmailAlertTask(null);
+                setEmailAlertPendingData(null);
+                setEmailAlertSuccessStats(null);
+              }}
+              className="absolute top-6 right-6 p-2 hover:bg-zinc-100 rounded-full transition-colors"
+            >
+              <XCircle size={24} className="text-zinc-400" />
+            </button>
+
+            {/* Header */}
+            <div className="flex items-start gap-4 mb-5 pb-4 border-b border-zinc-100 pr-8">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 flex items-center justify-center shrink-0">
+                <Mail size={24} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                    📧 Multi-Node Email Dispatcher
+                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 flex items-center gap-1">
+                    <Sparkles size={10} /> Load Balanced
+                  </span>
+                </div>
+                <h3 className="text-lg md:text-xl font-black text-zinc-900 truncate">
+                  Send Pending Submission Alert
+                </h3>
+                <p className="text-xs text-zinc-500 font-medium">
+                  Dispatches official academic reminder emails to incomplete students across all assigned classes.
+                </p>
+              </div>
+            </div>
+
+            {/* Content Body */}
+            <div className="flex-1 overflow-y-auto space-y-5 pr-1 custom-scrollbar min-h-0">
+              
+              {/* Task Summary Banner */}
+              <div className="bg-gradient-to-r from-zinc-900 to-indigo-950 rounded-2xl p-5 text-white shadow-sm border border-zinc-800">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <span className="text-[10px] font-bold tracking-widest text-amber-400 uppercase">
+                    TARGET TASK
+                  </span>
+                  <span className="text-xs font-bold text-zinc-300 bg-white/10 px-2.5 py-0.5 rounded-full border border-white/15">
+                    {emailAlertTask.category || 'Academic Task'}
+                  </span>
+                </div>
+                <h4 className="text-base md:text-lg font-black text-white mb-2 leading-tight">
+                  {emailAlertTask.title}
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-zinc-300 pt-2 border-t border-white/10">
+                  <div>
+                    <span className="text-zinc-400 block text-[10px] uppercase font-bold">Assigned Class(es):</span>
+                    <span className="font-semibold text-white">{assignedClassNames}</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-400 block text-[10px] uppercase font-bold">Submission Deadline:</span>
+                    <span className="font-semibold text-amber-300">
+                      {emailAlertTask.deadline ? new Date(emailAlertTask.deadline).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'No deadline'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {emailAlertLoading ? (
+                <div className="py-12 text-center space-y-3">
+                  <Loader2 size={32} className="animate-spin text-indigo-600 mx-auto" />
+                  <p className="text-sm font-bold text-zinc-600">Scanning assigned classes for incomplete students...</p>
+                </div>
+              ) : emailAlertSuccessStats ? (
+                /* Success Results Display */
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center space-y-4">
+                  <div className="w-14 h-14 bg-emerald-500 text-white rounded-full flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
+                    <CheckCircle2 size={30} />
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-black text-emerald-950">Email Reminders Successfully Dispatched!</h4>
+                    <p className="text-xs text-emerald-700 font-medium mt-1">
+                      {emailAlertSuccessStats.message || `Dispatched to ${emailAlertSuccessStats.sentCount} incomplete students.`}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center pt-2">
+                    <div className="bg-white p-3 rounded-xl border border-emerald-150 shadow-xs">
+                      <span className="text-[10px] font-bold text-zinc-400 uppercase block">Total Targeted</span>
+                      <span className="text-base font-black text-zinc-900">{emailAlertSuccessStats.totalStudents || 0}</span>
+                    </div>
+                    <div className="bg-white p-3 rounded-xl border border-emerald-150 shadow-xs">
+                      <span className="text-[10px] font-bold text-emerald-600 uppercase block">Sent via Nodes</span>
+                      <span className="text-base font-black text-emerald-600">{emailAlertSuccessStats.sentCount || 0}</span>
+                    </div>
+                    <div className="bg-white p-3 rounded-xl border border-emerald-150 shadow-xs">
+                      <span className="text-[10px] font-bold text-zinc-400 uppercase block">Failed / Skipped</span>
+                      <span className="text-base font-black text-zinc-700">{emailAlertSuccessStats.failedCount || 0}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Incomplete Student Overview */}
+                  <div className="border border-zinc-200 rounded-2xl p-4 bg-zinc-50 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+                        <span className="text-xs font-black text-zinc-900 uppercase tracking-wide">
+                          Incomplete Students ({pendingStudents.length})
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-bold text-zinc-500">
+                        {pendingStudents.filter(s => s.email).length} with registered email
+                      </span>
+                    </div>
+
+                    {pendingStudents.length === 0 ? (
+                      <div className="text-center py-6 bg-white rounded-xl border border-dashed border-zinc-200">
+                        <CheckCircle2 size={24} className="text-emerald-500 mx-auto mb-1.5" />
+                        <p className="text-xs font-bold text-zinc-700">All assigned students have submitted!</p>
+                        <p className="text-[11px] text-zinc-400">Zero pending submissions found for this task.</p>
+                      </div>
+                    ) : (
+                      <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 bg-white p-2 rounded-xl border border-zinc-200 custom-scrollbar">
+                        {pendingStudents.map((s, idx) => (
+                          <div key={s.id || idx} className="flex items-center justify-between p-2 rounded-lg bg-zinc-50 text-xs border border-zinc-100 hover:bg-indigo-50/40 transition-colors">
+                            <div className="min-w-0 pr-2">
+                              <span className="font-bold text-zinc-900 block truncate">{s.full_name || 'Student'}</span>
+                              <span className="text-[10px] text-zinc-400 font-mono">{s.register_number} • {s.class_name}</span>
+                            </div>
+                            <span className="text-[10px] font-medium text-zinc-500 bg-white px-2 py-0.5 rounded border border-zinc-200 truncate max-w-[180px]">
+                              {s.email || 'No email registered'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Optional Custom HOD / Coordinator Directive */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-black text-zinc-700 uppercase tracking-wider flex items-center justify-between">
+                      <span>Optional Directive / Custom Remarks</span>
+                      <span className="text-[10px] font-normal text-zinc-400 lowercase">(embedded inside official email)</span>
+                    </label>
+                    <textarea
+                      value={emailAlertCustomMsg}
+                      onChange={e => setEmailAlertCustomMsg(e.target.value)}
+                      placeholder="e.g., Mandatory internal task compliance. Submit your valid completion certificate by 4:00 PM today without fail."
+                      rows={3}
+                      className="w-full text-xs p-3 rounded-xl border border-zinc-200 focus:outline-hidden focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none font-medium text-zinc-800"
+                    />
+                  </div>
+
+                  {/* Load Balancer Transparency Badge */}
+                  <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3 flex items-center gap-3 text-xs text-amber-900">
+                    <Zap size={18} className="text-amber-600 shrink-0" />
+                    <p className="leading-snug text-[11px] font-medium">
+                      Emails will be automatically distributed round-robin across <b>Node 1</b> and <b>Node 2</b> with zero-downtime failover to maximize deliverability.
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="mt-5 pt-4 border-t border-zinc-100 flex items-center justify-end gap-3 shrink-0">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setEmailAlertTask(null);
+                  setEmailAlertPendingData(null);
+                  setEmailAlertSuccessStats(null);
+                }}
+                disabled={emailAlertSending}
+              >
+                {emailAlertSuccessStats ? 'Done' : 'Cancel'}
+              </Button>
+
+              {!emailAlertSuccessStats && (
+                <Button
+                  onClick={handleDispatchTaskPendingEmails}
+                  disabled={emailAlertSending || emailAlertLoading || !pendingStudents.length}
+                  className="bg-gradient-to-r from-amber-600 via-orange-600 to-red-600 text-white hover:from-amber-700 hover:to-red-700 font-extrabold text-xs px-6 py-2.5 rounded-xl shadow-md flex items-center gap-2"
+                >
+                  {emailAlertSending ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      <span>Dispatching via Nodes...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send size={15} />
+                      <span>Send Alert to {pendingStudents.length} Incomplete Students</span>
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      </AnimatePresence>
+    );
+  };
+
   return (
     <FooterContext.Provider value={setShowFooterModal}>
       <div className="h-screen bg-[#F5F5F4] flex overflow-hidden">
@@ -9441,6 +9728,7 @@ export default function App() {
         {renderAssignTargetModal()}
         {renderTelegramLinkModal()}
         {renderHistoryDetailsModal()}
+        {renderTaskPendingEmailModal()}
         {/* Rejection Modal */}
         <AnimatePresence>
           {showRejectionModal && (
@@ -11710,35 +11998,48 @@ export default function App() {
                                 )}
                               </div>
                             )}
-                            {((isHOD && (String(task.department_id) === String(user?.department_id) || (Array.isArray(task.class_ids) && task.class_ids.some(cid => classes.find(c => String(c.id) === String(cid))?.department_id?.toString() === user?.department_id?.toString()))))) && (
+                            {(isAdmin || isHOD || isAdvisor || user?.is_year_coordinator || (isCoordinator && myClass && Array.isArray(task.class_ids) && task.class_ids.some(cid => String(cid) === String(myClass.id)))) && (
                               <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-zinc-100 pt-4">
                                 <Button
                                   variant="secondary"
-                                  className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 text-xs font-bold flex items-center gap-1.5"
-                                  onClick={() => {
-                                    setExtendingTask(task);
-                                    const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
-                                    const pad = (n: number) => String(n).padStart(2, '0');
-                                    setExtendedDeadline(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
-                                  }}
+                                  className="bg-amber-50 text-amber-900 hover:bg-amber-100 border-amber-200 text-xs font-extrabold flex items-center gap-1.5 shadow-xs transition-all"
+                                  onClick={() => openTaskPendingEmailModal(task)}
+                                  title="Send official email reminder to all incomplete students across assigned classes"
                                 >
-                                  <Clock size={14} /> Extend Deadline & Reopen
+                                  <Mail size={14} className="text-amber-600" /> Send Pending Email Alert
                                 </Button>
 
-                                <Button
-                                  variant="ghost"
-                                  className="text-zinc-500 hover:text-zinc-900 text-xs font-semibold"
-                                  onClick={() => toggleTaskStatus(task.id, task.status)}
-                                >
-                                  {task.status === 'OPEN' ? 'Close Task' : 'Open Task'}
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  className="text-zinc-400 hover:text-red-500 text-xs font-semibold"
-                                  onClick={() => deleteTask(task.id)}
-                                >
-                                  <Trash2 size={16} /> Delete
-                                </Button>
+                                {(isHOD || isAdmin) && (
+                                  <>
+                                    <Button
+                                      variant="secondary"
+                                      className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 text-xs font-bold flex items-center gap-1.5"
+                                      onClick={() => {
+                                        setExtendingTask(task);
+                                        const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
+                                        const pad = (n: number) => String(n).padStart(2, '0');
+                                        setExtendedDeadline(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
+                                      }}
+                                    >
+                                      <Clock size={14} /> Extend Deadline & Reopen
+                                    </Button>
+
+                                    <Button
+                                      variant="ghost"
+                                      className="text-zinc-500 hover:text-zinc-900 text-xs font-semibold"
+                                      onClick={() => toggleTaskStatus(task.id, task.status)}
+                                    >
+                                      {task.status === 'OPEN' ? 'Close Task' : 'Open Task'}
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      className="text-zinc-400 hover:text-red-500 text-xs font-semibold"
+                                      onClick={() => deleteTask(task.id)}
+                                    >
+                                      <Trash2 size={16} /> Delete
+                                    </Button>
+                                  </>
+                                )}
                               </div>
                             )}
                           </Card>

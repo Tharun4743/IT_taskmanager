@@ -949,3 +949,275 @@ export async function sendPasswordResetOtpEmail(payload: PasswordResetOtpPayload
 
   return await dispatchEmailThroughPool(to, studentName, subject, htmlContent, 'VSBEC IT Security Desk');
 }
+
+/**
+ * Dispatches an official Task Pending Reminder email to an incomplete student.
+ */
+export async function sendTaskPendingReminderEmail(
+  to: string,
+  studentName: string,
+  registerNumber: string,
+  className: string,
+  taskTitle: string,
+  deadline: string,
+  category?: string,
+  customMessage?: string,
+  senderTitle?: string
+): Promise<{ success: boolean; provider?: string; error?: string }> {
+  const formattedDeadline = new Date(deadline).toLocaleString('en-IN', {
+    dateStyle: 'full',
+    timeStyle: 'short',
+    timeZone: 'Asia/Kolkata'
+  });
+
+  const subject = `⚠️ URGENT ACTION: Pending Submission for "${taskTitle}" — VSBEC IT Department`;
+  const portalLink = (process.env.APP_URL || 'https://it-taskmanager.onrender.com').replace(/\/$/, '');
+  const refCode = `VSBEC/IT/PENDING/${Date.now().toString(36).toUpperCase()}`;
+
+  const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pending Task Submission Alert</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+
+  <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 620px; margin: 24px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #cbd5e1; box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08);">
+    
+    <!-- Institutional Banner -->
+    <tr>
+      <td style="background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); padding: 24px 28px; text-align: center; border-bottom: 4px solid #f59e0b;">
+        <table align="center" border="0" cellpadding="0" cellspacing="0" style="margin: 0 auto 12px auto;">
+          <tr>
+            <td align="center" style="vertical-align: middle;">
+              <img src="https://raw.githubusercontent.com/Tharun4743/IT_taskmanager/main/public/logo.png" alt="VSBEC Emblem" width="68" height="68" style="display: block; border-radius: 8px; border: 2px solid #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,0.25);" />
+            </td>
+          </tr>
+        </table>
+        <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 800; color: #ffffff; letter-spacing: 0.06em; text-transform: uppercase;">
+          VSB ENGINEERING COLLEGE
+        </h1>
+        <p style="margin: 0 0 6px 0; font-size: 11px; color: #93c5fd; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600;">
+          An Autonomous Institution • Accredited by NAAC with 'A' Grade
+        </p>
+        <p style="margin: 0; font-size: 13px; color: #fde047; font-weight: 700; letter-spacing: 0.04em;">
+          DEPARTMENT OF INFORMATION TECHNOLOGY
+        </p>
+      </td>
+    </tr>
+
+    <!-- Reference & Alert Header -->
+    <tr>
+      <td style="padding: 20px 28px 0 28px;">
+        <table width="100%" border="0" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="font-size: 11px; color: #64748b; font-weight: 700; letter-spacing: 0.05em;">
+              ${refCode}
+            </td>
+            <td align="right" style="font-size: 11px; color: #dc2626; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;">
+              ⚠️ ACTION REQUIRED
+            </td>
+          </tr>
+        </table>
+        <div style="border-bottom: 2px solid #e2e8f0; margin-top: 8px;"></div>
+      </td>
+    </tr>
+
+    <!-- Main Body -->
+    <tr>
+      <td style="padding: 20px 28px 24px 28px;">
+        <p style="margin: 0 0 14px 0; font-size: 15px; font-weight: 700; color: #0f172a;">
+          Dear ${studentName} <span style="font-size: 13px; color: #64748b; font-weight: 600;">(${registerNumber || className})</span>,
+        </p>
+        
+        <p style="margin: 0 0 18px 0; font-size: 13.5px; line-height: 1.6; color: #334155;">
+          This is an official memorandum from the <b>${senderTitle || 'Department Head / Faculty Coordinator'}</b>. According to department records, you have not yet submitted your completion proof for the following academic task:
+        </p>
+
+        <!-- Task Summary Card -->
+        <table width="100%" border="0" cellpadding="10" cellspacing="0" style="background-color: #fef2f2; border: 1px solid #fecaca; border-left: 4px solid #dc2626; border-radius: 6px; margin-bottom: 20px; font-size: 13px;">
+          <tr>
+            <td width="30%" style="font-weight: 700; color: #991b1b;">Task Title:</td>
+            <td style="font-weight: 800; color: #0f172a; font-size: 14px;">${taskTitle}</td>
+          </tr>
+          ${category ? `
+          <tr>
+            <td style="font-weight: 700; color: #991b1b;">Category:</td>
+            <td style="font-weight: 600; color: #1e293b;">${category}</td>
+          </tr>` : ''}
+          <tr>
+            <td style="font-weight: 700; color: #991b1b;">Class Section:</td>
+            <td style="font-weight: 600; color: #1e293b;">${className}</td>
+          </tr>
+          <tr>
+            <td style="font-weight: 700; color: #991b1b;">Final Deadline:</td>
+            <td style="font-weight: 800; color: #b91c1c;">${formattedDeadline}</td>
+          </tr>
+        </table>
+
+        <!-- Custom HOD / Coordinator Directive Note -->
+        ${customMessage ? `
+        <div style="background-color: #ffffff; border: 1px solid #fed7aa; border-left: 4px solid #f97316; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+          <span style="font-size: 11px; font-weight: 800; color: #c2410c; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 6px;">
+            📢 Directive from ${senderTitle || 'Faculty Leadership'}:
+          </span>
+          <p style="margin: 0; font-size: 13.5px; color: #1e293b; line-height: 1.5; font-style: italic;">
+            "${customMessage}"
+          </p>
+        </div>` : ''}
+
+        <!-- Warning Callout -->
+        <div style="background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 6px; padding: 12px 16px; margin-bottom: 24px;">
+          <p style="margin: 0; font-size: 12.5px; color: #92400e; line-height: 1.45;">
+            ⏳ <b>Urgent:</b> Please log in to the Task Management Portal immediately to upload your screenshot / completion proof prior to deadline closing to avoid academic non-compliance.
+          </p>
+        </div>
+
+        <!-- CTA Button -->
+        <div style="text-align: center; margin: 28px 0 16px 0;">
+          <a href="${portalLink}" style="display: inline-block; background-color: #dc2626; color: #ffffff; text-decoration: none; font-size: 13.5px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 14px 34px; border-radius: 6px; border: 1px solid #b91c1c; box-shadow: 0 4px 14px rgba(220, 38, 38, 0.35);">
+            🚀 Submit Task Proof Now
+          </a>
+        </div>
+
+      </td>
+    </tr>
+
+    <!-- Institutional Footer -->
+    <tr>
+      <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 24px; text-align: center; font-size: 11px; color: #64748b; line-height: 1.6;">
+        <p style="margin: 0 0 4px 0; font-weight: 700; color: #0f172a; text-transform: uppercase;">
+          Department of Information Technology • VSB Engineering College (Autonomous)
+        </p>
+        <p style="margin: 0 0 4px 0;">
+          NH-67, Covai Road, Karur — 639 111, Tamil Nadu, India
+        </p>
+        <p style="margin: 6px 0 4px 0; font-size: 11px; color: #334155; font-weight: 600;">
+          Developed by <a href="https://tharunkumark4743.netlify.app/" style="color: #1e3a8a; text-decoration: underline; font-weight: 800;">Tharunkumar K</a> • 🏛️ Department of Information Technology, VSBEC
+        </p>
+        <p style="margin: 6px 0 0 0; font-size: 10px; color: #94a3b8;">
+          🔒 <i>CONFIDENTIALITY NOTICE: Automated Official Academic Notification • Department of Information Technology</i>
+        </p>
+      </td>
+    </tr>
+
+  </table>
+
+</body>
+</html>
+  `;
+
+  return await dispatchEmailThroughPool(to, studentName, subject, htmlContent, senderTitle || 'VSBEC IT Department Desk');
+}
+
+/**
+ * Triggers batch email reminders to all incomplete students for a specific task across all its assigned classes.
+ */
+export async function triggerManualTaskPendingReminders(
+  taskId: string | number,
+  customMessage?: string,
+  senderRole?: string,
+  senderName?: string
+): Promise<{ success: boolean; totalStudents: number; sentCount: number; failedCount: number; errors: string[] }> {
+  try {
+    const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [taskId]);
+    const task = taskRes.rows[0];
+    if (!task) {
+      return { success: false, totalStudents: 0, sentCount: 0, failedCount: 0, errors: ['Task not found'] };
+    }
+
+    // Query all incomplete students across all assigned classes of this task
+    const studentsRes = await pool.query(`
+      SELECT DISTINCT 
+        u.id, 
+        u.full_name, 
+        u.register_number, 
+        u.email, 
+        c.name as class_name
+      FROM users u
+      JOIN task_classes tc ON tc.class_id = u.class_id
+      JOIN classes c ON c.id = u.class_id
+      LEFT JOIN task_submissions ts ON ts.task_id = $1 AND ts.user_id = u.id
+      WHERE tc.task_id = $1
+        AND u.role = 'STUDENT'
+        AND u.email IS NOT NULL 
+        AND TRIM(u.email) != ''
+        AND (ts.id IS NULL OR ts.status = 'REJECTED')
+      ORDER BY c.name ASC, u.register_number ASC
+    `, [taskId]);
+
+    const students = studentsRes.rows;
+    if (students.length === 0) {
+      return { success: true, totalStudents: 0, sentCount: 0, failedCount: 0, errors: [] };
+    }
+
+    let sentCount = 0;
+    let failedCount = 0;
+    const errors: string[] = [];
+
+    const senderTitle = senderRole === 'HOD' 
+      ? 'Head of the Department (HOD)' 
+      : (senderName ? `${senderName} (${senderRole || 'Coordinator'})` : 'Department Coordinator');
+
+    // Dispatch in batches through our Brevo multi-node load balancer pool
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < students.length; i += BATCH_SIZE) {
+      const chunk = students.slice(i, i + BATCH_SIZE);
+      const promises = chunk.map(async (student) => {
+        try {
+          const res = await sendTaskPendingReminderEmail(
+            student.email,
+            student.full_name || 'Student',
+            student.register_number || '',
+            student.class_name || 'IT',
+            task.title,
+            task.deadline,
+            task.category,
+            customMessage,
+            senderTitle
+          );
+
+          if (res.success) {
+            sentCount++;
+            // Insert in-app notification as well
+            await pool.query(`
+              INSERT INTO notifications (user_id, message, type)
+              VALUES ($1, $2, 'TASK_PENDING_REMINDER')
+            `, [student.id, `⚠️ Urgent Reminder: Submission pending for "${task.title}". Deadline: ${new Date(task.deadline).toLocaleString()}`]);
+          } else {
+            failedCount++;
+            if (res.error) errors.push(`${student.email}: ${res.error}`);
+          }
+        } catch (err: any) {
+          failedCount++;
+          errors.push(`${student.email}: ${err.message || 'Unknown error'}`);
+        }
+      });
+
+      await Promise.all(promises);
+      if (i + BATCH_SIZE < students.length) {
+        await new Promise(r => setTimeout(r, 200));
+      }
+    }
+
+    return {
+      success: true,
+      totalStudents: students.length,
+      sentCount,
+      failedCount,
+      errors: errors.slice(0, 10)
+    };
+  } catch (err: any) {
+    console.error('Error triggering manual task pending reminders:', err);
+    return {
+      success: false,
+      totalStudents: 0,
+      sentCount: 0,
+      failedCount: 0,
+      errors: [err.message || 'Failed to trigger reminders']
+    };
+  }
+}
+

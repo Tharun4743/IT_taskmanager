@@ -31,6 +31,8 @@ import {
   sendTaskStatusEmail,
   sendNewTaskPostedEmail,
   sendDeadlineAlertEmail,
+  sendTaskPendingReminderEmail,
+  triggerManualTaskPendingReminders,
   notifyNewTaskCreatedEmail,
   triggerDeadlineUrgentEmailReminders
 } from './emailService.js';
@@ -40,6 +42,8 @@ export {
   sendTaskStatusEmail,
   sendNewTaskPostedEmail,
   sendDeadlineAlertEmail,
+  sendTaskPendingReminderEmail,
+  triggerManualTaskPendingReminders,
   notifyNewTaskCreatedEmail,
   triggerDeadlineUrgentEmailReminders
 };
@@ -2385,6 +2389,91 @@ async function startServer() {
 
     invalidateApiCache('tasks_');
     res.json({ success: true, deadline: newDeadline.toISOString(), status: 'OPEN' });
+  });
+
+  // ── Fetch Incomplete / Pending Students for a Task ───────────────────────────
+  app.get('/api/tasks/:id/pending-students', authenticate, authorize(['HOD', 'SUPREME_ADMIN', 'YEAR_COORDINATOR', 'CLASS_ADVISOR', 'STUDENT_COORDINATOR']), async (req: any, res) => {
+    try {
+      const taskId = req.params.id;
+      const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [taskId]);
+      const task = taskRes.rows[0];
+      if (!task) return res.status(404).json({ error: 'Task not found' });
+
+      // Fetch assigned classes
+      const classesRes = await pool.query(`
+        SELECT c.id, c.name FROM task_classes tc
+        JOIN classes c ON c.id = tc.class_id
+        WHERE tc.task_id = $1
+        ORDER BY c.name ASC
+      `, [taskId]);
+
+      // Query incomplete students
+      const studentsRes = await pool.query(`
+        SELECT DISTINCT 
+          u.id, 
+          u.full_name, 
+          u.register_number, 
+          u.email, 
+          c.id as class_id,
+          c.name as class_name,
+          ts.status as submission_status
+        FROM users u
+        JOIN task_classes tc ON tc.class_id = u.class_id
+        JOIN classes c ON c.id = u.class_id
+        LEFT JOIN task_submissions ts ON ts.task_id = $1 AND ts.user_id = u.id
+        WHERE tc.task_id = $1
+          AND u.role = 'STUDENT'
+          AND (ts.id IS NULL OR ts.status = 'REJECTED')
+        ORDER BY c.name ASC, u.register_number ASC
+      `, [taskId]);
+
+      res.json({
+        task: {
+          id: task.id,
+          title: task.title,
+          category: task.category,
+          deadline: task.deadline,
+          status: task.status
+        },
+        assignedClasses: classesRes.rows,
+        totalIncomplete: studentsRes.rows.length,
+        students: studentsRes.rows
+      });
+    } catch (err: any) {
+      console.error('Error fetching task pending students:', err);
+      res.status(500).json({ error: err.message || 'Failed to fetch pending students' });
+    }
+  });
+
+  // ── Trigger Pending Task Email Reminders via Load Balancer ───────────────────
+  app.post('/api/tasks/:id/send-pending-reminder', authenticate, authorize(['HOD', 'SUPREME_ADMIN', 'YEAR_COORDINATOR', 'CLASS_ADVISOR']), async (req: any, res) => {
+    try {
+      const taskId = req.params.id;
+      const { customMessage } = req.body;
+
+      const result = await triggerManualTaskPendingReminders(
+        taskId,
+        customMessage,
+        req.user.role,
+        req.user.full_name
+      );
+
+      if (!result.success) {
+        return res.status(400).json({ error: result.errors[0] || 'Failed to dispatch reminders' });
+      }
+
+      res.json({
+        success: true,
+        message: `Dispatched pending reminders to ${result.sentCount} student(s) via Load Balancer pool.`,
+        totalStudents: result.totalStudents,
+        sentCount: result.sentCount,
+        failedCount: result.failedCount,
+        errors: result.errors
+      });
+    } catch (err: any) {
+      console.error('Error sending task pending reminders:', err);
+      res.status(500).json({ error: err.message || 'Failed to send reminders' });
+    }
   });
 
   app.delete('/api/tasks/:id', authenticate, authorize(['HOD']), async (req: any, res) => {
