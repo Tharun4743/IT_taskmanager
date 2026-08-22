@@ -57,6 +57,7 @@ import {
   setGroupChatId,
   sendTelegramMessage,
   notifyNewTaskCreated,
+  notifyTaskReopened,
   notifyTaskSubmissionReceived,
   notifySubmissionVerifiedOrRejected,
   notifySubmissionBatchVerified,
@@ -2331,7 +2332,19 @@ async function startServer() {
 
     if (!isAuthorized) return res.status(403).json({ error: 'Forbidden' });
 
+    const previousStatus = task.status;
     await pool.query('UPDATE tasks SET status = $1, updated_at = NOW() WHERE id = $2', [status, req.params.id]);
+
+    if (status === 'OPEN' && previousStatus !== 'OPEN') {
+      notifyTaskReopened({
+        id: task.id,
+        title: task.title,
+        category: task.category,
+        deadline: task.deadline,
+        reopened_by: req.user.full_name || req.user.role
+      }, taskClassIds).catch(err => console.error('[Telegram Reopen Task Error]:', err));
+    }
+
     invalidateApiCache('tasks_');
     res.json({ success: true });
   });
@@ -2386,6 +2399,28 @@ async function startServer() {
          WHERE class_id = ANY($2::uuid[]) AND role = 'STUDENT'`,
         [`Deadline extended & task reopened by HOD for "${task.title}". New deadline: ${newDeadline.toLocaleString()}`, taskClassIds]
       );
+    }
+
+    // 🚀 Telegram Group & Personal Notification Dispatch
+    notifyTaskReopened({
+      id: task.id,
+      title: task.title,
+      category: task.category,
+      deadline: newDeadline,
+      reopened_by: req.user.full_name || req.user.role
+    }, taskClassIds).catch(err => console.error('[Telegram Reopen Task Error]:', err));
+
+    // 📱 Web Push Notification Dispatch
+    try {
+      const pushTitle = `🔄 Task Reopened: ${task.title}`;
+      const pushBody = `Deadline extended to ${newDeadline.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}. Please submit your work!`;
+      if (taskClassIds.length > 0) {
+        sendPushToClasses(taskClassIds, { title: pushTitle, body: pushBody, url: '/' }).catch(e => console.error('[Push Reopen Task Error]:', e));
+      } else {
+        sendPushToAll({ title: pushTitle, body: pushBody, url: '/' }).catch(e => console.error('[Push Reopen Task Error]:', e));
+      }
+    } catch (pushErr) {
+      console.error('[Push Notification Reopen Error]:', pushErr);
     }
 
     invalidateApiCache('tasks_');

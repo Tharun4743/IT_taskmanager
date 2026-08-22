@@ -2031,6 +2031,92 @@ export async function notifyNewTaskCreated(task: {
 }
 
 /**
+ * 🔄 Notify target students & group when a TASK IS REOPENED (Deadline Extended)
+ */
+export async function notifyTaskReopened(task: {
+  id: string | number;
+  title: string;
+  category?: string;
+  deadline?: any;
+  reopened_by?: string;
+}, classIds: string[]): Promise<void> {
+  const portalUrl = getPortalUrl();
+  const deadlineStr = task.deadline
+    ? new Date(task.deadline).toLocaleString('en-IN', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Kolkata'
+      })
+    : 'No deadline set';
+
+  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  🔄  <b>ASSIGNMENT REOPENED!</b>  ⏰\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  html += `<blockquote>📌 <b>Assignment:</b> <b>${escapeHtml(task.title)}</b>\n`;
+  if (task.category) html += `📂 <b>Category:</b> <code>${escapeHtml(task.category)}</code>\n`;
+  if (task.reopened_by) html += `👤 <b>Extended By:</b> ${escapeHtml(task.reopened_by)}\n`;
+  html += `⏰ <b>New Extended Deadline:</b> <i>${deadlineStr}</i>\n`;
+  html += `🏷️ <b>Status:</b> 🟢 <code>OPEN FOR SUBMISSIONS</code></blockquote>\n\n`;
+  html += `📢 <i>The submission window for this assignment has been reopened and the deadline has been extended!</i>\n\n`;
+  html += `👉 <i>If you have pending or incomplete submissions, please submit your proof on the portal before the new deadline.</i>\n`;
+  html += getWatermarkHtml();
+
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: '📋 View My Tasks', callback_data: 'cb_tasks' },
+        { text: '🌐 Submit on Portal', url: portalUrl }
+      ]
+    ]
+  };
+
+  // 1. Dispatch exactly ONCE to Telegram Group Chat if configured
+  const groupChatId = await getGroupChatId();
+  const normalizedGroupChatId = groupChatId ? String(groupChatId).trim() : '';
+  if (normalizedGroupChatId) {
+    sendTelegramMessage(normalizedGroupChatId, html, { reply_markup: keyboard }).catch(err => {
+      console.error('[Telegram] Failed to send reopened task alert to group:', err);
+    });
+  }
+
+  // 2. Dispatch in parallel to all students in the assigned classes with linked PERSONAL Telegram
+  if (classIds && classIds.length > 0) {
+    try {
+      const studentsRes = await pool.query(`
+        SELECT telegram_chat_id
+        FROM users
+        WHERE class_id = ANY($1::uuid[]) AND telegram_chat_id IS NOT NULL AND role = 'STUDENT'
+      `, [classIds]);
+
+      const rawChatIds = studentsRes.rows
+        .map(r => r.telegram_chat_id ? String(r.telegram_chat_id).trim() : '')
+        .filter(Boolean);
+
+      // Only send private DM to distinct personal chats (exclude groups with negative IDs and groupChatId)
+      const personalChatIds = Array.from(new Set(rawChatIds)).filter(cid => {
+        if (cid.startsWith('-')) return false;
+        if (normalizedGroupChatId && cid === normalizedGroupChatId) return false;
+        return true;
+      });
+
+      if (personalChatIds.length > 0) {
+        console.log(`[Telegram Notifications] Sending reopened task alert to ${personalChatIds.length} personal student chat(s)...`);
+
+        const BATCH_SIZE = 15;
+        for (let i = 0; i < personalChatIds.length; i += BATCH_SIZE) {
+          const batch = personalChatIds.slice(i, i + BATCH_SIZE);
+          await Promise.allSettled(batch.map(cid => sendTelegramMessage(cid, html, { reply_markup: keyboard })));
+          await new Promise(r => setTimeout(r, 40));
+        }
+      }
+    } catch (err) {
+      console.error('[Telegram] Error dispatching reopened task alerts to students:', err);
+    }
+  }
+}
+
+/**
  * 📥 Notify student when their submission is RECEIVED (PENDING REVIEW)
  */
 export async function notifyTaskSubmissionReceived(studentId: string, taskId: string): Promise<void> {

@@ -4,7 +4,7 @@ services:
     env: node
     plan: free
     branch: main
-    autoDeploy: false
+    autoDeploy: true
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /health
@@ -25,6 +25,8 @@ services:
         value: "10000"
       - key: JWT_SECRET
         sync: false
+      - key: CRON_SECRET
+        sync: false
       - key: FRONTEND_URL
         value: "https://it-taskmanager.onrender.com"
       - key: CLOUDINARY_CLOUD_NAME
@@ -41,6 +43,8 @@ services:
         sync: false
       - key: GITHUB_TOKEN
         sync: false
+      - key: GITHUB_REPO
+        value: "Tharun4743/IT_taskmanager"
       - key: VAPID_PUBLIC_KEY
         sync: false
       - key: VAPID_PRIVATE_KEY
@@ -59,3 +63,10 @@ services:
         value: "campusconnectvsb@gmail.com"
       - key: BREVO_SENDER_NAME_2
         value: "VSBEC IT Department"
+      - key: BREVO_API_KEY_3
+        sync: false
+      - key: BREVO_SENDER_EMAIL_3
+        value: "campusconnectvsb@gmail.com"
+      - key: BREVO_SENDER_NAME_3
+        value: "VSBEC IT Department"
+
