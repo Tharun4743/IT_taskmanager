@@ -9510,6 +9510,7 @@ export default function App() {
 
     const assignedClassNames = emailAlertPendingData?.assignedClasses?.map(c => c.name).join(', ') || 'All Assigned Classes';
     const pendingStudents = emailAlertPendingData?.students || [];
+    const senderRoleName = isAdmin ? 'Supreme Administrator' : isHOD ? 'Head of the Department (HOD)' : isAdvisor ? `${user?.full_name || 'Class Advisor'} (Class Advisor)` : 'Department Coordinator';
 
     return (
       <AnimatePresence>
@@ -9543,6 +9544,9 @@ export default function App() {
                   </span>
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 flex items-center gap-1">
                     <Sparkles size={10} /> Load Balanced
+                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-700 border border-zinc-200">
+                    From: {senderRoleName}
                   </span>
                 </div>
                 <h3 className="text-lg md:text-xl font-black text-zinc-900 truncate">
@@ -9596,7 +9600,7 @@ export default function App() {
                     <CheckCircle2 size={30} />
                   </div>
                   <div>
-                    <h4 className="text-lg font-black text-emerald-950">Email Reminders Successfully Dispatched!</h4>
+                    <h4 className="text-lg font-black text-emerald-950">Email Reminders Processed!</h4>
                     <p className="text-xs text-emerald-700 font-medium mt-1">
                       {emailAlertSuccessStats.message || `Dispatched to ${emailAlertSuccessStats.sentCount} incomplete students.`}
                     </p>
@@ -9615,6 +9619,17 @@ export default function App() {
                       <span className="text-base font-black text-zinc-700">{emailAlertSuccessStats.failedCount || 0}</span>
                     </div>
                   </div>
+
+                  {emailAlertSuccessStats.errors && emailAlertSuccessStats.errors.length > 0 && (
+                    <div className="text-left bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 space-y-1">
+                      <span className="font-bold block text-[11px] text-amber-800 uppercase">Delivery Notices:</span>
+                      <ul className="list-disc list-inside space-y-0.5 text-[11px]">
+                        {emailAlertSuccessStats.errors.map((err: string, i: number) => (
+                          <li key={i} className="truncate">{err}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <>
@@ -11998,7 +12013,7 @@ export default function App() {
                                 )}
                               </div>
                             )}
-                            {(isAdmin || isHOD) && (
+                            {(isAdmin || isHOD || isAdvisor) && (
                               <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-zinc-100 pt-4">
                                 <Button
                                   variant="secondary"
@@ -12009,33 +12024,37 @@ export default function App() {
                                   <Mail size={14} className="text-amber-600" /> Send Pending Email Alert
                                 </Button>
 
-                                <Button
-                                  variant="secondary"
-                                  className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 text-xs font-bold flex items-center gap-1.5"
-                                  onClick={() => {
-                                    setExtendingTask(task);
-                                    const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
-                                    const pad = (n: number) => String(n).padStart(2, '0');
-                                    setExtendedDeadline(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
-                                  }}
-                                >
-                                  <Clock size={14} /> Extend Deadline & Reopen
-                                </Button>
+                                {(isAdmin || isHOD) && (
+                                  <>
+                                    <Button
+                                      variant="secondary"
+                                      className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 text-xs font-bold flex items-center gap-1.5"
+                                      onClick={() => {
+                                        setExtendingTask(task);
+                                        const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
+                                        const pad = (n: number) => String(n).padStart(2, '0');
+                                        setExtendedDeadline(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
+                                      }}
+                                    >
+                                      <Clock size={14} /> Extend Deadline & Reopen
+                                    </Button>
 
-                                <Button
-                                  variant="ghost"
-                                  className="text-zinc-500 hover:text-zinc-900 text-xs font-semibold"
-                                  onClick={() => toggleTaskStatus(task.id, task.status)}
-                                >
-                                  {task.status === 'OPEN' ? 'Close Task' : 'Open Task'}
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  className="text-zinc-400 hover:text-red-500 text-xs font-semibold"
-                                  onClick={() => deleteTask(task.id)}
-                                >
-                                  <Trash2 size={16} /> Delete
-                                </Button>
+                                    <Button
+                                      variant="ghost"
+                                      className="text-zinc-500 hover:text-zinc-900 text-xs font-semibold"
+                                      onClick={() => toggleTaskStatus(task.id, task.status)}
+                                    >
+                                      {task.status === 'OPEN' ? 'Close Task' : 'Open Task'}
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      className="text-zinc-400 hover:text-red-500 text-xs font-semibold"
+                                      onClick={() => deleteTask(task.id)}
+                                    >
+                                      <Trash2 size={16} /> Delete
+                                    </Button>
+                                  </>
+                                )}
                               </div>
                             )}
                           </Card>

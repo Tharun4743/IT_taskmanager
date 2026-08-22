@@ -2392,40 +2392,105 @@ async function startServer() {
   });
 
   // ── Fetch Incomplete / Pending Students for a Task ───────────────────────────
-  app.get('/api/tasks/:id/pending-students', authenticate, authorize(['HOD', 'SUPREME_ADMIN']), async (req: any, res) => {
+  app.get('/api/tasks/:id/pending-students', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), async (req: any, res) => {
     try {
       const taskId = req.params.id;
       const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [taskId]);
       const task = taskRes.rows[0];
       if (!task) return res.status(404).json({ error: 'Task not found' });
 
-      // Fetch assigned classes
-      const classesRes = await pool.query(`
+      // Fetch assigned classes (or fallback to department / all classes if task_classes is empty)
+      let classesRes = await pool.query(`
         SELECT c.id, c.name FROM task_classes tc
         JOIN classes c ON c.id = tc.class_id
         WHERE tc.task_id = $1
         ORDER BY c.name ASC
       `, [taskId]);
 
-      // Query incomplete students
-      const studentsRes = await pool.query(`
-        SELECT DISTINCT 
-          u.id, 
-          u.full_name, 
-          u.register_number, 
-          u.email, 
-          c.id as class_id,
-          c.name as class_name,
-          ts.status as submission_status
-        FROM users u
-        JOIN task_classes tc ON tc.class_id = u.class_id
-        JOIN classes c ON c.id = u.class_id
-        LEFT JOIN task_submissions ts ON ts.task_id = $1 AND ts.user_id = u.id
-        WHERE tc.task_id = $1
-          AND u.role = 'STUDENT'
-          AND (ts.id IS NULL OR ts.status = 'REJECTED')
-        ORDER BY c.name ASC, u.register_number ASC
-      `, [taskId]);
+      if (classesRes.rows.length === 0) {
+        if (task.department_id) {
+          classesRes = await pool.query(`
+            SELECT c.id, c.name FROM classes c
+            WHERE c.department_id = $1
+            ORDER BY c.name ASC
+          `, [task.department_id]);
+        } else {
+          classesRes = await pool.query(`
+            SELECT c.id, c.name FROM classes c
+            ORDER BY c.name ASC
+          `);
+        }
+      }
+
+      const targetClassIds = classesRes.rows.map(r => r.id);
+      if (targetClassIds.length === 0) {
+        return res.json({
+          task: {
+            id: task.id,
+            title: task.title,
+            category: task.category,
+            deadline: task.deadline,
+            status: task.status,
+            submission_type: task.submission_type
+          },
+          assignedClasses: [],
+          totalIncomplete: 0,
+          students: []
+        });
+      }
+
+      // Query incomplete students depending on submission type
+      let studentsRes;
+      if (task.submission_type === 'TEAM') {
+        studentsRes = await pool.query(`
+          SELECT DISTINCT 
+            u.id, 
+            u.full_name, 
+            u.register_number, 
+            u.email, 
+            c.id as class_id,
+            c.name as class_name
+          FROM users u
+          JOIN classes c ON c.id = u.class_id
+          WHERE u.role = 'STUDENT'
+            AND u.class_id = ANY($1::uuid[])
+            AND NOT EXISTS (
+              SELECT 1 FROM teams t
+              LEFT JOIN team_submissions ts ON ts.team_id = t.id
+              WHERE t.task_id = $2
+                AND (
+                  t.leader_id = u.id 
+                  OR EXISTS (
+                    SELECT 1 FROM team_members tm 
+                    WHERE tm.team_id = t.id AND tm.student_id = u.id AND tm.status = 'ACCEPTED'
+                  )
+                )
+                AND (t.status = 'SUBMITTED' OR ts.status IN ('PENDING', 'VERIFIED'))
+            )
+          ORDER BY c.name ASC, u.register_number ASC
+        `, [targetClassIds, taskId]);
+      } else {
+        studentsRes = await pool.query(`
+          SELECT DISTINCT 
+            u.id, 
+            u.full_name, 
+            u.register_number, 
+            u.email, 
+            c.id as class_id,
+            c.name as class_name
+          FROM users u
+          JOIN classes c ON c.id = u.class_id
+          WHERE u.role = 'STUDENT'
+            AND u.class_id = ANY($1::uuid[])
+            AND NOT EXISTS (
+              SELECT 1 FROM task_submissions ts
+              WHERE ts.task_id = $2
+                AND ts.user_id = u.id
+                AND ts.status IN ('SUBMITTED', 'PENDING', 'VERIFIED', 'NOT_PARTICIPATING')
+            )
+          ORDER BY c.name ASC, u.register_number ASC
+        `, [targetClassIds, taskId]);
+      }
 
       res.json({
         task: {
@@ -2433,7 +2498,8 @@ async function startServer() {
           title: task.title,
           category: task.category,
           deadline: task.deadline,
-          status: task.status
+          status: task.status,
+          submission_type: task.submission_type
         },
         assignedClasses: classesRes.rows,
         totalIncomplete: studentsRes.rows.length,
@@ -2446,7 +2512,7 @@ async function startServer() {
   });
 
   // ── Trigger Pending Task Email Reminders via Load Balancer ───────────────────
-  app.post('/api/tasks/:id/send-pending-reminder', authenticate, authorize(['HOD', 'SUPREME_ADMIN']), async (req: any, res) => {
+  app.post('/api/tasks/:id/send-pending-reminder', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR']), async (req: any, res) => {
     try {
       const taskId = req.params.id;
       const { customMessage } = req.body;
@@ -2464,7 +2530,7 @@ async function startServer() {
 
       res.json({
         success: true,
-        message: `Dispatched pending reminders to ${result.sentCount} student(s) via Load Balancer pool.`,
+        message: `Dispatched pending reminders to ${result.sentCount} student(s) via Multi-Node Email Pool.`,
         totalStudents: result.totalStudents,
         sentCount: result.sentCount,
         failedCount: result.failedCount,

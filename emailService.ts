@@ -10,6 +10,7 @@
  *  5. 🔐 Password Reset OTP Verification
  */
 
+import nodemailer from 'nodemailer';
 import { pool } from './db.js';
 
 const COLLEGE_LOGO_URL = 'https://raw.githubusercontent.com/Tharun4743/IT_taskmanager/main/public/logo.png';
@@ -22,6 +23,37 @@ interface BrevoAccountNode {
 }
 
 let roundRobinIndex = 0;
+let smtpTransporter: nodemailer.Transporter | null = null;
+
+function getSmtpTransporter(): nodemailer.Transporter | null {
+  if (smtpTransporter) return smtpTransporter;
+
+  const host = process.env.SMTP_HOST;
+  const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
+  const user = process.env.SMTP_USER || process.env.EMAIL_USER || process.env.GMAIL_USER;
+  const pass = process.env.SMTP_PASS || process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASSWORD;
+
+  if (host && user && pass) {
+    smtpTransporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: { user, pass }
+    });
+    return smtpTransporter;
+  }
+
+  // Gmail direct service shortcut
+  if (user && pass && (user.includes('@gmail.com') || process.env.GMAIL_USER)) {
+    smtpTransporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user, pass }
+    });
+    return smtpTransporter;
+  }
+
+  return null;
+}
 
 /**
  * 🔄 Returns active Brevo account nodes for Load Balancing & Failover
@@ -65,6 +97,7 @@ async function dispatchEmailThroughPool(
   customSenderName?: string
 ): Promise<{ success: boolean; messageId?: string; provider?: string; error?: string }> {
   const nodes = getBrevoNodes();
+  let lastErrorMsg = '';
 
   if (nodes.length > 0) {
     const startIdx = roundRobinIndex % nodes.length;
@@ -99,9 +132,11 @@ async function dispatchEmailThroughPool(
           console.log(`[EmailService] ✅ Email dispatched via [${activeNode.nodeId} | <${activeNode.senderEmail}>] to ${to} (${resData.messageId})`);
           return { success: true, messageId: resData.messageId, provider: activeNode.nodeId };
         } else {
-          console.warn(`[EmailService] ⚠️ ${activeNode.nodeId} returned status ${response.status}:`, resData?.message || resData);
+          lastErrorMsg = resData?.message || JSON.stringify(resData);
+          console.warn(`[EmailService] ⚠️ ${activeNode.nodeId} returned status ${response.status}:`, lastErrorMsg);
         }
       } catch (err: any) {
+        lastErrorMsg = err.message || 'Brevo network error';
         console.warn(`[EmailService] ⚠️ Network error on ${activeNode.nodeId}:`, err.message);
       }
     }
@@ -129,13 +164,36 @@ async function dispatchEmailThroughPool(
       if (response.ok) {
         console.log(`[EmailService] ✅ Fallback email dispatched via Resend to ${to} (${resData.id})`);
         return { success: true, messageId: resData.id, provider: 'Resend' };
+      } else {
+        lastErrorMsg = resData?.message || JSON.stringify(resData);
       }
     } catch (err: any) {
+      lastErrorMsg = err.message || 'Resend network error';
       console.warn(`[EmailService] Resend fallback network error:`, err.message);
     }
   }
 
-  return { success: false, error: 'All email dispatch nodes in pool exhausted.' };
+  // Fallback to Nodemailer SMTP
+  const transporter = getSmtpTransporter();
+  if (transporter) {
+    try {
+      const fromAddr = process.env.SMTP_FROM || process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER || 'vsbecitc2428@gmail.com';
+      const senderDisplayName = customSenderName || 'VSBEC IT Department';
+      const info = await transporter.sendMail({
+        from: `"${senderDisplayName}" <${fromAddr}>`,
+        to,
+        subject,
+        html: htmlContent
+      });
+      console.log(`[EmailService] ✅ Fallback email dispatched via SMTP/Nodemailer to ${to} (${info.messageId})`);
+      return { success: true, messageId: info.messageId, provider: 'SMTP' };
+    } catch (err: any) {
+      lastErrorMsg = err.message || 'SMTP network error';
+      console.warn(`[EmailService] SMTP fallback network error:`, err.message);
+    }
+  }
+
+  return { success: false, error: lastErrorMsg || 'All email dispatch nodes in pool exhausted.' };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1128,25 +1186,77 @@ export async function triggerManualTaskPendingReminders(
       return { success: false, totalStudents: 0, sentCount: 0, failedCount: 0, errors: ['Task not found'] };
     }
 
-    // Query all incomplete students across all assigned classes of this task
-    const studentsRes = await pool.query(`
-      SELECT DISTINCT 
-        u.id, 
-        u.full_name, 
-        u.register_number, 
-        u.email, 
-        c.name as class_name
-      FROM users u
-      JOIN task_classes tc ON tc.class_id = u.class_id
-      JOIN classes c ON c.id = u.class_id
-      LEFT JOIN task_submissions ts ON ts.task_id = $1 AND ts.user_id = u.id
-      WHERE tc.task_id = $1
-        AND u.role = 'STUDENT'
-        AND u.email IS NOT NULL 
-        AND TRIM(u.email) != ''
-        AND (ts.id IS NULL OR ts.status = 'REJECTED')
-      ORDER BY c.name ASC, u.register_number ASC
-    `, [taskId]);
+    // 1. Resolve Target Classes for this task
+    let targetClassIds: string[] = [];
+    const tcRes = await pool.query('SELECT class_id FROM task_classes WHERE task_id = $1', [taskId]);
+    if (tcRes.rows.length > 0) {
+      targetClassIds = tcRes.rows.map(r => r.class_id);
+    } else if (task.department_id) {
+      const deptClassesRes = await pool.query('SELECT id FROM classes WHERE department_id = $1', [task.department_id]);
+      targetClassIds = deptClassesRes.rows.map(r => r.id);
+    } else {
+      const allClassesRes = await pool.query('SELECT id FROM classes');
+      targetClassIds = allClassesRes.rows.map(r => r.id);
+    }
+
+    if (targetClassIds.length === 0) {
+      return { success: true, totalStudents: 0, sentCount: 0, failedCount: 0, errors: [] };
+    }
+
+    // 2. Query incomplete students depending on submission_type (TEAM vs INDIVIDUAL)
+    let studentsRes;
+    if (task.submission_type === 'TEAM') {
+      studentsRes = await pool.query(`
+        SELECT DISTINCT 
+          u.id, 
+          u.full_name, 
+          u.register_number, 
+          u.email, 
+          c.name as class_name
+        FROM users u
+        JOIN classes c ON c.id = u.class_id
+        WHERE u.role = 'STUDENT'
+          AND u.class_id = ANY($1::uuid[])
+          AND u.email IS NOT NULL 
+          AND TRIM(u.email) != ''
+          AND NOT EXISTS (
+            SELECT 1 FROM teams t
+            LEFT JOIN team_submissions ts ON ts.team_id = t.id
+            WHERE t.task_id = $2
+              AND (
+                t.leader_id = u.id 
+                OR EXISTS (
+                  SELECT 1 FROM team_members tm 
+                  WHERE tm.team_id = t.id AND tm.student_id = u.id AND tm.status = 'ACCEPTED'
+                )
+              )
+              AND (t.status = 'SUBMITTED' OR ts.status IN ('PENDING', 'VERIFIED'))
+          )
+        ORDER BY c.name ASC, u.register_number ASC
+      `, [targetClassIds, taskId]);
+    } else {
+      studentsRes = await pool.query(`
+        SELECT DISTINCT 
+          u.id, 
+          u.full_name, 
+          u.register_number, 
+          u.email, 
+          c.name as class_name
+        FROM users u
+        JOIN classes c ON c.id = u.class_id
+        WHERE u.role = 'STUDENT'
+          AND u.class_id = ANY($1::uuid[])
+          AND u.email IS NOT NULL 
+          AND TRIM(u.email) != ''
+          AND NOT EXISTS (
+            SELECT 1 FROM task_submissions ts
+            WHERE ts.task_id = $2
+              AND ts.user_id = u.id
+              AND ts.status IN ('SUBMITTED', 'PENDING', 'VERIFIED', 'NOT_PARTICIPATING')
+          )
+        ORDER BY c.name ASC, u.register_number ASC
+      `, [targetClassIds, taskId]);
+    }
 
     const students = studentsRes.rows;
     if (students.length === 0) {
@@ -1159,7 +1269,9 @@ export async function triggerManualTaskPendingReminders(
 
     const senderTitle = senderRole === 'HOD' 
       ? 'Head of the Department (HOD)' 
-      : (senderName ? `${senderName} (${senderRole || 'Coordinator'})` : 'Department Coordinator');
+      : (senderRole === 'SUPREME_ADMIN'
+          ? 'Supreme Administrator / Head of Department'
+          : (senderName ? `${senderName} (${senderRole === 'CLASS_ADVISOR' ? 'Class Advisor' : (senderRole || 'Coordinator')})` : 'Department Coordinator'));
 
     // Dispatch in batches through our Brevo multi-node load balancer pool
     const BATCH_SIZE = 5;
