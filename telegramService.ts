@@ -1848,7 +1848,7 @@ export async function getTasksCard(user: any): Promise<{ html: string; keyboard:
         WHEN ts.status = 'VERIFIED' THEN 4
         ELSE 5
       END ASC,
-      t.created_at DESC,
+      t.created_at ASC,
       t.deadline ASC NULLS LAST
   `, [user.id, user.class_id]);
 

@@ -5112,16 +5112,16 @@ export default function App() {
 
       const sortClassesList = (clsList: Class[]) => [...(clsList || [])].sort((a, b) => (a.year || 0) - (b.year || 0) || (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
       const sortDeptsList = (deptList: Department[]) => [...(deptList || [])].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
-      const sortTasksDescending = (taskList: Task[]) => [...(taskList || [])].sort((a, b) => {
+      const sortTasksAscending = (taskList: Task[]) => [...(taskList || [])].sort((a, b) => {
         const timeA = a.created_at ? new Date(a.created_at).getTime() : (a.deadline ? new Date(a.deadline).getTime() : 0);
         const timeB = b.created_at ? new Date(b.created_at).getTime() : (b.deadline ? new Date(b.deadline).getTime() : 0);
-        return timeB - timeA;
+        return timeA - timeB;
       });
 
       setDepartments(sortDeptsList(depts));
       setClasses(sortClassesList(classes));
       setUsers(users);
-      setTasks(sortTasksDescending(tasks));
+      setTasks(sortTasksAscending(tasks));
       setSubmissions(submissions);
       setNotifications(notifications);
 

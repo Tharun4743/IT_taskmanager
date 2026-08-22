@@ -1867,7 +1867,7 @@ async function startServer() {
         FROM tasks t
         LEFT JOIN users u ON t.created_by = u.id
         LEFT JOIN departments d ON t.department_id = d.id
-        ORDER BY t.created_at DESC
+        ORDER BY t.created_at ASC
       `);
     } else if (dbUser.role === 'STUDENT' || dbUser.role === 'CLASS_ADVISOR') {
       let query = `
@@ -1892,7 +1892,7 @@ async function startServer() {
         }
       }
 
-      query += ' ORDER BY t.created_at DESC';
+      query += ' ORDER BY t.created_at ASC';
       tasksRes = await pool.query(query, params);
     } else {
       // HOD
@@ -1916,7 +1916,7 @@ async function startServer() {
         params.push(deptClassIds);
       }
 
-      query += ' ORDER BY t.created_at DESC';
+      query += ' ORDER BY t.created_at ASC';
       tasksRes = await pool.query(query, params);
     }
 
@@ -3336,7 +3336,7 @@ async function startServer() {
          OR (t.department_id = $2 AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
          OR (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
       GROUP BY t.id
-      ORDER BY t.created_at DESC
+      ORDER BY t.created_at ASC
     `, [classId, deptId]);
     const tasks = tasksRes.rows;
 
@@ -4126,7 +4126,7 @@ async function startServer() {
       WHERE EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id AND class_id = $1)
          OR (t.department_id = $2 AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
          OR (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
-      ORDER BY t.created_at DESC
+      ORDER BY t.created_at ASC
     `, [classId, deptId]);
     const tasks = tasksRes.rows;
 
@@ -4254,7 +4254,7 @@ async function startServer() {
       WHERE tc.class_id = ANY($1)
          OR (t.department_id = $2 AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
          OR (t.department_id IS NULL AND NOT EXISTS (SELECT 1 FROM task_classes WHERE task_id = t.id))
-      ORDER BY t.created_at DESC
+      ORDER BY t.created_at ASC
     `, [classIds, deptId]);
     const tasks = tasksRes.rows;
 
