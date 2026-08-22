@@ -116,10 +116,16 @@ function getBrevoNodes(): BrevoAccountNode[] {
 
   for (const cfg of nodeConfigs) {
     if (cfg.key && cfg.key.trim()) {
+      const defaultSender = cfg.id === 'Brevo-Node-2'
+        ? 'campusvsb4743@gmail.com'
+        : cfg.id === 'Brevo-Node-3'
+        ? 'campusconnectvsb@gmail.com'
+        : 'vsbecitc2428@gmail.com';
+
       nodes.push({
         nodeId: cfg.id,
         apiKey: cfg.key.trim(),
-        senderEmail: cfg.email || 'campusvsb4743@gmail.com',
+        senderEmail: cfg.email || defaultSender,
         senderName: cfg.name || 'VSBEC IT Department'
       });
     }
@@ -267,7 +273,7 @@ export async function getLiveEmailNodesStatus(): Promise<{
     nodes: statuses,
     totalAvailableCredits: totalCredits,
     healthyNodesCount: healthyCount,
-    activeFallback: smtp ? 'SMTP Relay' : resendKey ? 'Resend' : 'None'
+    activeFallback: smtp ? 'SMTP Relay' : resendKey ? 'Resend' : 'Brevo HTTPS Pool (Port 443)'
   };
 }
 
