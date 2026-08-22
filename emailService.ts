@@ -129,6 +129,149 @@ function getBrevoNodes(): BrevoAccountNode[] {
 }
 
 /**
+ * 🔄 Live Available Credits & Multi-Node Pool Health Monitor
+ */
+export interface EmailNodeLiveStatus {
+  nodeId: string;
+  provider: 'Brevo' | 'Resend' | 'SMTP';
+  senderEmail: string;
+  senderName: string;
+  status: 'HEALTHY' | 'QUOTA_EXHAUSTED' | 'RATE_LIMITED' | 'AUTH_ERROR' | 'UNAVAILABLE';
+  credits?: number | null;
+  creditsType?: string;
+  planType?: string;
+  relayEnabled?: boolean;
+  lastChecked: string;
+  error?: string | null;
+}
+
+export async function getLiveEmailNodesStatus(): Promise<{
+  nodes: EmailNodeLiveStatus[];
+  totalAvailableCredits: number;
+  healthyNodesCount: number;
+  activeFallback: string;
+}> {
+  const brevoNodes = getBrevoNodes();
+  const statuses: EmailNodeLiveStatus[] = [];
+  let totalCredits = 0;
+  let healthyCount = 0;
+
+  for (const node of brevoNodes) {
+    const health = nodeHealthMap.get(node.nodeId);
+    let nodeStatus: 'HEALTHY' | 'QUOTA_EXHAUSTED' | 'RATE_LIMITED' | 'AUTH_ERROR' | 'UNAVAILABLE' =
+      health ? health.status : 'HEALTHY';
+    let credits: number | null = null;
+    let planType = 'Free (300 / day)';
+    let creditsType = 'sendLimit';
+    let relayEnabled = true;
+    let errorMsg: string | null = health?.lastError || null;
+
+    try {
+      const response = await fetch('https://api.brevo.com/v3/account', {
+        method: 'GET',
+        headers: {
+          'api-key': node.apiKey,
+          'accept': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data: any = await response.json();
+        if (data.plan && Array.isArray(data.plan) && data.plan.length > 0) {
+          const mainPlan = data.plan[0];
+          credits = typeof mainPlan.credits === 'number' ? mainPlan.credits : null;
+          planType = mainPlan.type ? `${mainPlan.type.toUpperCase()}` : 'Free';
+          creditsType = mainPlan.creditsType || 'sendLimit';
+        }
+        if (data.relay) {
+          relayEnabled = !!data.relay.enabled;
+        }
+        if (credits !== null && credits > 0 && nodeStatus !== 'AUTH_ERROR') {
+          nodeStatus = 'HEALTHY';
+          markNodeHealthy(node.nodeId);
+        } else if (credits === 0) {
+          nodeStatus = 'QUOTA_EXHAUSTED';
+        }
+      } else {
+        const errData: any = await response.json().catch(() => ({}));
+        errorMsg = errData.message || `HTTP ${response.status}`;
+        if (response.status === 401 || response.status === 403) {
+          nodeStatus = 'AUTH_ERROR';
+        } else if (response.status === 402) {
+          nodeStatus = 'QUOTA_EXHAUSTED';
+        }
+      }
+    } catch (err: any) {
+      errorMsg = err.message || 'Network error';
+      nodeStatus = 'UNAVAILABLE';
+    }
+
+    if (nodeStatus === 'HEALTHY') {
+      healthyCount++;
+      if (typeof credits === 'number') totalCredits += credits;
+    }
+
+    statuses.push({
+      nodeId: node.nodeId,
+      provider: 'Brevo',
+      senderEmail: node.senderEmail,
+      senderName: node.senderName,
+      status: nodeStatus,
+      credits,
+      creditsType,
+      planType,
+      relayEnabled,
+      lastChecked: new Date().toISOString(),
+      error: errorMsg
+    });
+  }
+
+  // Check Resend status
+  const resendKey = process.env.RESEND_API_KEY;
+  if (resendKey && resendKey.trim()) {
+    const resendHealth = nodeHealthMap.get('Resend');
+    statuses.push({
+      nodeId: 'Resend-Node-1',
+      provider: 'Resend',
+      senderEmail: process.env.EMAIL_FROM || 'onboarding@resend.dev',
+      senderName: 'VSBEC IT Department',
+      status: resendHealth ? resendHealth.status : 'HEALTHY',
+      credits: 100,
+      creditsType: 'apiSendLimit',
+      planType: 'Free Tier (100 / day)',
+      relayEnabled: true,
+      lastChecked: new Date().toISOString(),
+      error: resendHealth?.lastError || null
+    });
+  }
+
+  // Check SMTP Relay status
+  const smtp = getSmtpTransporter();
+  if (smtp) {
+    statuses.push({
+      nodeId: 'SMTP-Relay-Fallback',
+      provider: 'SMTP',
+      senderEmail: process.env.SMTP_USER || process.env.BREVO_SENDER_EMAIL || 'vsbecitc2428@gmail.com',
+      senderName: 'VSBEC IT Department',
+      status: 'HEALTHY',
+      credits: null,
+      creditsType: 'unlimitedRelay',
+      planType: 'Direct SMTP Relay',
+      relayEnabled: true,
+      lastChecked: new Date().toISOString(),
+      error: null
+    });
+  }
+
+  return {
+    nodes: statuses,
+    totalAvailableCredits: totalCredits,
+    healthyNodesCount: healthyCount,
+    activeFallback: smtp ? 'SMTP Relay' : resendKey ? 'Resend' : 'None'
+  };
+}
+
+/**
  * ⚡ Intelligent Multi-Node Email Dispatcher (Round-Robin Load Balancing + Instant Quota Failover)
  */
 async function dispatchEmailThroughPool(

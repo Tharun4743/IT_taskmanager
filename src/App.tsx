@@ -4371,6 +4371,26 @@ export default function App() {
   const [emailAlertSending, setEmailAlertSending] = useState(false);
   const [emailAlertCustomMsg, setEmailAlertCustomMsg] = useState('');
   const [emailAlertSuccessStats, setEmailAlertSuccessStats] = useState<any>(null);
+  const [emailNodesStatus, setEmailNodesStatus] = useState<any>(null);
+  const [fetchingEmailStatus, setFetchingEmailStatus] = useState(false);
+
+  const fetchEmailNodesStatus = async () => {
+    if (!token) return;
+    setFetchingEmailStatus(true);
+    try {
+      const res = await fetch(`${API_URL}/api/email-service/status`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEmailNodesStatus(data);
+      }
+    } catch (err) {
+      console.error('Error fetching email nodes status:', err);
+    } finally {
+      setFetchingEmailStatus(false);
+    }
+  };
 
   const openTaskPendingEmailModal = async (task: Task) => {
     setEmailAlertTask(task);
@@ -4378,6 +4398,7 @@ export default function App() {
     setEmailAlertPendingData(null);
     setEmailAlertSuccessStats(null);
     setEmailAlertCustomMsg('');
+    fetchEmailNodesStatus();
     try {
       const res = await fetch(`${API_URL}/api/tasks/${task.id}/pending-students`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -4413,6 +4434,7 @@ export default function App() {
       if (res.ok && data.success) {
         setEmailAlertSuccessStats(data);
         addToast(data.message || `Dispatched pending reminders to ${data.sentCount} students!`, 'success');
+        fetchEmailNodesStatus();
       } else {
         addToast(data.error || 'Failed to dispatch email reminders', 'error');
       }
@@ -9633,6 +9655,84 @@ export default function App() {
                 </div>
               ) : (
                 <>
+                  {/* Live Dispatch Pool & Real-Time Credits Card */}
+                  <div className="bg-gradient-to-br from-zinc-50 to-amber-50/40 border border-amber-200/70 rounded-2xl p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Sparkles size={14} className="text-amber-600" />
+                        <span className="text-xs font-black text-zinc-900 uppercase tracking-wide">
+                          Live Email Dispatch Pool & Credits
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {fetchingEmailStatus && <Loader2 size={12} className="animate-spin text-zinc-400" />}
+                        <button
+                          type="button"
+                          onClick={fetchEmailNodesStatus}
+                          className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 underline cursor-pointer"
+                        >
+                          Refresh Credits
+                        </button>
+                      </div>
+                    </div>
+
+                    {emailNodesStatus ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {emailNodesStatus.nodes?.map((node: any) => (
+                          <div
+                            key={node.nodeId}
+                            className={cn(
+                              "p-2.5 rounded-xl border text-xs flex items-center justify-between transition-all shadow-2xs",
+                              node.status === 'HEALTHY'
+                                ? "bg-white border-emerald-200/80 text-zinc-800"
+                                : node.status === 'QUOTA_EXHAUSTED'
+                                ? "bg-red-50/50 border-red-200 text-red-900"
+                                : "bg-amber-50/50 border-amber-200 text-amber-900"
+                            )}
+                          >
+                            <div className="min-w-0 pr-2">
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className={cn(
+                                    "w-2 h-2 rounded-full shrink-0",
+                                    node.status === 'HEALTHY'
+                                      ? "bg-emerald-500 shadow-xs shadow-emerald-500/50"
+                                      : node.status === 'QUOTA_EXHAUSTED'
+                                      ? "bg-red-500"
+                                      : "bg-amber-500"
+                                  )}
+                                />
+                                <span className="font-extrabold truncate text-[11px]">{node.nodeId}</span>
+                              </div>
+                              <span className="text-[10px] text-zinc-400 truncate block font-mono">
+                                {node.senderEmail}
+                              </span>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className={cn(
+                                "font-mono font-extrabold text-[12px] block",
+                                node.status === 'HEALTHY' ? "text-emerald-700" : "text-red-600"
+                              )}>
+                                {typeof node.credits === 'number'
+                                  ? `${node.credits} left`
+                                  : node.status === 'HEALTHY'
+                                  ? 'Active Relay'
+                                  : node.status}
+                              </span>
+                              <span className="text-[9px] text-zinc-400 font-semibold block">
+                                {node.planType || node.provider}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-2 text-xs text-zinc-400 font-medium">
+                        Checking multi-node pool health...
+                      </div>
+                    )}
+                  </div>
+
                   {/* Incomplete Student Overview */}
                   <div className="border border-zinc-200 rounded-2xl p-4 bg-zinc-50 space-y-3">
                     <div className="flex items-center justify-between">

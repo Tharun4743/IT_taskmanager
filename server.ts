@@ -34,7 +34,8 @@ import {
   sendTaskPendingReminderEmail,
   triggerManualTaskPendingReminders,
   notifyNewTaskCreatedEmail,
-  triggerDeadlineUrgentEmailReminders
+  triggerDeadlineUrgentEmailReminders,
+  getLiveEmailNodesStatus
 } from './emailService.js';
 
 export {
@@ -2539,6 +2540,17 @@ async function startServer() {
     } catch (err: any) {
       console.error('Error sending task pending reminders:', err);
       res.status(500).json({ error: err.message || 'Failed to send reminders' });
+    }
+  });
+
+  // ── Live Email Nodes Status & Credits Route ──────────────────────────────────
+  app.get('/api/email-service/status', authenticate, authorize(['SUPREME_ADMIN', 'HOD', 'CLASS_ADVISOR', 'STAFF', 'COORDINATOR']), async (req: any, res) => {
+    try {
+      const status = await getLiveEmailNodesStatus();
+      res.json(status);
+    } catch (err: any) {
+      console.error('Error fetching live email nodes status:', err);
+      res.status(500).json({ error: err.message || 'Failed to fetch email status' });
     }
   });
 
