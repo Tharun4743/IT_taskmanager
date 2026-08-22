@@ -26,7 +26,14 @@ import { syncAndGenerateStudentDirectory, updateStudentCodingProfileInDirectory,
 import { cleanupOnlyTaskScreenshots } from './imageCleanupService.js';
 import { generateDatabaseSnapshot } from './dbBackupService.js';
 import { initSentry } from './sentryService.js';
-import { sendPasswordResetOtpEmail } from './emailService.js';
+import {
+  sendPasswordResetOtpEmail,
+  sendTaskStatusEmail,
+  sendNewTaskPostedEmail,
+  sendDeadlineAlertEmail,
+  notifyNewTaskCreatedEmail,
+  triggerDeadlineUrgentEmailReminders
+} from './emailService.js';
 import {
   startTelegramPoller,
   sendGroupSummary,
@@ -479,6 +486,11 @@ async function startServer() {
             .then(() => generateDatabaseSnapshot())
             .catch(err => console.error('[LeetCode AutoSync] Nightly sync error:', err));
         }
+      }
+
+      // Check for incomplete tasks due within 2 hours and dispatch urgent email alerts (every 5-10 minutes)
+      if (minutes % 5 === 0) {
+        triggerDeadlineUrgentEmailReminders().catch(err => console.error('[Email Scheduler] Error checking 2-hour deadline alerts:', err));
       }
     } catch (schedErr) {
       console.error('[Scheduler] Check error:', schedErr);
@@ -1010,17 +1022,29 @@ async function startServer() {
 
     let user = userRes.rows[0];
 
-    // If not in database directly, check student directory for matching email
+    // If not in database directly, check student directory
     if (!user) {
       const dirStudent = constantStudentByRegNoMap.get(cleanId) || constantStudentByEmailMap.get(cleanId);
-      if (dirStudent && dirStudent.email) {
-        const matchRes = await pool.query('SELECT id, full_name, register_number, email, role FROM users WHERE LOWER(email) = $1 LIMIT 1', [dirStudent.email.toLowerCase().trim()]);
-        user = matchRes.rows[0];
+      if (dirStudent) {
+        if (dirStudent.email) {
+          const matchRes = await pool.query('SELECT id, full_name, register_number, email, role FROM users WHERE LOWER(email) = $1 LIMIT 1', [dirStudent.email.toLowerCase().trim()]);
+          user = matchRes.rows[0];
+          // If still no row in users table, but student is recognized in institutional directory
+          if (!user) {
+            return res.status(404).json({ error: `Account for ${dirStudent.full_name} (${dirStudent.register_number}) has not been activated yet. Please sign in with your default credentials first.` });
+          }
+        } else {
+          return res.status(404).json({ error: `No registered email address found for Register No: ${dirStudent.register_number}. Please contact your Class Advisor to link your email.` });
+        }
       }
     }
 
-    if (!user || !user.email) {
-      return res.status(404).json({ error: 'No account found matching this Register Number or Email.' });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found. Please verify your Register Number or Email ID.' });
+    }
+
+    if (!user.email || !user.email.trim()) {
+      return res.status(400).json({ error: 'No registered email address linked to your account. Please contact your Class Advisor.' });
     }
 
     // Rate-limit check: maximum 3 active OTP requests in 10 minutes
@@ -2216,6 +2240,16 @@ async function startServer() {
         deadline: t.deadline,
         creator_name: dbUser.full_name
       }, clsIds).catch(err => console.error('[Telegram Notify Task Error]:', err));
+
+      // Dispatch real-time Institutional Email notification to assigned classes
+      notifyNewTaskCreatedEmail({
+        id: t.id,
+        title: t.title,
+        category: t.category,
+        deadline: t.deadline,
+        creator_name: dbUser.full_name,
+        submission_type: t.submission_type
+      }, clsIds).catch(err => console.error('[Email Notify Task Error]:', err));
 
       // Dispatch real-time Web Push notification to students' mobile/desktop lock-screens
       const pushTitle = `📌 New Task: ${t.title}`;

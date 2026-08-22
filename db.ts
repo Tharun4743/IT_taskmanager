@@ -479,6 +479,17 @@ export async function initDB() {
       );
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS task_deadline_alerts (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        alert_type VARCHAR(50) DEFAULT '2_HOUR',
+        sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(task_id, user_id, alert_type)
+      );
+    `);
+
     // Schema Migrations
     await client.query(`
       ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS cloudinary_public_id VARCHAR(255);
@@ -549,6 +560,7 @@ export async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, is_read) WHERE is_read = false;`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_password_resets_lookup ON password_resets(email, otp_code, used);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets(user_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_task_deadline_alerts ON task_deadline_alerts(task_id, user_id, alert_type);`);
 
     // ─── Module 5: LeetCode Targets & Progress Tracking ───────────────────────
     await client.query(`

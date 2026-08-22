@@ -52,4 +52,10 @@ services:
       - key: BREVO_SENDER_EMAIL
         value: "vsbecitc2428@gmail.com"
       - key: BREVO_SENDER_NAME
-        value: "IT TaskManager"
+        value: "VSBEC IT Department"
+      - key: BREVO_API_KEY_2
+        sync: false
+      - key: BREVO_SENDER_EMAIL_2
+        value: "campusconnectvsb@gmail.com"
+      - key: BREVO_SENDER_NAME_2
+        value: "VSBEC IT Department"
