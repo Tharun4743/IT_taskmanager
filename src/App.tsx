@@ -11458,7 +11458,7 @@ export default function App() {
                         </div>
                       )}
 
-                      {tasks.filter(task => {
+                      {[...tasks].sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()).filter(task => {
                         if (!isStudent || studentTaskFilter === 'ALL') return true;
                         const sub = submissions.find(s => String(s.task_id) === String(task.id) && String(s.user_id) === String(user?.id));
                         const isDeadlinePassed = task.deadline && new Date(task.deadline) < new Date();

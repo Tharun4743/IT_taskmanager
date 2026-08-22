@@ -1904,7 +1904,7 @@ async function startServer() {
         FROM tasks t
         LEFT JOIN users u ON t.created_by = u.id
         LEFT JOIN departments d ON t.department_id = d.id
-        ORDER BY t.created_at ASC
+        ORDER BY t.created_at DESC
       `);
     } else if (dbUser.role === 'STUDENT' || dbUser.role === 'CLASS_ADVISOR') {
       let query = `
@@ -1929,7 +1929,7 @@ async function startServer() {
         }
       }
 
-      query += ' ORDER BY t.created_at ASC';
+      query += ' ORDER BY t.created_at DESC';
       tasksRes = await pool.query(query, params);
     } else {
       // HOD
@@ -1953,7 +1953,7 @@ async function startServer() {
         params.push(deptClassIds);
       }
 
-      query += ' ORDER BY t.created_at ASC';
+      query += ' ORDER BY t.created_at DESC';
       tasksRes = await pool.query(query, params);
     }
 
