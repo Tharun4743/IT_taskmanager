@@ -896,13 +896,16 @@ export async function sendPasswordResetOtpEmail(payload: PasswordResetOtpPayload
           An official password reset request was initiated for your account on the <b>VSB Academic Task Management System</b>. To authenticate your identity and assign a new password, use the one-time verification code (OTP) below:
         </p>
 
-        <!-- OTP Code Box -->
-        <div style="background: #f8fafc; border: 2px solid #cbd5e1; border-radius: 10px; padding: 24px 16px; margin: 24px auto; text-align: center; max-width: 320px;">
-          <span style="font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.15em; display: block; margin-bottom: 8px;">
+        <!-- Easy-to-Copy OTP Code Box -->
+        <div style="background: #f8fafc; border: 2px solid #cbd5e1; border-radius: 12px; padding: 22px 16px; margin: 24px auto; text-align: center; max-width: 340px;">
+          <span style="font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.15em; display: block; margin-bottom: 10px;">
             ONE-TIME SECURITY CODE
           </span>
-          <span style="font-family: 'Courier New', Courier, monospace; font-size: 36px; font-weight: 900; letter-spacing: 0.25em; color: #0f172a; display: block;">
-            ${otpCode}
+          <div style="background: #ffffff; border: 2px dashed #94a3b8; border-radius: 8px; padding: 12px 20px; display: inline-block; user-select: all; -webkit-user-select: all; -moz-user-select: all; -ms-user-select: all; cursor: pointer;">
+            <span style="font-family: 'Courier New', Courier, monospace, 'Lucida Console'; font-size: 38px; font-weight: 900; letter-spacing: 6px; color: #0f172a; display: block; user-select: all; -webkit-user-select: all;">${otpCode}</span>
+          </div>
+          <span style="font-size: 11.5px; color: #64748b; font-weight: 600; display: block; margin-top: 10px;">
+            📋 <i>Tap or click code to select all & copy</i>
           </span>
         </div>
 
