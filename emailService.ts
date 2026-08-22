@@ -55,39 +55,81 @@ function getSmtpTransporter(): nodemailer.Transporter | null {
   return null;
 }
 
+interface NodeHealthState {
+  status: 'HEALTHY' | 'QUOTA_EXHAUSTED' | 'RATE_LIMITED' | 'AUTH_ERROR';
+  exhaustedUntil: number;
+  failureCount: number;
+  lastError: string;
+}
+
+const nodeHealthMap = new Map<string, NodeHealthState>();
+
+function isNodeAvailable(nodeId: string): boolean {
+  const health = nodeHealthMap.get(nodeId);
+  if (!health) return true;
+  if (health.status === 'HEALTHY') return true;
+  // If cooldown period has elapsed, allow retry
+  if (Date.now() >= health.exhaustedUntil) {
+    nodeHealthMap.delete(nodeId);
+    return true;
+  }
+  return false;
+}
+
+function markNodeExhausted(nodeId: string, errorMsg: string, status?: number) {
+  const isQuota = status === 402 || /quota|limit|credit|exceeded|maximum|not enough/i.test(errorMsg);
+  const isRateLimit = status === 429 || /rate|too many requests/i.test(errorMsg);
+  const isAuth = status === 401 || status === 403 || /unauthorized|forbidden|invalid.*key|suspended/i.test(errorMsg);
+
+  // Quota exhausted: 6-hour cooldown; Rate limited: 5-minute cooldown; Auth error: 12-hour cooldown
+  const cooldownMs = isQuota ? 6 * 60 * 60 * 1000 : isRateLimit ? 5 * 60 * 1000 : isAuth ? 12 * 60 * 60 * 1000 : 15 * 60 * 1000;
+
+  nodeHealthMap.set(nodeId, {
+    status: isQuota ? 'QUOTA_EXHAUSTED' : isRateLimit ? 'RATE_LIMITED' : isAuth ? 'AUTH_ERROR' : 'QUOTA_EXHAUSTED',
+    exhaustedUntil: Date.now() + cooldownMs,
+    failureCount: (nodeHealthMap.get(nodeId)?.failureCount || 0) + 1,
+    lastError: errorMsg
+  });
+
+  console.warn(`[EmailService] ⚡ Node [${nodeId}] marked unavailable for ${Math.round(cooldownMs / 60000)}m due to: ${errorMsg}. Load balancer will route to next node.`);
+}
+
+function markNodeHealthy(nodeId: string) {
+  if (nodeHealthMap.has(nodeId)) {
+    nodeHealthMap.delete(nodeId);
+  }
+}
+
 /**
- * 🔄 Returns active Brevo account nodes for Load Balancing & Failover
+ * 🔄 Returns active Brevo account nodes for Load Balancing & Failover (Supports up to 5 nodes)
  */
 function getBrevoNodes(): BrevoAccountNode[] {
   const nodes: BrevoAccountNode[] = [];
 
-  // Node 1 (Primary)
-  const key1 = process.env.BREVO_API_KEY;
-  if (key1 && key1.trim()) {
-    nodes.push({
-      nodeId: 'Brevo-Node-1',
-      apiKey: key1.trim(),
-      senderEmail: process.env.BREVO_SENDER_EMAIL || 'vsbecitc2428@gmail.com',
-      senderName: process.env.BREVO_SENDER_NAME || 'VSBEC IT Department'
-    });
-  }
+  const nodeConfigs = [
+    { key: process.env.BREVO_API_KEY, email: process.env.BREVO_SENDER_EMAIL, name: process.env.BREVO_SENDER_NAME, id: 'Brevo-Node-1' },
+    { key: process.env.BREVO_API_KEY_2, email: process.env.BREVO_SENDER_EMAIL_2, name: process.env.BREVO_SENDER_NAME_2, id: 'Brevo-Node-2' },
+    { key: (process.env as any).BREVO_API_KEY_3, email: (process.env as any).BREVO_SENDER_EMAIL_3, name: (process.env as any).BREVO_SENDER_NAME_3, id: 'Brevo-Node-3' },
+    { key: (process.env as any).BREVO_API_KEY_4, email: (process.env as any).BREVO_SENDER_EMAIL_4, name: (process.env as any).BREVO_SENDER_NAME_4, id: 'Brevo-Node-4' },
+    { key: (process.env as any).BREVO_API_KEY_5, email: (process.env as any).BREVO_SENDER_EMAIL_5, name: (process.env as any).BREVO_SENDER_NAME_5, id: 'Brevo-Node-5' }
+  ];
 
-  // Node 2 (Load Balancer & Automatic Failover)
-  const key2 = process.env.BREVO_API_KEY_2;
-  if (key2 && key2.trim()) {
-    nodes.push({
-      nodeId: 'Brevo-Node-2',
-      apiKey: key2.trim(),
-      senderEmail: process.env.BREVO_SENDER_EMAIL_2 || 'campusconnectvsb@gmail.com',
-      senderName: process.env.BREVO_SENDER_NAME_2 || 'VSBEC IT Department'
-    });
+  for (const cfg of nodeConfigs) {
+    if (cfg.key && cfg.key.trim()) {
+      nodes.push({
+        nodeId: cfg.id,
+        apiKey: cfg.key.trim(),
+        senderEmail: cfg.email || 'vsbecitc2428@gmail.com',
+        senderName: cfg.name || 'VSBEC IT Department'
+      });
+    }
   }
 
   return nodes;
 }
 
 /**
- * ⚡ Intelligent Multi-Node Email Dispatcher (Round-Robin Load Balancing + Instant Failover)
+ * ⚡ Intelligent Multi-Node Email Dispatcher (Round-Robin Load Balancing + Instant Quota Failover)
  */
 async function dispatchEmailThroughPool(
   to: string,
@@ -96,15 +138,18 @@ async function dispatchEmailThroughPool(
   htmlContent: string,
   customSenderName?: string
 ): Promise<{ success: boolean; messageId?: string; provider?: string; error?: string }> {
-  const nodes = getBrevoNodes();
+  const allNodes = getBrevoNodes();
+  // Filter only healthy, non-exhausted nodes
+  const availableNodes = allNodes.filter(n => isNodeAvailable(n.nodeId));
+  const nodesToTry = availableNodes.length > 0 ? availableNodes : allNodes;
   let lastErrorMsg = '';
 
-  if (nodes.length > 0) {
-    const startIdx = roundRobinIndex % nodes.length;
+  if (nodesToTry.length > 0) {
+    const startIdx = roundRobinIndex % nodesToTry.length;
     roundRobinIndex++;
 
-    for (let i = 0; i < nodes.length; i++) {
-      const activeNode = nodes[(startIdx + i) % nodes.length];
+    for (let i = 0; i < nodesToTry.length; i++) {
+      const activeNode = nodesToTry[(startIdx + i) % nodesToTry.length];
       const senderDisplayName = customSenderName || activeNode.senderName;
 
       try {
@@ -129,11 +174,14 @@ async function dispatchEmailThroughPool(
         const resData: any = await response.json();
 
         if (response.ok) {
+          markNodeHealthy(activeNode.nodeId);
           console.log(`[EmailService] ✅ Email dispatched via [${activeNode.nodeId} | <${activeNode.senderEmail}>] to ${to} (${resData.messageId})`);
           return { success: true, messageId: resData.messageId, provider: activeNode.nodeId };
         } else {
           lastErrorMsg = resData?.message || JSON.stringify(resData);
           console.warn(`[EmailService] ⚠️ ${activeNode.nodeId} returned status ${response.status}:`, lastErrorMsg);
+          // Mark circuit breaker if limit reached or auth error
+          markNodeExhausted(activeNode.nodeId, lastErrorMsg, response.status);
         }
       } catch (err: any) {
         lastErrorMsg = err.message || 'Brevo network error';
@@ -142,9 +190,9 @@ async function dispatchEmailThroughPool(
     }
   }
 
-  // Fallback to Resend if all Brevo nodes are exhausted
+  // Priority 2: Fallback to Resend if Brevo pool is exhausted
   const resendKey = process.env.RESEND_API_KEY;
-  if (resendKey && resendKey.trim()) {
+  if (resendKey && resendKey.trim() && isNodeAvailable('Resend')) {
     try {
       const response = await fetch('https://api.resend.com/emails', {
         method: 'POST',
@@ -162,10 +210,12 @@ async function dispatchEmailThroughPool(
 
       const resData: any = await response.json();
       if (response.ok) {
+        markNodeHealthy('Resend');
         console.log(`[EmailService] ✅ Fallback email dispatched via Resend to ${to} (${resData.id})`);
         return { success: true, messageId: resData.id, provider: 'Resend' };
       } else {
         lastErrorMsg = resData?.message || JSON.stringify(resData);
+        markNodeExhausted('Resend', lastErrorMsg, response.status);
       }
     } catch (err: any) {
       lastErrorMsg = err.message || 'Resend network error';
@@ -173,7 +223,7 @@ async function dispatchEmailThroughPool(
     }
   }
 
-  // Fallback to Nodemailer SMTP
+  // Priority 3: Fallback to Nodemailer SMTP Relay / Direct Gmail
   const transporter = getSmtpTransporter();
   if (transporter) {
     try {
