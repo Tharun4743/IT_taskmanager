@@ -27,9 +27,10 @@ This document provides a comprehensive technical overview highlighting the initi
 | **17** | **Database Snapshot Backups** | Standard cloud database persistence. | **Automated Daily Snapshots** ([`dbBackupService.ts`](file:///c:/Users/tharu/Downloads/IT_taskmanager-main/dbBackupService.ts)): Scheduled JSON database backups with rolling retention policy to ensure data safety. | `Data Reliability` |
 | **18** | **Media Storage Lifecycle** | Cloudinary asset storage. | **Automated Storage Lifecycle** ([`imageCleanupService.ts`](file:///c:/Users/tharu/Downloads/IT_taskmanager-main/imageCleanupService.ts)): Scheduled cleanup worker to manage temporary upload storage efficiently. | `Resource Management` |
 | **19** | **Server Caching & Optimization** | Direct database querying with connection pooling. | **High-Speed In-Memory Cache**: Scoped caching for authentication and read-heavy routes, tuned pool timeouts, and 11 compound indexes. | `Performance Tuning` |
-| **20** | **Error Diagnostics** | Standard server console error logging. | **Centralized Error Tracking** ([`sentryService.ts`](file:///c:/Users/tharu/Downloads/IT_taskmanager-main/sentryService.ts)): Integrated Sentry monitoring for real-time exception diagnostics. | `Observability` |
+| **20** | **Error Diagnostics & Observability** | Standard server console error logging. | **Centralized Error Diagnostics**: Integrated real-time exception capture and performance monitoring. | `Observability` |
 | **21** | **Student Portfolio & Resumes** | Core academic task profile. | **Comprehensive Portfolio Builder**: Full resume builder with personal info, skills, projects, internships, certifications, coding handles, and career goals. | `Career Development` |
-| **22** | **Relational Schema Scale** | Foundational 6 relational tables. | **29 Specialized Relational Tables** supporting coding analytics, teams, notices, student profiles, and system automations. | `Enterprise Architecture` |
+| **22** | **Relational Schema Scale** | Foundational 6 relational tables. | **31 Specialized Relational Tables** supporting coding analytics, teams, notices, student profiles, password reset OTPs, deadline alert deduplication, and system automations. | `Enterprise Architecture` |
+| **23** | **Automated Email Dispatch & OTP** | No automated email subsystem; relies strictly on browser alerts. | **Multi-Node Cloud Email & OTP Engine** ([`emailService.ts`](file:///c:/Users/tharu/Documents/GITHUB%20REPO/IT_taskmanager-main/emailService.ts)): Self-service 6-digit OTP password reset with 1-click copy, multi-node load balanced email pool with zero-downtime failover, 4 institutional notification streams, and official college emblem letterhead. | `Multi-Channel Alerts & Security` |
 
 ---
 
@@ -61,9 +62,15 @@ This document provides a comprehensive technical overview highlighting the initi
 * Node.js memory cache (`studentDirectoryService.ts`) indexes 400+ student records in RAM for sub-millisecond lookups.
 * Auto-commits coding handle updates to GitHub via REST API (for cloud containers) or Git CLI (for local environments).
 
-### 5. Automated GitHub Nightly Sync & 29-Table Snapshot Archival
+### 5. Automated GitHub Nightly Sync & 31-Table Snapshot Archival
 * **11:55 PM IST Daily LeetCode CSV Auto-Push**: Automatically builds datewise master and section-wise CSV reports (`leetcode/LeetCode_Daily_Report_YYYY-MM-DD.csv`, `leetcode/YYYY-MM-DD/Section_*.csv`) and pushes them to GitHub via GitHub Contents REST API & Git CLI.
-* **29-Table JSON Snapshot Archival**: Every 24 hours, `generateDatabaseSnapshot()` captures all 29 PostgreSQL tables in `backups/db_backup_*.json` and pushes the snapshot to GitHub with 7-day rolling retention and automatic cloud pruning.
+* **31-Table JSON Snapshot Archival**: Every 24 hours, `generateDatabaseSnapshot()` captures all PostgreSQL tables in `backups/db_backup_*.json` and pushes the snapshot to GitHub with 7-day rolling retention and automatic cloud pruning.
+
+### 6. Automated Multi-Node Email Dispatch & Security OTP Engine
+* **Self-Service 6-Digit Email OTP Password Reset**: Automated identity verification with 10-minute expiry window, rate-limiting, and 1-tap/1-click instant copy container.
+* **Multi-Node Load Balanced Email Pool**: High-availability architecture with round-robin dispatch, automated zero-downtime failover, and HTTPS REST delivery.
+* **4 Core Academic Notification Streams**: Real-time broadcasts for *New Task Assignments*, *Submission Approvals*, *Rejections with Reviewer Notes*, and *Automated 2-Hour Approaching Deadline Alerts* for incomplete students.
+* **Institutional Academic Letterhead**: Formal government & college letterhead embedding the official institutional emblem (`logo.png`), NAAC 'A' Grade accreditation banner, and reference tracking.
 
 ---
 

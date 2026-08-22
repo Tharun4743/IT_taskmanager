@@ -29,7 +29,8 @@
 2. **Live Coding Analytics (LeetCode & GitHub)**: Real-time synchronization of LeetCode problem velocity, student daily total GitHub commit counts, multi-level LeetCode target inheritance, and defaulter tracking.
 3. **Automated Telegram Bot Engine (`@IT_TaskManager_Alerts_bot`)**: Register Number instant lookup, class/year analysis shortcuts (`/3ita`, `/2it`, `/year3`) with section breakdowns, private deadline reminders, and daily department briefs.
 4. **Institutional Reporting Suite**: Direct OpenXML `.xlsx` generation across 9 specialized formats with dynamic boundary trimming and zero file corruption.
-5. **Automated Cloud Sync & Snapshots**: 11:55 PM IST daily LeetCode CSV auto-export pushed to GitHub, alongside daily 29-table JSON snapshot backups with 7-day rolling retention.
+5. **Automated Cloud Sync & Snapshots**: 11:55 PM IST daily LeetCode CSV auto-export pushed to GitHub, alongside daily 31-table JSON snapshot backups with 7-day rolling retention.
+6. **Automated Email Dispatch & Security OTP Engine**: Multi-node load balanced email delivery with instant failover, 4 institutional notification streams, and self-service 1-click easy copy OTP password reset.
 
 ---
 
@@ -48,8 +49,9 @@ flowchart TD
         B2["📝 Task & Verification Engine"]
         B3["💻 LeetCode & GitHub Sync Engine"]
         B4["🤖 Telegram Bot Service"]
-        B5["📊 ExcelJS Report Builder"]
-        B6["🚀 RAM Directory Cache"]
+        B5["📧 Multi-Node Email & OTP Engine"]
+        B6["📊 ExcelJS Report Builder"]
+        B7["🚀 RAM Directory Cache"]
     end
 
     subgraph Storage["💾 Persistence & Cloud Services"]
@@ -57,6 +59,7 @@ flowchart TD
         C2["📱 Telegram API"]
         C3["☁️ LeetCode GraphQL & GitHub API"]
         C4["🖼️ Cloudinary CDN"]
+        C5["✉️ Cloud Email Dispatcher (HTTPS REST)"]
     end
 
     UI --> API
@@ -121,8 +124,18 @@ flowchart LR
 
 ### Module 5: Automated Cloud Sync & Database Snapshots
 - **11:55 PM IST Daily LeetCode CSV Auto-Push**: Generates datewise master and section-wise CSV reports (`leetcode/LeetCode_Daily_Report_YYYY-MM-DD.csv`, `leetcode/YYYY-MM-DD/Section_*.csv`) and automatically commits and pushes them to GitHub.
-- **Automated Database Snapshots**: Every 24 hours, captures all 29 PostgreSQL tables in `backups/db_backup_*.json` and pushes snapshots to GitHub with a 7-day rolling retention policy.
+- **Automated Database Snapshots**: Every 24 hours, captures all 31 PostgreSQL tables in `backups/db_backup_*.json` and pushes snapshots to GitHub with a 7-day rolling retention policy.
 - **RAM Directory Auto-Sync**: In-memory student cache (< 0.01ms lookups) with auto-push to GitHub on profile updates.
+
+### Module 6: Enterprise Automated Email System & Security OTP Engine
+- **Self-Service 6-Digit Email OTP Password Reset**: Automated verification pipeline with 10-minute expiry window, 3-attempt brute-force protection, and 1-tap/1-click instant copy container.
+- **Multi-Node Load Balanced Email Pool**: High-availability multi-node architecture with round-robin load distribution and automated zero-downtime failover over secure HTTPS REST protocol.
+- **4 Core Academic Notification Streams**:
+  - *New Task Assignment*: Automatic notification broadcast to assigned classes upon task publication.
+  - *Submission Verification*: Official approval memorandum with evaluation badge and faculty feedback.
+  - *Submission Rejection*: Real-time correction notice with reviewer remarks and direct resubmission portal link.
+  - *Incomplete Task 2-Hour Deadline Alert*: Automated background scanner triggering final-call urgency emails for incomplete students.
+- **Institutional Academic Letterhead**: Formal government & college letterhead embedding the official institutional emblem (`logo.png`), NAAC 'A' Grade accreditation banner, and reference tracking.
 
 ---
 
