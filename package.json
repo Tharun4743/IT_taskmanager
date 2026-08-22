@@ -34,6 +34,7 @@
     "motion": "^12.23.24",
     "multer": "^2.1.0",
     "multer-storage-cloudinary": "^4.0.0",
+    "nodemailer": "^9.0.5",
     "pg": "^8.22.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -56,6 +57,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.2.0",
     "@types/node": "^22.20.1",
+    "@types/nodemailer": "^8.0.1",
     "@types/web-push": "^3.6.4"
   }
 }

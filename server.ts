@@ -26,6 +26,7 @@ import { syncAndGenerateStudentDirectory, updateStudentCodingProfileInDirectory,
 import { cleanupOnlyTaskScreenshots } from './imageCleanupService.js';
 import { generateDatabaseSnapshot } from './dbBackupService.js';
 import { initSentry } from './sentryService.js';
+import { sendPasswordResetOtpEmail } from './emailService.js';
 import {
   startTelegramPoller,
   sendGroupSummary,
@@ -978,6 +979,228 @@ async function startServer() {
         year_scope: user.year_scope,
         telegram_chat_id: user.telegram_chat_id || null,
         telegram_username: user.telegram_username || null,
+      }
+    });
+  }));
+
+  // ── Forgot Password & Email OTP System ─────────────────────────────────────
+  const maskEmail = (email: string) => {
+    if (!email || !email.includes('@')) return email;
+    const [user, domain] = email.split('@');
+    if (user.length <= 2) return `${user[0]}*@${domain}`;
+    return `${user.slice(0, 2)}${'*'.repeat(Math.max(2, user.length - 4))}${user.slice(-2)}@${domain}`;
+  };
+
+  // 1. Request OTP for password reset
+  app.post('/api/auth/forgot-password/request-otp', asyncHandler(async (req: Request, res: Response) => {
+    const { identifier } = req.body;
+    if (!identifier || typeof identifier !== 'string' || !identifier.trim()) {
+      return res.status(400).json({ error: 'Please enter your Register Number or Email ID' });
+    }
+
+    const cleanId = identifier.trim().toLowerCase();
+
+    // Find user by register_number, email, or username
+    const userRes = await pool.query(`
+      SELECT id, full_name, register_number, email, role 
+      FROM users 
+      WHERE LOWER(register_number) = $1 OR LOWER(email) = $1 OR LOWER(username) = $1
+      LIMIT 1
+    `, [cleanId]);
+
+    let user = userRes.rows[0];
+
+    // If not in database directly, check student directory for matching email
+    if (!user) {
+      const dirStudent = constantStudentByRegNoMap.get(cleanId) || constantStudentByEmailMap.get(cleanId);
+      if (dirStudent && dirStudent.email) {
+        const matchRes = await pool.query('SELECT id, full_name, register_number, email, role FROM users WHERE LOWER(email) = $1 LIMIT 1', [dirStudent.email.toLowerCase().trim()]);
+        user = matchRes.rows[0];
+      }
+    }
+
+    if (!user || !user.email) {
+      return res.status(404).json({ error: 'No account found matching this Register Number or Email.' });
+    }
+
+    // Rate-limit check: maximum 3 active OTP requests in 10 minutes
+    const recentOtpRes = await pool.query(`
+      SELECT count(*) as count FROM password_resets 
+      WHERE user_id = $1 AND created_at > NOW() - INTERVAL '10 minutes'
+    `, [user.id]);
+    if (parseInt(recentOtpRes.rows[0].count) >= 4) {
+      return res.status(429).json({ error: 'Too many OTP requests. Please wait a few minutes before trying again.' });
+    }
+
+    // Invalidate previous active OTPs for this user
+    await pool.query('UPDATE password_resets SET used = TRUE WHERE user_id = $1 AND used = FALSE', [user.id]);
+
+    // Generate cryptographically random 6-digit numeric OTP
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Insert new OTP with 10-minute expiry
+    await pool.query(`
+      INSERT INTO password_resets (user_id, email, otp_code, expires_at)
+      VALUES ($1, $2, $3, NOW() + INTERVAL '10 minutes')
+    `, [user.id, user.email, otpCode]);
+
+    // Send email via Brevo REST API
+    const emailResult = await sendPasswordResetOtpEmail({
+      to: user.email,
+      studentName: user.full_name,
+      registerNumber: user.register_number,
+      otpCode,
+      expiresInMinutes: 10
+    });
+
+    if (!emailResult.success) {
+      return res.status(500).json({ error: 'Failed to send OTP email. Please try again later.' });
+    }
+
+    res.json({
+      success: true,
+      message: 'Verification code sent to your registered email.',
+      maskedEmail: maskEmail(user.email)
+    });
+  }));
+
+  // 2. Verify OTP
+  app.post('/api/auth/forgot-password/verify-otp', asyncHandler(async (req: Request, res: Response) => {
+    const { identifier, otp } = req.body;
+    if (!identifier || !otp) {
+      return res.status(400).json({ error: 'Identifier and OTP code are required.' });
+    }
+
+    const cleanId = identifier.trim().toLowerCase();
+    const cleanOtp = otp.toString().trim();
+
+    const userRes = await pool.query(`
+      SELECT id, email FROM users 
+      WHERE LOWER(register_number) = $1 OR LOWER(email) = $1 OR LOWER(username) = $1
+      LIMIT 1
+    `, [cleanId]);
+
+    const user = userRes.rows[0];
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const otpRes = await pool.query(`
+      SELECT id, otp_code, attempts, expires_at, used
+      FROM password_resets
+      WHERE user_id = $1 AND used = FALSE
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [user.id]);
+
+    const record = otpRes.rows[0];
+    if (!record) {
+      return res.status(400).json({ error: 'No active OTP found. Please request a new code.' });
+    }
+
+    if (new Date(record.expires_at) < new Date()) {
+      return res.status(400).json({ error: 'This verification code has expired. Please request a new code.' });
+    }
+
+    if (record.attempts >= 3) {
+      await pool.query('UPDATE password_resets SET used = TRUE WHERE id = $1', [record.id]);
+      return res.status(400).json({ error: 'Maximum verification attempts exceeded. Please request a new code.' });
+    }
+
+    if (record.otp_code !== cleanOtp) {
+      await pool.query('UPDATE password_resets SET attempts = attempts + 1 WHERE id = $1', [record.id]);
+      const remaining = 2 - record.attempts;
+      return res.status(400).json({ error: `Invalid verification code. ${remaining > 0 ? `${remaining} attempts remaining.` : 'Code locked. Please request a new one.'}` });
+    }
+
+    res.json({ success: true, message: 'Code verified successfully.' });
+  }));
+
+  // 3. Reset password with OTP
+  app.post('/api/auth/forgot-password/reset', asyncHandler(async (req: Request, res: Response) => {
+    const { identifier, otp, newPassword } = req.body;
+    if (!identifier || !otp || !newPassword) {
+      return res.status(400).json({ error: 'All fields are required.' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters long.' });
+    }
+
+    const cleanId = identifier.trim().toLowerCase();
+    const cleanOtp = otp.toString().trim();
+
+    const userRes = await pool.query(`
+      SELECT id, email, full_name, username, role, register_number, department_id, class_id, is_coordinator, is_year_coordinator, year_scope
+      FROM users 
+      WHERE LOWER(register_number) = $1 OR LOWER(email) = $1 OR LOWER(username) = $1
+      LIMIT 1
+    `, [cleanId]);
+
+    const user = userRes.rows[0];
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const otpRes = await pool.query(`
+      SELECT id, otp_code, attempts, expires_at, used
+      FROM password_resets
+      WHERE user_id = $1 AND used = FALSE
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [user.id]);
+
+    const record = otpRes.rows[0];
+    if (!record || record.used || new Date(record.expires_at) < new Date() || record.attempts >= 3) {
+      return res.status(400).json({ error: 'Invalid or expired verification session. Please request a new code.' });
+    }
+
+    if (record.otp_code !== cleanOtp) {
+      await pool.query('UPDATE password_resets SET attempts = attempts + 1 WHERE id = $1', [record.id]);
+      return res.status(400).json({ error: 'Invalid verification code.' });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password in database
+    await pool.query(`
+      UPDATE users 
+      SET password = $1, updated_at = NOW() 
+      WHERE id = $2
+    `, [hashedPassword, user.id]);
+
+    // Mark OTP as used
+    await pool.query('UPDATE password_resets SET used = TRUE WHERE id = $1', [record.id]);
+
+    // Sign JWT token for direct login
+    const token = jwt.sign({
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      department_id: user.department_id,
+      class_id: user.class_id,
+      is_coordinator: Boolean(user.is_coordinator),
+      is_year_coordinator: Boolean(user.is_year_coordinator),
+      year_scope: user.year_scope,
+    }, JWT_SECRET);
+
+    res.json({
+      success: true,
+      message: 'Password reset successfully in database!',
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        full_name: user.full_name,
+        email: user.email,
+        register_number: user.register_number || user.username,
+        department_id: user.department_id,
+        class_id: user.class_id,
+        is_coordinator: Boolean(user.is_coordinator),
+        is_year_coordinator: Boolean(user.is_year_coordinator),
+        year_scope: user.year_scope,
       }
     });
   }));

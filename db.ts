@@ -466,6 +466,19 @@ export async function initDB() {
       );
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS password_resets (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        email VARCHAR(255) NOT NULL,
+        otp_code VARCHAR(10) NOT NULL,
+        attempts INT DEFAULT 0,
+        used BOOLEAN DEFAULT FALSE,
+        expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     // Schema Migrations
     await client.query(`
       ALTER TABLE task_submissions ADD COLUMN IF NOT EXISTS cloudinary_public_id VARCHAR(255);
@@ -534,6 +547,8 @@ export async function initDB() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_student_coding_user ON student_coding_profiles(user_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_student_profiles_user ON student_profiles(user_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, is_read) WHERE is_read = false;`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_password_resets_lookup ON password_resets(email, otp_code, used);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets(user_id);`);
 
     // ─── Module 5: LeetCode Targets & Progress Tracking ───────────────────────
     await client.query(`

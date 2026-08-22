@@ -54,6 +54,7 @@ import {
   BookOpen,
   Briefcase,
   Mail,
+  MailCheck,
   Phone,
   Shield,
   Edit3,
@@ -4102,6 +4103,20 @@ export default function App() {
   const [loginRole, setLoginRole] = useState<string | null>(null);
   const [error, setError] = useState('');
 
+  // Forgot Password State
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  const [forgotStep, setForgotStep] = useState<'IDENTIFIER' | 'OTP' | 'SUCCESS'>('IDENTIFIER');
+  const [forgotIdentifier, setForgotIdentifier] = useState('');
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [forgotShowNewPass, setForgotShowNewPass] = useState(false);
+  const [forgotMaskedEmail, setForgotMaskedEmail] = useState('');
+  const [forgotError, setForgotError] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotCountdown, setForgotCountdown] = useState(600);
+  const [forgotResendCooldown, setForgotResendCooldown] = useState(0);
+
   // Data State
   const [departments, setDepartments] = useState<Department[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
@@ -5356,6 +5371,116 @@ export default function App() {
     } catch (e) {
       setError('Connection failed');
     }
+  };
+
+  useEffect(() => {
+    let timer: any;
+    if (showForgotPasswordModal && forgotStep === 'OTP') {
+      timer = setInterval(() => {
+        setForgotCountdown(prev => (prev > 0 ? prev - 1 : 0));
+        setForgotResendCooldown(prev => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [showForgotPasswordModal, forgotStep]);
+
+  const handleRequestOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setForgotError('');
+    if (!forgotIdentifier.trim()) {
+      setForgotError('Please enter your Register Number or Email ID');
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/auth/forgot-password/request-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: forgotIdentifier.trim() })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setForgotMaskedEmail(data.maskedEmail || 'your registered email');
+        setForgotStep('OTP');
+        setForgotCountdown(600);
+        setForgotResendCooldown(60);
+        addToast('Verification code sent to your email!', 'success');
+      } else {
+        setForgotError(data.error || 'Failed to send OTP code.');
+      }
+    } catch (err) {
+      setForgotError('Connection error. Please try again.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError('');
+
+    if (!forgotOtp.trim()) {
+      setForgotError('Please enter the 6-digit verification code.');
+      return;
+    }
+    if (forgotOtp.trim().length !== 6) {
+      setForgotError('Verification code must be 6 digits.');
+      return;
+    }
+    if (!forgotNewPassword || forgotNewPassword.length < 6) {
+      setForgotError('New password must be at least 6 characters long.');
+      return;
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setForgotError('Passwords do not match. Please re-enter.');
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/auth/forgot-password/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identifier: forgotIdentifier.trim(),
+          otp: forgotOtp.trim(),
+          newPassword: forgotNewPassword
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setForgotStep('SUCCESS');
+        addToast('Password reset successfully in database!', 'success');
+        if (data.token && data.user) {
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('user', JSON.stringify(data.user));
+          setToken(data.token);
+          setUser(data.user);
+          setView('dashboard');
+        }
+      } else {
+        setForgotError(data.error || 'Failed to reset password.');
+      }
+    } catch (err) {
+      setForgotError('Connection error. Please check your network.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const resetForgotModal = () => {
+    setShowForgotPasswordModal(false);
+    setForgotStep('IDENTIFIER');
+    setForgotIdentifier('');
+    setForgotOtp('');
+    setForgotNewPassword('');
+    setForgotConfirmPassword('');
+    setForgotError('');
+    setForgotMaskedEmail('');
+    setForgotLoading(false);
+    setForgotCountdown(600);
+    setForgotResendCooldown(0);
   };
 
   const handleLogout = () => {
@@ -6748,6 +6873,19 @@ export default function App() {
                         )}
                       </button>
                     </div>
+                    <div className="flex justify-end pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          resetForgotModal();
+                          setShowForgotPasswordModal(true);
+                          if (loginData.username) setForgotIdentifier(loginData.username);
+                        }}
+                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline transition-colors cursor-pointer"
+                      >
+                        Forgot Password?
+                      </button>
+                    </div>
                   </div>
                   {error && (
                     <motion.p
@@ -6762,6 +6900,192 @@ export default function App() {
                 </form>
               </Card>
             </motion.div>
+          </AnimatePresence>
+
+          {/* ── Forgot Password & Reset Modal ─────────────────────────────── */}
+          <AnimatePresence>
+            {showForgotPasswordModal && (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                  className="bg-white rounded-[2rem] p-6 md:p-8 max-w-md w-full shadow-2xl relative border border-zinc-100 max-h-[90vh] overflow-y-auto"
+                >
+                  <button
+                    type="button"
+                    onClick={resetForgotModal}
+                    className="absolute top-5 right-5 p-2 hover:bg-zinc-100 rounded-full transition-colors cursor-pointer"
+                  >
+                    <X size={20} className="text-zinc-400" />
+                  </button>
+
+                  {forgotStep === 'IDENTIFIER' && (
+                    <form onSubmit={handleRequestOtp} className="space-y-4">
+                      <div className="text-center pb-2">
+                        <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-3 border border-indigo-100">
+                          <KeyRound size={24} />
+                        </div>
+                        <h3 className="text-xl font-bold text-zinc-900">Reset Password</h3>
+                        <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
+                          Enter your registered <b>Email ID</b> or <b>Register Number</b>. We'll send a 6-digit verification code to your inbox.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-zinc-700 uppercase tracking-wider block mb-1.5">
+                          Email ID or Register Number
+                        </label>
+                        <Input
+                          placeholder="e.g. 922524205171 or student@gmail.com"
+                          value={forgotIdentifier}
+                          onChange={e => setForgotIdentifier(e.target.value)}
+                          required
+                          autoFocus
+                        />
+                      </div>
+
+                      {forgotError && (
+                        <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs font-medium text-red-700">
+                          {forgotError}
+                        </div>
+                      )}
+
+                      <div className="flex gap-3 pt-2">
+                        <Button type="button" variant="outline" className="flex-1 rounded-xl" onClick={resetForgotModal}>
+                          Cancel
+                        </Button>
+                        <Button type="submit" className="flex-1 rounded-xl" disabled={forgotLoading}>
+                          {forgotLoading ? 'Sending Code...' : 'Send Verification Code'}
+                        </Button>
+                      </div>
+                    </form>
+                  )}
+
+                  {forgotStep === 'OTP' && (
+                    <form onSubmit={handleResetPassword} className="space-y-4">
+                      <div className="text-center pb-1">
+                        <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3 border border-emerald-100">
+                          <MailCheck size={24} />
+                        </div>
+                        <h3 className="text-xl font-bold text-zinc-900">Enter Verification Code</h3>
+                        <p className="text-xs text-zinc-500 mt-1">
+                          Code sent to <span className="font-semibold text-zinc-800">{forgotMaskedEmail}</span>
+                        </p>
+                        <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold">
+                          <span>⏰ Code expires in:</span>
+                          <span className="font-mono font-bold">
+                            {Math.floor(forgotCountdown / 60).toString().padStart(2, '0')}:{(forgotCountdown % 60).toString().padStart(2, '0')}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-zinc-700 uppercase tracking-wider block mb-1.5">
+                          6-Digit Verification Code (OTP)
+                        </label>
+                        <Input
+                          placeholder="• • • • • •"
+                          maxLength={6}
+                          value={forgotOtp}
+                          onChange={e => setForgotOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          className="text-center text-xl tracking-[0.4em] font-mono font-bold"
+                          required
+                          autoFocus
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-zinc-700 uppercase tracking-wider block mb-1.5">
+                          New Password
+                        </label>
+                        <div className="relative">
+                          <Input
+                            type={forgotShowNewPass ? 'text' : 'password'}
+                            placeholder="At least 6 characters"
+                            value={forgotNewPassword}
+                            onChange={e => setForgotNewPassword(e.target.value)}
+                            required
+                            className="pr-12"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setForgotShowNewPass(p => !p)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 cursor-pointer"
+                            tabIndex={-1}
+                          >
+                            {forgotShowNewPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-zinc-700 uppercase tracking-wider block mb-1.5">
+                          Confirm New Password
+                        </label>
+                        <Input
+                          type={forgotShowNewPass ? 'text' : 'password'}
+                          placeholder="Re-enter new password"
+                          value={forgotConfirmPassword}
+                          onChange={e => setForgotConfirmPassword(e.target.value)}
+                          required
+                        />
+                      </div>
+
+                      {forgotError && (
+                        <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs font-medium text-red-700">
+                          {forgotError}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between pt-1">
+                        <button
+                          type="button"
+                          onClick={handleRequestOtp}
+                          disabled={forgotResendCooldown > 0 || forgotLoading}
+                          className={`text-xs font-semibold ${forgotResendCooldown > 0 ? 'text-zinc-400 cursor-not-allowed' : 'text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer'}`}
+                        >
+                          {forgotResendCooldown > 0 ? `Resend code in ${forgotResendCooldown}s` : 'Resend Code'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setForgotStep('IDENTIFIER')}
+                          className="text-xs text-zinc-500 hover:text-zinc-800 cursor-pointer"
+                        >
+                          Change Email / Reg No
+                        </button>
+                      </div>
+
+                      <div className="flex gap-3 pt-2">
+                        <Button type="button" variant="outline" className="flex-1 rounded-xl" onClick={resetForgotModal}>
+                          Cancel
+                        </Button>
+                        <Button type="submit" className="flex-1 rounded-xl" disabled={forgotLoading || forgotCountdown <= 0}>
+                          {forgotLoading ? 'Updating...' : 'Update Password'}
+                        </Button>
+                      </div>
+                    </form>
+                  )}
+
+                  {forgotStep === 'SUCCESS' && (
+                    <div className="text-center py-4 space-y-4">
+                      <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto ring-8 ring-emerald-50">
+                        <CheckCircle2 size={36} />
+                      </div>
+                      <h3 className="text-xl font-bold text-zinc-900">Password Reset Complete!</h3>
+                      <p className="text-xs text-zinc-500 leading-relaxed max-w-xs mx-auto">
+                        Your password has been successfully updated in the database. You are now logged in!
+                      </p>
+                      <div className="pt-2">
+                        <Button className="w-full rounded-xl" onClick={resetForgotModal}>
+                          Go to Dashboard
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              </div>
+            )}
           </AnimatePresence>
         </motion.div>
       </div>

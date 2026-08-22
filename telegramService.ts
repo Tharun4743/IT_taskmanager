@@ -9,6 +9,7 @@ import {
   constantStudentByEmailMap,
   cleanStudentName
 } from './studentDirectoryService.js';
+import { sendTaskStatusEmail } from './emailService.js';
 
 let cachedBotUsername = process.env.TELEGRAM_BOT_USERNAME || 'IT_TaskManager_Alerts_bot';
 
@@ -2075,7 +2076,7 @@ export async function notifySubmissionVerifiedOrRejected(
   try {
     const subRes = await pool.query(`
       SELECT ts.id, ts.status, ts.rejection_reason, ts.verification_note,
-             u.full_name, u.register_number, u.telegram_chat_id,
+             u.full_name, u.register_number, u.email, u.telegram_chat_id,
              t.title as task_title
       FROM task_submissions ts
       JOIN users u ON ts.user_id = u.id
@@ -2084,57 +2085,73 @@ export async function notifySubmissionVerifiedOrRejected(
     `, [submissionId]);
 
     const sub = subRes.rows[0];
-    if (!sub || !sub.telegram_chat_id) return;
+    if (!sub) return;
 
-    let html = '';
-    let keyboard: any;
-
-    if (status === 'VERIFIED') {
-      html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  🎉  <b>SUBMISSION APPROVED & VERIFIED!</b>  ✅\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
-      html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(sub.full_name)}</b>\n`;
-      html += `📌 <b>Assignment:</b> <b>"${escapeHtml(sub.task_title)}"</b>\n`;
-      html += `🏷️ <b>Status:</b> 🟢 <code>VERIFIED & APPROVED</code></blockquote>\n\n`;
-      if (noteOrReason) {
-        html += `📝 <b>Reviewer Note:</b> <i>${escapeHtml(noteOrReason)}</i>\n\n`;
-      }
-      html += `🌟 <i>Keep up the excellent momentum! 🚀</i>\n`;
-      html += getWatermarkHtml();
-
-      keyboard = {
-        inline_keyboard: [
-          [
-            { text: '📊 View Scorecard', callback_data: 'cb_stats' },
-            { text: '📋 My Tasks', callback_data: 'cb_tasks' }
-          ],
-          [
-            { text: '🌐 Open Portal', url: getPortalUrl() }
-          ]
-        ]
-      };
-    } else {
-      html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  ⚠️  <b>SUBMISSION REQUIRES CORRECTION</b>  🚨\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
-      html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(sub.full_name)}</b>\n`;
-      html += `📌 <b>Assignment:</b> <b>"${escapeHtml(sub.task_title)}"</b>\n`;
-      html += `🏷️ <b>Status:</b> 🔴 <code>REJECTED / ACTION REQUIRED</code></blockquote>\n\n`;
-      if (noteOrReason) {
-        html += `📌 <b>Reason for Rejection:</b>\n<code>${escapeHtml(noteOrReason)}</code>\n\n`;
-      }
-      html += `👉 <i>Please review the remarks and upload your corrected proof on the portal!</i>\n`;
-      html += getWatermarkHtml();
-
-      keyboard = {
-        inline_keyboard: [
-          [
-            { text: '🔄 Resubmit on Portal', url: getPortalUrl() },
-            { text: '📋 My Pending Tasks', callback_data: 'cb_tasks' }
-          ]
-        ]
-      };
+    // 1. Dispatch Automated Email Notification (Brevo / Resend)
+    if (sub.email) {
+      sendTaskStatusEmail({
+        to: sub.email,
+        studentName: sub.full_name,
+        registerNumber: sub.register_number,
+        taskTitle: sub.task_title,
+        status,
+        noteOrReason,
+        portalUrl: getPortalUrl()
+      }).catch(err => console.error('[Email Notification Error]:', err));
     }
 
-    sendTelegramMessage(sub.telegram_chat_id, html, { reply_markup: keyboard }).catch(() => { });
+    // 2. Dispatch Telegram Bot Direct Alert
+    if (sub.telegram_chat_id) {
+      let html = '';
+      let keyboard: any;
+
+      if (status === 'VERIFIED') {
+        html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  🎉  <b>SUBMISSION APPROVED & VERIFIED!</b>  ✅\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+        html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(sub.full_name)}</b>\n`;
+        html += `📌 <b>Assignment:</b> <b>"${escapeHtml(sub.task_title)}"</b>\n`;
+        html += `🏷️ <b>Status:</b> 🟢 <code>VERIFIED & APPROVED</code></blockquote>\n\n`;
+        if (noteOrReason) {
+          html += `📝 <b>Reviewer Note:</b> <i>${escapeHtml(noteOrReason)}</i>\n\n`;
+        }
+        html += `🌟 <i>Keep up the excellent momentum! 🚀</i>\n`;
+        html += getWatermarkHtml();
+
+        keyboard = {
+          inline_keyboard: [
+            [
+              { text: '📊 View Scorecard', callback_data: 'cb_stats' },
+              { text: '📋 My Tasks', callback_data: 'cb_tasks' }
+            ],
+            [
+              { text: '🌐 Open Portal', url: getPortalUrl() }
+            ]
+          ]
+        };
+      } else {
+        html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  ⚠️  <b>SUBMISSION REQUIRES CORRECTION</b>  🚨\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+        html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(sub.full_name)}</b>\n`;
+        html += `📌 <b>Assignment:</b> <b>"${escapeHtml(sub.task_title)}"</b>\n`;
+        html += `🏷️ <b>Status:</b> 🔴 <code>REJECTED / ACTION REQUIRED</code></blockquote>\n\n`;
+        if (noteOrReason) {
+          html += `📌 <b>Reason for Rejection:</b>\n<code>${escapeHtml(noteOrReason)}</code>\n\n`;
+        }
+        html += `👉 <i>Please review the remarks and upload your corrected proof on the portal!</i>\n`;
+        html += getWatermarkHtml();
+
+        keyboard = {
+          inline_keyboard: [
+            [
+              { text: '🔄 Resubmit on Portal', url: getPortalUrl() },
+              { text: '📋 My Pending Tasks', callback_data: 'cb_tasks' }
+            ]
+          ]
+        };
+      }
+
+      sendTelegramMessage(sub.telegram_chat_id, html, { reply_markup: keyboard }).catch(() => { });
+    }
   } catch (err) {
-    console.error('[Telegram] notifySubmissionVerifiedOrRejected error:', err);
+    console.error('[Notification Dispatch] notifySubmissionVerifiedOrRejected error:', err);
   }
 }
 

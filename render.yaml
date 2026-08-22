@@ -4,7 +4,7 @@ services:
     env: node
     plan: free
     branch: main
-    autoDeploy: true
+    autoDeploy: false
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /health
@@ -47,3 +47,9 @@ services:
         sync: false
       - key: VAPID_SUBJECT
         value: "mailto:vsbecitc2428@gmail.com"
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        value: "vsbecitc2428@gmail.com"
+      - key: BREVO_SENDER_NAME
+        value: "IT TaskManager"
