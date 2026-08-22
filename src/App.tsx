@@ -274,22 +274,28 @@ interface Notification {
   created_at: string;
 }
 
-interface Discussion {
-  id: string;
-  task_id: string;
-  parent_id?: string | null;
+export interface UserReview {
+  id: number;
   user_id: string;
-  message: string;
-  is_pinned?: boolean;
-  is_edited?: boolean;
+  rating: number;
+  comment: string;
   created_at: string;
-  updated_at?: string;
-  deleted_at?: string | null;
-  author_name: string;
-  author_role: string;
-  author_regno?: string;
-  replies?: Discussion[];
-  reply_count?: number;
+  user_name?: string;
+  user_role?: string;
+  user_email?: string;
+}
+
+export interface DefaulterAudit {
+  user_id: string;
+  full_name: string;
+  register_number: string;
+  class_name: string;
+  department_name: string;
+  pending_tasks: {
+    task_id: number;
+    title: string;
+    deadline: string;
+  }[];
 }
 
 interface Notice {
@@ -469,8 +475,6 @@ interface CoordinatorStats {
     total_tasks: number;
   }[];
 }
-
-import * as XLSX from 'xlsx';
 
 // --- Components ---
 
@@ -4100,7 +4104,6 @@ export default function App() {
 
   // Login State
   const [loginData, setLoginData] = useState({ username: '', password: '' });
-  const [loginRole, setLoginRole] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   // Forgot Password State
@@ -4297,50 +4300,6 @@ export default function App() {
       })
       .slice(0, 3);
   }, [githubProgressList, leetcodeViewType]);
-
-  const sortedCombinedProgressList = useMemo(() => {
-    return [...combinedProgressList].sort((a, b) => {
-      let valA: any = '';
-      let valB: any = '';
-
-      switch (leetcodeSortColumn) {
-        case 'registerNumber':
-          valA = a.registerNumber || '';
-          valB = b.registerNumber || '';
-          break;
-        case 'fullName':
-          valA = a.fullName || '';
-          valB = b.fullName || '';
-          break;
-        case 'className':
-          valA = a.className || '';
-          valB = b.className || '';
-          break;
-        case 'leetcodeStatus':
-          valA = leetcodeViewType === 'DAILY' ? a.leetcodeDailyStatus : a.leetcodeWeeklyStatus;
-          valB = leetcodeViewType === 'DAILY' ? b.leetcodeDailyStatus : b.leetcodeWeeklyStatus;
-          break;
-        case 'githubStatus':
-          valA = leetcodeViewType === 'DAILY' ? a.githubDailyStatus : a.githubWeeklyStatus;
-          valB = leetcodeViewType === 'DAILY' ? b.githubDailyStatus : b.githubWeeklyStatus;
-          break;
-        case 'overallStatus':
-          valA = leetcodeViewType === 'DAILY' ? a.overallDailyStatus : a.overallWeeklyStatus;
-          valB = leetcodeViewType === 'DAILY' ? b.overallDailyStatus : b.overallWeeklyStatus;
-          break;
-        default:
-          valA = a.registerNumber || '';
-          valB = b.registerNumber || '';
-      }
-
-      if (typeof valA === 'string' && typeof valB === 'string') {
-        const comp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
-        return leetcodeSortOrder === 'asc' ? comp : -comp;
-      }
-      const comp = valA > valB ? 1 : valA < valB ? -1 : 0;
-      return leetcodeSortOrder === 'asc' ? comp : -comp;
-    });
-  }, [combinedProgressList, leetcodeSortColumn, leetcodeSortOrder, leetcodeViewType]);
 
   const handleSortHeader = (col: string) => {
     if (leetcodeSortColumn === col) {
@@ -5081,7 +5040,6 @@ export default function App() {
         localStorage.removeItem('user');
         setToken(null);
         setUser(null);
-        setLoginRole(null);
         setLoginData({ username: '', password: '' });
         setView('dashboard');
         setIsLoading(false);
@@ -5488,7 +5446,6 @@ export default function App() {
     localStorage.removeItem('user');
     setToken(null);
     setUser(null);
-    setLoginRole(null);
     setLoginData({ username: '', password: '' });
     setView('dashboard');
 

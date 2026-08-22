@@ -34,6 +34,15 @@ import {
   notifyNewTaskCreatedEmail,
   triggerDeadlineUrgentEmailReminders
 } from './emailService.js';
+
+export {
+  sendPasswordResetOtpEmail,
+  sendTaskStatusEmail,
+  sendNewTaskPostedEmail,
+  sendDeadlineAlertEmail,
+  notifyNewTaskCreatedEmail,
+  triggerDeadlineUrgentEmailReminders
+};
 import {
   startTelegramPoller,
   sendGroupSummary,

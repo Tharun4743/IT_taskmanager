@@ -3,12 +3,7 @@ dotenv.config();
 
 import { pool } from './db.js';
 import ExcelJS from 'exceljs';
-import {
-  constantStudentByIdMap,
-  constantStudentByRegNoMap,
-  constantStudentByEmailMap,
-  cleanStudentName
-} from './studentDirectoryService.js';
+import { constantStudentByRegNoMap } from './studentDirectoryService.js';
 import { sendTaskStatusEmail } from './emailService.js';
 
 let cachedBotUsername = process.env.TELEGRAM_BOT_USERNAME || 'IT_TaskManager_Alerts_bot';
@@ -2216,10 +2211,6 @@ export async function sendGroupSummary(targetChatId?: string, dateOverride?: str
 
     const totalStudents = studentProgressRes.rows.length;
     const linkedTelegram = studentProgressRes.rows.filter(r => r.telegram_chat_id).length;
-    const lcSolvers = studentProgressRes.rows.filter(r => Number(r.solved_today) > 0).length;
-    const lcTotalSolved = studentProgressRes.rows.reduce((sum, r) => sum + (Number(r.solved_today) || 0), 0);
-    const ghCommitters = studentProgressRes.rows.filter(r => Number(r.commits_today) > 0).length;
-    const ghTotalCommits = studentProgressRes.rows.reduce((sum, r) => sum + (Number(r.commits_today) || 0), 0);
 
     // ── Aggregation: Year-wise and Class-wise ──────────────────────────────
     const yearMap = { '1': 'I Year', '2': 'II Year', '3': 'III Year', '4': 'IV Year' };
@@ -2339,7 +2330,6 @@ export async function sendGroupSummary(targetChatId?: string, dateOverride?: str
 
     // ── Group incomplete LeetCode solvers class-wise ───────────────────────
     const incompleteByClass = {};
-    const lcTargetedCount = studentProgressRes.rows.filter(r => (Number(r.leetcode_target) || 0) > 0).length;
     const lcIncompleteRows = studentProgressRes.rows.filter(r => {
       const target = Number(r.leetcode_target) || 0;
       const solved = Number(r.solved_today) || 0;
@@ -2554,7 +2544,6 @@ export async function sendGroupDeadlineAlert(targetChatId?: string): Promise<{ s
         timeZone: 'Asia/Kolkata'
       });
       const pending = Math.max(0, Number(t.total_targeted) - Number(t.submitted_count));
-      const isLast = i === tasks.length - 1;
 
       html += `📌 <b>${i + 1}. ${escapeHtml(t.title)}</b>\n`;
       if (t.category) html += `   📂 <code>${escapeHtml(t.category)}</code>\n`;
