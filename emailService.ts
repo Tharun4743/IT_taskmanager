@@ -119,7 +119,7 @@ function getBrevoNodes(): BrevoAccountNode[] {
       nodes.push({
         nodeId: cfg.id,
         apiKey: cfg.key.trim(),
-        senderEmail: cfg.email || 'vsbecitc2428@gmail.com',
+        senderEmail: cfg.email || 'campusvsb4743@gmail.com',
         senderName: cfg.name || 'VSBEC IT Department'
       });
     }
