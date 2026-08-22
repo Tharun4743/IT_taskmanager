@@ -28,10 +28,10 @@ let smtpTransporter: nodemailer.Transporter | null = null;
 function getSmtpTransporter(): nodemailer.Transporter | null {
   if (smtpTransporter) return smtpTransporter;
 
-  const host = process.env.SMTP_HOST;
-  const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
-  const user = process.env.SMTP_USER || process.env.EMAIL_USER || process.env.GMAIL_USER;
-  const pass = process.env.SMTP_PASS || process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASSWORD;
+  const host = process.env.BREVO_SMTP_HOST || process.env.SMTP_HOST;
+  const port = (process.env.BREVO_SMTP_PORT || process.env.SMTP_PORT) ? parseInt((process.env.BREVO_SMTP_PORT || process.env.SMTP_PORT)!, 10) : 587;
+  const user = process.env.BREVO_SMTP_USER || process.env.SMTP_USER || process.env.EMAIL_USER || process.env.GMAIL_USER;
+  const pass = process.env.BREVO_SMTP_PASS || process.env.SMTP_PASS || process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASSWORD;
 
   if (host && user && pass) {
     smtpTransporter = nodemailer.createTransport({
