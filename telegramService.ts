@@ -42,7 +42,7 @@ export function getPortalUrl(): string {
 }
 
 export function getWatermarkHtml(): string {
-  return `\n───────────────────────────────\n👨‍💻 Developed by <a href="https://tharunkumark4743.netlify.app/">Tharunkumar K</a>\n🏛️ <i>Department of Information Technology, VSBEC</i>`;
+  return `\n───────────────────────────────\n💻 Developed by <a href="https://tharunkumark4743.netlify.app/">Tharunkumar K</a>\n🏛 <i>Department of Information Technology, VSBEC</i>`;
 }
 
 export function getISTDateStr(): string {
@@ -66,19 +66,33 @@ export function getWeekRange(dateStr: string) {
   };
 }
 
+let _cachedGroupChatId: string | null | undefined = undefined;
+let _cachedGroupChatIdAt: number = 0;
+const GROUP_CHAT_ID_TTL_MS = 60_000; // 1-minute TTL
+
 export async function getGroupChatId(): Promise<string | null> {
+  if (_cachedGroupChatId !== undefined && Date.now() - _cachedGroupChatIdAt < GROUP_CHAT_ID_TTL_MS) {
+    return _cachedGroupChatId;
+  }
   try {
     const res = await pool.query(`SELECT value FROM system_settings WHERE key = 'telegram_group_chat_id' LIMIT 1`);
     if (res.rows.length > 0 && res.rows[0].value && res.rows[0].value.trim()) {
-      return res.rows[0].value.trim();
+      _cachedGroupChatId = res.rows[0].value.trim();
+      _cachedGroupChatIdAt = Date.now();
+      return _cachedGroupChatId;
     }
   } catch (err) {
     console.warn('[Telegram] Could not read group chat ID from system_settings:', err);
   }
-  return process.env.TELEGRAM_GROUP_CHAT_ID || null;
+  _cachedGroupChatId = process.env.TELEGRAM_GROUP_CHAT_ID || null;
+  _cachedGroupChatIdAt = Date.now();
+  return _cachedGroupChatId;
 }
 
 export async function setGroupChatId(chatId: string): Promise<void> {
+  // Immediately update the in-memory cache so subsequent calls see the new value
+  _cachedGroupChatId = chatId.trim();
+  _cachedGroupChatIdAt = Date.now();
   await pool.query(`
     INSERT INTO system_settings (key, value, updated_at)
     VALUES ('telegram_group_chat_id', $1, CURRENT_TIMESTAMP)
@@ -99,6 +113,7 @@ export async function getGroupInviteLink(): Promise<string | null> {
       return cachedGroupInviteLink;
     }
   } catch (err) {
+    
     // Ignore error
   }
 
@@ -108,32 +123,66 @@ export async function getGroupInviteLink(): Promise<string | null> {
     return cachedGroupInviteLink;
   }
 
-  // 3. Try to dynamically export or create invite link via Telegram API
+  // 3. Dynamically fetch chat info from Telegram API (checks public @username or invite_link)
   const token = getBotToken();
   const groupChatId = await getGroupChatId();
   if (token && groupChatId) {
     try {
-      const resp = await fetch(`https://api.telegram.org/bot${token}/exportChatInviteLink`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: groupChatId })
-      });
-      const data = await resp.json();
-      if (data.ok && data.result) {
-        cachedGroupInviteLink = data.result;
-        pool.query(`
-          INSERT INTO system_settings (key, value, updated_at)
-          VALUES ('telegram_group_invite_link', $1, CURRENT_TIMESTAMP)
-          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
-        `, [cachedGroupInviteLink]).catch(() => {});
-        return cachedGroupInviteLink;
+      const chatResp = await fetch(`https://api.telegram.org/bot${token}/getChat?chat_id=${encodeURIComponent(groupChatId)}`);
+      const chatData = await chatResp.json();
+      if (chatData.ok && chatData.result) {
+        if (chatData.result.username) {
+          cachedGroupInviteLink = `https://t.me/${chatData.result.username}`;
+        } else if (chatData.result.invite_link) {
+          cachedGroupInviteLink = chatData.result.invite_link;
+        }
       }
     } catch (err) {
-      console.warn('[Telegram] Could not export chat invite link automatically:', err);
+      console.warn('[Telegram] Could not fetch chat info via getChat:', err);
+    }
+
+    // 4. If still no link, try creating chat invite link or export
+    if (!cachedGroupInviteLink) {
+      try {
+        const createResp = await fetch(`https://api.telegram.org/bot${token}/createChatInviteLink`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: groupChatId, name: 'IT Department Official Link', creates_join_request: true })
+        });
+        const createData = await createResp.json();
+        if (createData.ok && createData.result?.invite_link) {
+          cachedGroupInviteLink = createData.result.invite_link;
+        } else {
+          const exportResp = await fetch(`https://api.telegram.org/bot${token}/exportChatInviteLink`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: groupChatId })
+          });
+          const exportData = await exportResp.json();
+          if (exportData.ok && exportData.result) {
+            cachedGroupInviteLink = exportData.result;
+          }
+        }
+      } catch (err) {
+        console.warn('[Telegram] Could not generate invite link:', err);
+      }
     }
   }
 
-  return null;
+  // 5. Default fallback to known official public handle
+  if (!cachedGroupInviteLink) {
+    cachedGroupInviteLink = 'https://t.me/it_taskmanager';
+  }
+
+  if (cachedGroupInviteLink) {
+    pool.query(`
+      INSERT INTO system_settings (key, value, updated_at)
+      VALUES ('telegram_group_invite_link', $1, CURRENT_TIMESTAMP)
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
+    `, [cachedGroupInviteLink]).catch(() => {});
+  }
+
+  return cachedGroupInviteLink;
 }
 
 export async function setGroupInviteLink(link: string): Promise<void> {
@@ -603,7 +652,7 @@ export async function answerCallbackQuery(callbackQueryId: string, text?: string
 export async function sendPrivateActionWarning(chatId: string | number): Promise<void> {
   await sendTelegramMessage(
     chatId,
-    `ℹ️ <b>Private Action Only</b>\n\nPlease chat with the <b>IT Task Manager Private Bot</b> (@IT_TaskManager_Alerts_bot) directly to check your personal details, coding progress, and tasks.\n${getWatermarkHtml()}`
+    `ℹ <b>Private Action Only</b>\n\nPlease chat with the <b>IT Task Manager Private Bot</b> (@IT_TaskManager_Alerts_bot) directly to check your personal details, coding progress, and tasks.\n${getWatermarkHtml()}`
   );
 }
 
@@ -699,10 +748,9 @@ export function getInteractiveMenuKeyboard(role?: string) {
  * 👥 Telegram Group Invitation & Recommendation Card
  */
 export async function getGroupRecommendationCard(): Promise<{ html: string; keyboard: any }> {
-  const inviteLink = await getGroupInviteLink();
-  const groupChatId = await getGroupChatId();
+  const inviteLink = (await getGroupInviteLink()) || 'https://t.me/it_taskmanager';
 
-  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  👥  <b>OFFICIAL TELEGRAM GROUP</b>  🏛️\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  let html = `👥 <b>OFFICIAL TELEGRAM GROUP</b>  🏛\n──────────────────────────────\n`;
   html += `<blockquote>📢 <b>Join Your Department Community!</b>\n`;
   html += `Connect with classmates and faculty to stay ahead on all academic updates.</blockquote>\n\n`;
 
@@ -712,41 +760,30 @@ export async function getGroupRecommendationCard(): Promise<{ html: string; keyb
   html += ` ├ ⏰ <b>Live Assignment Deadlines & Reminders</b>\n`;
   html += ` └ 📢 <b>Department & Faculty Official Announcements</b>\n\n`;
 
-  if (inviteLink) {
-    html += `👉 <b>Tap the button below to join the group directly!</b>\n`;
-  } else if (groupChatId) {
-    html += `👉 <i>Ask your Class Advisor or Coordinator to add you to Group ID:</i> <code>${escapeHtml(groupChatId)}</code>\n`;
-  } else {
-    html += `👉 <i>Contact your Department Administrator for the official group invite link!</i>\n`;
-  }
+  html += `👉 <b>Tap the button below to join or open the group:</b>\n`;
+  html += `ℹ <i>If you are new, tap to submit your join request (admin will approve). If you have already joined, tapping will open the group directly!</i>\n`;
 
   html += getWatermarkHtml();
 
-  const keyboard: any = {
-    inline_keyboard: []
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: '🚀 Join / Open Telegram Group', url: inviteLink }
+      ],
+      [
+        { text: '📋 My Tasks', callback_data: 'cb_tasks' },
+        { text: '📊 My Scorecard', callback_data: 'cb_stats' }
+      ],
+      [
+        { text: '📱 Main Menu', callback_data: 'cb_menu' },
+        { text: '🌐 Open Portal', url: getPortalUrl() }
+      ]
+    ]
   };
-
-  if (inviteLink) {
-    keyboard.inline_keyboard.push([
-      { text: '🚀 Join Telegram Group Now', url: inviteLink }
-    ]);
-  }
-
-  keyboard.inline_keyboard.push([
-    { text: '📋 My Tasks', callback_data: 'cb_tasks' },
-    { text: '📊 My Scorecard', callback_data: 'cb_stats' }
-  ]);
-  keyboard.inline_keyboard.push([
-    { text: '📱 Main Menu', callback_data: 'cb_menu' },
-    { text: '🌐 Open Portal', url: getPortalUrl() }
-  ]);
 
   return { html, keyboard };
 }
 
-/**
- * 🏆 Dedicated Coding Leaderboard Card (Top Solvers & Committers)
- */
 export async function getLeaderboardCard(): Promise<{ html: string; keyboard: any }> {
   const dateStr = getISTDateStr();
   const [ghRes, lcRes] = await Promise.all([
@@ -768,7 +805,7 @@ export async function getLeaderboardCard(): Promise<{ html: string; keyboard: an
     `, [dateStr])
   ]);
 
-  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  🏆  <b>TODAY'S CODING LEADERBOARD</b>  🏆\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  let html = `🏆 <b>TODAY'S CODING LEADERBOARD</b>  🏆\n──────────────────────────────\n`;
   html += `<blockquote>📅 <b>Date:</b> <i>${dateStr} (IST)</i>\n💡 <i>Live rankings updated automatically!</i></blockquote>\n\n`;
 
   html += `💻 <b>GITHUB TOP COMMITTERS:</b>\n`;
@@ -776,7 +813,7 @@ export async function getLeaderboardCard(): Promise<{ html: string; keyboard: an
     html += ` └ <i>No commits recorded today yet.</i>\n\n`;
   } else {
     ghRes.rows.forEach((r, idx) => {
-      const rankEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🎖️';
+      const rankEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🎖';
       const isLast = idx === ghRes.rows.length - 1;
       html += ` ${isLast ? '└' : '├'} ${rankEmoji} <b>${escapeHtml(r.full_name)}</b> ➔ <code>${r.commits_today}</code> commits 🔥\n`;
     });
@@ -788,7 +825,7 @@ export async function getLeaderboardCard(): Promise<{ html: string; keyboard: an
     html += ` └ <i>No problems solved today yet.</i>\n\n`;
   } else {
     lcRes.rows.forEach((r, idx) => {
-      const rankEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🎖️';
+      const rankEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🎖';
       const isLast = idx === lcRes.rows.length - 1;
       html += ` ${isLast ? '└' : '├'} ${rankEmoji} <b>${escapeHtml(r.full_name)}</b> ➔ <code>${r.solved_today}</code> solved 💎\n`;
     });
@@ -848,7 +885,7 @@ export async function getStudentLeetCodeCard(user: any): Promise<{ html: string;
 
   const progressBar = dailyTarget > 0 ? makeProgressBar(solvedToday, dailyTarget, 8) : '';
 
-  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  🧩  <b>LEETCODE PROGRESS SCORECARD</b>  ⚡\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  let html = `🧩 <b>LEETCODE PROGRESS SCORECARD</b>  ⚡\n──────────────────────────────\n`;
   html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(user.full_name || 'Student')}</b>\n`;
   html += `🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number || user.username)}</code>\n`;
   html += `📅 <b>Date:</b> <i>${dateStr} (IST)</i></blockquote>\n\n`;
@@ -906,7 +943,7 @@ export async function getStudentGitHubCard(user: any): Promise<{ html: string; k
 
   const commitBadge = commitsToday > 0 ? '🔥 [ ACTIVE ]' : '⚪ [ NO COMMITS ]';
 
-  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  💻  <b>GITHUB ACTIVITY SCORECARD</b>  🐙\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  let html = `💻 <b>GITHUB ACTIVITY SCORECARD</b>  🐙\n──────────────────────────────\n`;
   html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(user.full_name || 'Student')}</b>\n`;
   html += `🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number || user.username)}</code>\n`;
   html += `📅 <b>Date:</b> <i>${dateStr} (IST)</i></blockquote>\n\n`;
@@ -984,7 +1021,7 @@ export async function getStudentStatsCard(user: any): Promise<{ html: string; ke
 
   const taskMeter = totalTasks > 0 ? makeProgressBar(completedTasks, totalTasks, 8) : '✨ No tasks';
 
-  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📊  <b>STUDENT PERFORMANCE SCORECARD</b>  🎯\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  let html = `📊 <b>STUDENT PERFORMANCE SCORECARD</b>  🎯\n──────────────────────────────\n`;
   html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(user.full_name)}</b>\n`;
   html += `🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number || user.username)}</code>\n`;
   html += `🏫 <b>Class:</b> <code>${escapeHtml(user.class_name || 'IT Dept')}</code>\n`;
@@ -997,11 +1034,11 @@ export async function getStudentStatsCard(user: any): Promise<{ html: string; ke
 
   html += `🧩 <b>LEETCODE CODING TARGET:</b>\n`;
   html += ` ├ ⚡ <b>Today:</b> <code>${lcSolved} / ${lcTarget || '—'}</code>\n`;
-  html += ` └ 🏷️ <b>Status:</b> ${lcTarget > 0 && lcSolved >= lcTarget ? '🟢 [ MET ]' : (lcTarget > 0 ? '🟡 [ PENDING ]' : '⚪ [ NO TARGET ]')}\n\n`;
+  html += ` └ 🏷 <b>Status:</b> ${lcTarget > 0 && lcSolved >= lcTarget ? '🟢 [ MET ]' : (lcTarget > 0 ? '🟡 [ PENDING ]' : '⚪ [ NO TARGET ]')}\n\n`;
 
   html += `💻 <b>GITHUB COMMITS:</b>\n`;
   html += ` ├ 🚀 <b>Today's Commits:</b> <code>${ghCommits}</code> commit${ghCommits === 1 ? '' : 's'}\n`;
-  html += ` └ 🏷️ <b>Status:</b> ${ghCommits > 0 ? '🔥 [ ACTIVE ]' : '⚪ [ NO COMMITS ]'}\n\n`;
+  html += ` └ 🏷 <b>Status:</b> ${ghCommits > 0 ? '🔥 [ ACTIVE ]' : '⚪ [ NO COMMITS ]'}\n\n`;
 
   html += `<blockquote>🎯 <b>EVALUATION:</b> ${overall}</blockquote>\n`;
   html += getWatermarkHtml();
@@ -1063,7 +1100,7 @@ export async function getProfileCard(user: any): Promise<{ html: string; keyboar
     const effectiveLc = p.leetcode_url || dir?.leetcode || 'Not set';
     const effectiveGh = p.github_url || dir?.github || 'Not set';
 
-    let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  👤  <b>STUDENT COMPREHENSIVE PROFILE</b>  🎓\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+    let html = `👤 <b>STUDENT COMPREHENSIVE PROFILE</b>  🎓\n──────────────────────────────\n`;
     html += `<blockquote>📌 <b>Full Name:</b> <b>${escapeHtml(p.full_name)}</b>\n`;
     html += `🆔 <b>Register No:</b> <code>${escapeHtml(p.register_number || p.username)}</code>\n`;
     html += `🏫 <b>Class & Year:</b> <code>${escapeHtml(p.class_name || 'N/A')}</code> (${p.year ? `Year ${p.year}` : 'IT Dept'})\n`;
@@ -1077,7 +1114,7 @@ export async function getProfileCard(user: any): Promise<{ html: string; keyboar
     html += `🌐 <b>CODING & SOCIAL PROFILES:</b>\n`;
     html += ` ├ 🧩 <b>LeetCode:</b> <code>${escapeHtml(effectiveLc)}</code>\n`;
     html += ` ├ 🐙 <b>GitHub:</b> <code>${escapeHtml(effectiveGh)}</code>\n`;
-    html += ` └ ✈️ <b>Telegram:</b> 🟢 Connected (${p.telegram_username ? `@${escapeHtml(p.telegram_username)}` : 'Personal DM'})\n\n`;
+    html += ` └ ✈ <b>Telegram:</b> 🟢 Connected (${p.telegram_username ? `@${escapeHtml(p.telegram_username)}` : 'Personal DM'})\n\n`;
 
     html += `📊 <b>PORTAL PERFORMANCE METRICS:</b>\n`;
     html += ` ├ 📋 <b>Tasks Verified:</b> <b>${s.verified_tasks || 0} / ${s.total_tasks || 0}</b>\n`;
@@ -1129,7 +1166,7 @@ export async function getFacultyTaskStatusCard(): Promise<{ html: string; keyboa
     LIMIT 6
   `);
 
-  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📋  <b>ACTIVE TASK STATUS OVERVIEW</b>  🏛️\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n\n`;
+  let html = `📋 <b>ACTIVE TASK STATUS OVERVIEW</b>  🏛\n──────────────────────────────\n\n`;
   if (tasksRes.rows.length === 0) {
     html += `✨ <i>No active assignments currently open.</i>\n`;
   } else {
@@ -1261,7 +1298,7 @@ export async function getComprehensiveStudentProgressCard(identifierOrUser: stri
   const taskProgress = totalTasks > 0 ? makeProgressBar(completedTasks, totalTasks, 8) : '✨ 0%';
   const pendingTasksList = activePendingTasksRes.rows;
 
-  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📊  <b>STUDENT PERFORMANCE CARD</b>  🎓\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  let html = `📊 <b>STUDENT PERFORMANCE CARD</b>  🎓\n──────────────────────────────\n`;
   html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(user.full_name)}</b>\n`;
   html += `🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number || user.username)}</code>\n`;
   html += `🏫 <b>Class:</b> <code>${escapeHtml(user.class_name || 'IT Department')}</code>\n`;
@@ -1413,7 +1450,7 @@ export async function getClassOrYearAnalysisCard(
   if (totalStudents === 0) {
     return {
       found: true,
-      html: `ℹ️ <b>${escapeHtml(classNamesHeader)}</b>\n\nNo enrolled students found in this class yet.\n${getWatermarkHtml()}`
+      html: `ℹ <b>${escapeHtml(classNamesHeader)}</b>\n\nNo enrolled students found in this class yet.\n${getWatermarkHtml()}`
     };
   }
 
@@ -1488,7 +1525,7 @@ export async function getClassOrYearAnalysisCard(
     if (commits > 0) ghActiveCommitters++;
   });
 
-  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📊  <b>${isYearOnly ? 'YEAR' : 'CLASS'} ANALYSIS REPORT</b>  🏛️\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  let html = `📊 <b>${isYearOnly ? 'YEAR' : 'CLASS'} ANALYSIS REPORT</b>  🏛\n──────────────────────────────\n`;
   html += `<blockquote>🏫 <b>Target:</b> <b>${escapeHtml(classNamesHeader)}</b>\n`;
   html += `👥 <b>Students:</b> <code>${totalStudents}</code>  |  📱 <b>Linked Telegram:</b> <code>${linkedTelegram} (${linkedPct}%)</code>\n`;
   html += `📅 <b>Date:</b> <i>${dateStr} (IST)</i></blockquote>\n\n`;
@@ -1555,7 +1592,7 @@ export async function getClassOrYearAnalysisCard(
     html += ` └ <i>No commits recorded today yet.</i>\n\n`;
   } else {
     ghTopCommitters.slice(0, 5).forEach((r, idx) => {
-      const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🎖️';
+      const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🎖';
       const isLast = idx === Math.min(ghTopCommitters.length, 5) - 1;
       html += ` ${isLast ? '└' : '├'} ${medal} <b>${escapeHtml(r.full_name)}</b> ➔ <code>${r.commits_today}</code> commits 🔥\n`;
     });
@@ -1572,7 +1609,7 @@ export async function getClassOrYearAnalysisCard(
     html += ` └ <i>No problems solved today yet.</i>\n\n`;
   } else {
     lcTopSolvers.slice(0, 5).forEach((r, idx) => {
-      const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🎖️';
+      const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🎖';
       const isLast = idx === Math.min(lcTopSolvers.length, 5) - 1;
       html += ` ${isLast ? '└' : '├'} ${medal} <b>${escapeHtml(r.full_name)}</b> ➔ <code>${r.solved_today}</code> solved 💎\n`;
     });
@@ -1727,7 +1764,13 @@ export async function getDefaultersCard(scopeText?: string): Promise<{ html: str
     FROM users u
     LEFT JOIN classes c ON u.class_id = c.id
     LEFT JOIN leetcode_daily_progress lp ON lp.user_id = u.id AND lp.date = $1
-    LEFT JOIN leetcode_targets lt ON lt.start_date <= $1 AND lt.end_date >= $1 AND (lt.class_id = u.class_id OR lt.class_id IS NULL)
+    LEFT JOIN LATERAL (
+      SELECT daily_target FROM leetcode_targets
+      WHERE start_date <= $1 AND end_date >= $1
+        AND (user_id = u.id OR class_id = u.class_id OR class_id IS NULL)
+      ORDER BY CASE WHEN user_id IS NOT NULL THEN 1 WHEN class_id IS NOT NULL THEN 2 ELSE 3 END ASC
+      LIMIT 1
+    ) lt ON true
     WHERE u.role = 'STUDENT'
   `;
   const params: any[] = [dateStr];
@@ -1762,7 +1805,7 @@ export async function getDefaultersCard(scopeText?: string): Promise<{ html: str
     }
   }
 
-  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  ⚠️  <b>DAILY TARGET DEFAULTER REPORT</b>  🚨\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  let html = `⚠️ <b>DAILY TARGET DEFAULTER REPORT</b>  🚨\n──────────────────────────────\n`;
   html += `<blockquote>📅 <b>Date:</b> <i>${dateStr} (IST)</i>\n`;
   if (scopeText) html += `🔍 <b>Filter:</b> <code>${escapeHtml(scopeText)}</code>\n`;
   html += `👥 <b>Total Defaulters:</b> <b>${defaulters.length}</b> student(s)</blockquote>\n\n`;
@@ -1822,6 +1865,11 @@ export function formatCountdown(deadlineDate: Date): string {
  * 📋 Comprehensive Tasks Card for a Student (Pending, Submitted, Verified, Rejected)
  */
 export async function getTasksCard(user: any): Promise<{ html: string; keyboard: any }> {
+  // Guard: student has no class assigned
+  if (!user.class_id) {
+    const html = `📋 <b>STUDENT TASK DASHBOARD</b>  🎯\n──────────────────────────────\n\n⚠️ <i>Your class is not assigned yet. Please contact your Class Advisor to be enrolled in a class so assignments appear here.</i>\n${getWatermarkHtml()}`;
+    return { html, keyboard: { inline_keyboard: [[{ text: '📱 Main Menu', callback_data: 'cb_menu' }, { text: '🌐 Open Portal', url: getPortalUrl() }]] } };
+  }
   const tasksRes = await pool.query(`
     SELECT 
       t.id, 
@@ -1863,7 +1911,7 @@ export async function getTasksCard(user: any): Promise<{ html: string; keyboard:
   const completionPercent = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : 100;
   const progressBar = makeProgressBar(totalCompleted, totalAssigned, 8);
 
-  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📋  <b>STUDENT TASK DASHBOARD</b>  🎯\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  let html = `📋 <b>STUDENT TASK DASHBOARD</b>  🎯\n──────────────────────────────\n`;
   html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(user.full_name)}</b>\n`;
   html += `🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number || user.username)}</code>\n`;
   html += `🏫 <b>Class:</b> <code>${escapeHtml(user.class_name || 'IT Section')}</code></blockquote>\n\n`;
@@ -1962,18 +2010,18 @@ export async function getTasksCard(user: any): Promise<{ html: string; keyboard:
  * 📢 Notify target students & group when a NEW TASK is posted
  */
 export async function notifyNewTaskCreated(task: {
-  id: string;
+  id: string | number;
   title: string;
   category?: string;
   deadline?: any;
   creator_name?: string;
-}, classIds: string[]): Promise<void> {
+}, classIds?: string[]): Promise<void> {
   const portalUrl = getPortalUrl();
   const deadlineStr = task.deadline
     ? new Date(task.deadline).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
     : 'No deadline set';
 
-  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📢  <b>NEW ASSIGNMENT POSTED!</b>  🚀\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  let html = `📢 <b>NEW ASSIGNMENT POSTED!</b>  🚀\n──────────────────────────────\n`;
   html += `<blockquote>📌 <b>Assignment:</b> <b>${escapeHtml(task.title)}</b>\n`;
   if (task.category) html += `📂 <b>Category:</b> <code>${escapeHtml(task.category)}</code>\n`;
   if (task.creator_name) html += `👤 <b>Assigned By:</b> ${escapeHtml(task.creator_name)}\n`;
@@ -1994,20 +2042,61 @@ export async function notifyNewTaskCreated(task: {
   const groupChatId = await getGroupChatId();
   const normalizedGroupChatId = groupChatId ? String(groupChatId).trim() : '';
   if (normalizedGroupChatId) {
-    sendTelegramMessage(normalizedGroupChatId, html, { reply_markup: keyboard }).catch(() => { });
+    console.log(`[Telegram Notifications] 🚀 Sending new task alert for "${task.title}" to group chat: ${normalizedGroupChatId}`);
+    sendTelegramMessage(normalizedGroupChatId, html, { reply_markup: keyboard }).catch(err => {
+      console.error('[Telegram] Failed to send new task alert to group:', err);
+    });
+  } else {
+    const adminChatId = getAdminChatId();
+    if (adminChatId) {
+      console.log(`[Telegram Notifications] Sending new task alert to admin chat: ${adminChatId}`);
+      sendTelegramMessage(adminChatId, html, { reply_markup: keyboard }).catch(() => { });
+    }
   }
 
-  // 2. Dispatch in parallel to all students in the assigned classes with linked PERSONAL Telegram
-  if (classIds && classIds.length > 0) {
-    const studentsRes = await pool.query(`
-      SELECT telegram_chat_id
-      FROM users
-      WHERE class_id = ANY($1::uuid[]) AND telegram_chat_id IS NOT NULL AND role = 'STUDENT'
-    `, [classIds]);
+  // 2. Sanitize and resolve class IDs
+  let targetClassIds: string[] = Array.isArray(classIds)
+    ? classIds.filter(id => id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id).trim())).map(id => String(id).trim())
+    : [];
 
-    const rawChatIds = studentsRes.rows
-      .map(r => r.telegram_chat_id ? String(r.telegram_chat_id).trim() : '')
-      .filter(Boolean);
+  if (targetClassIds.length === 0 && task.id) {
+    try {
+      const tcRes = await pool.query('SELECT class_id FROM task_classes WHERE task_id = $1', [task.id]);
+      targetClassIds = tcRes.rows.map(r => r.class_id.toString());
+      if (targetClassIds.length === 0) {
+        const taskInfoRes = await pool.query('SELECT department_id FROM tasks WHERE id = $1 LIMIT 1', [task.id]);
+        if (taskInfoRes.rows.length > 0 && taskInfoRes.rows[0].department_id) {
+          const deptClassesRes = await pool.query('SELECT id FROM classes WHERE department_id = $1', [taskInfoRes.rows[0].department_id]);
+          targetClassIds = deptClassesRes.rows.map(r => r.id.toString());
+        }
+      }
+    } catch (lookupErr) {
+      console.warn('[Telegram] Could not lookup classes for new task:', lookupErr);
+    }
+  }
+
+  // 3. Dispatch in parallel to all students in the assigned classes with linked PERSONAL Telegram
+  try {
+    let rawChatIds: string[] = [];
+    if (targetClassIds.length > 0) {
+      const studentsRes = await pool.query(`
+        SELECT telegram_chat_id
+        FROM users
+        WHERE class_id = ANY($1::uuid[]) AND telegram_chat_id IS NOT NULL AND role = 'STUDENT'
+      `, [targetClassIds]);
+      rawChatIds = studentsRes.rows
+        .map(r => r.telegram_chat_id ? String(r.telegram_chat_id).trim() : '')
+        .filter(Boolean);
+    } else {
+      const studentsRes = await pool.query(`
+        SELECT telegram_chat_id
+        FROM users
+        WHERE telegram_chat_id IS NOT NULL AND role = 'STUDENT'
+      `);
+      rawChatIds = studentsRes.rows
+        .map(r => r.telegram_chat_id ? String(r.telegram_chat_id).trim() : '')
+        .filter(Boolean);
+    }
 
     // Only send private DM to distinct personal chats (exclude groups with negative IDs and groupChatId)
     const personalChatIds = Array.from(new Set(rawChatIds)).filter(cid => {
@@ -2017,16 +2106,18 @@ export async function notifyNewTaskCreated(task: {
     });
 
     if (personalChatIds.length > 0) {
-      console.log(`[Telegram Notifications] Sending new task alert to ${personalChatIds.length} personal student chat(s)...`);
+      console.log(`[Telegram Notifications] 🚀 Sending new task alert to ${personalChatIds.length} personal student chat(s)...`);
 
-      // Send in chunks with Promise.allSettled to avoid blocking
       const BATCH_SIZE = 15;
       for (let i = 0; i < personalChatIds.length; i += BATCH_SIZE) {
         const batch = personalChatIds.slice(i, i + BATCH_SIZE);
         await Promise.allSettled(batch.map(cid => sendTelegramMessage(cid, html, { reply_markup: keyboard })));
         await new Promise(r => setTimeout(r, 40));
       }
+      console.log(`[Telegram Notifications] ✅ Successfully dispatched new task alert to ${personalChatIds.length} student(s).`);
     }
+  } catch (err) {
+    console.error('[Telegram] Error dispatching new task alerts to students:', err);
   }
 }
 
@@ -2039,7 +2130,7 @@ export async function notifyTaskReopened(task: {
   category?: string;
   deadline?: any;
   reopened_by?: string;
-}, classIds: string[]): Promise<void> {
+}, classIds?: string[]): Promise<void> {
   const portalUrl = getPortalUrl();
   const deadlineStr = task.deadline
     ? new Date(task.deadline).toLocaleString('en-IN', {
@@ -2052,12 +2143,12 @@ export async function notifyTaskReopened(task: {
       })
     : 'No deadline set';
 
-  let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  🔄  <b>ASSIGNMENT REOPENED!</b>  ⏰\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+  let html = `🔄 <b>ASSIGNMENT REOPENED!</b>  ⏰\n──────────────────────────────\n`;
   html += `<blockquote>📌 <b>Assignment:</b> <b>${escapeHtml(task.title)}</b>\n`;
   if (task.category) html += `📂 <b>Category:</b> <code>${escapeHtml(task.category)}</code>\n`;
   if (task.reopened_by) html += `👤 <b>Extended By:</b> ${escapeHtml(task.reopened_by)}\n`;
   html += `⏰ <b>New Extended Deadline:</b> <i>${deadlineStr}</i>\n`;
-  html += `🏷️ <b>Status:</b> 🟢 <code>OPEN FOR SUBMISSIONS</code></blockquote>\n\n`;
+  html += `🏷 <b>Status:</b> 🟢 <code>OPEN FOR SUBMISSIONS</code></blockquote>\n\n`;
   html += `📢 <i>The submission window for this assignment has been reopened and the deadline has been extended!</i>\n\n`;
   html += `👉 <i>If you have pending or incomplete submissions, please submit your proof on the portal before the new deadline.</i>\n`;
   html += getWatermarkHtml();
@@ -2075,44 +2166,85 @@ export async function notifyTaskReopened(task: {
   const groupChatId = await getGroupChatId();
   const normalizedGroupChatId = groupChatId ? String(groupChatId).trim() : '';
   if (normalizedGroupChatId) {
+    console.log(`[Telegram Notifications] 🚀 Sending reopened task alert for "${task.title}" to group chat: ${normalizedGroupChatId}`);
     sendTelegramMessage(normalizedGroupChatId, html, { reply_markup: keyboard }).catch(err => {
       console.error('[Telegram] Failed to send reopened task alert to group:', err);
     });
+  } else {
+    const adminChatId = getAdminChatId();
+    if (adminChatId) {
+      console.log(`[Telegram Notifications] Sending reopened task alert to admin chat: ${adminChatId}`);
+      sendTelegramMessage(adminChatId, html, { reply_markup: keyboard }).catch(() => { });
+    }
   }
 
-  // 2. Dispatch in parallel to all students in the assigned classes with linked PERSONAL Telegram
-  if (classIds && classIds.length > 0) {
+  // 2. Resolve class IDs if not supplied or empty
+  let targetClassIds: string[] = Array.isArray(classIds)
+    ? classIds.filter(id => id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id).trim())).map(id => String(id).trim())
+    : [];
+
+  if (targetClassIds.length === 0 && task.id) {
     try {
+      const tcRes = await pool.query('SELECT class_id FROM task_classes WHERE task_id = $1', [task.id]);
+      targetClassIds = tcRes.rows.map(r => r.class_id.toString());
+      if (targetClassIds.length === 0) {
+        const taskInfoRes = await pool.query('SELECT department_id FROM tasks WHERE id = $1 LIMIT 1', [task.id]);
+        if (taskInfoRes.rows.length > 0 && taskInfoRes.rows[0].department_id) {
+          const deptClassesRes = await pool.query('SELECT id FROM classes WHERE department_id = $1', [taskInfoRes.rows[0].department_id]);
+          targetClassIds = deptClassesRes.rows.map(r => r.id.toString());
+        }
+      }
+    } catch (lookupErr) {
+      console.warn('[Telegram] Could not lookup classes for reopened task:', lookupErr);
+    }
+  }
+
+  // 3. Dispatch in parallel to target students with linked PERSONAL Telegram
+  try {
+    let rawChatIds: string[] = [];
+    if (targetClassIds.length > 0) {
       const studentsRes = await pool.query(`
         SELECT telegram_chat_id
         FROM users
         WHERE class_id = ANY($1::uuid[]) AND telegram_chat_id IS NOT NULL AND role = 'STUDENT'
-      `, [classIds]);
-
-      const rawChatIds = studentsRes.rows
+      `, [targetClassIds]);
+      rawChatIds = studentsRes.rows
         .map(r => r.telegram_chat_id ? String(r.telegram_chat_id).trim() : '')
         .filter(Boolean);
-
-      // Only send private DM to distinct personal chats (exclude groups with negative IDs and groupChatId)
-      const personalChatIds = Array.from(new Set(rawChatIds)).filter(cid => {
-        if (cid.startsWith('-')) return false;
-        if (normalizedGroupChatId && cid === normalizedGroupChatId) return false;
-        return true;
-      });
-
-      if (personalChatIds.length > 0) {
-        console.log(`[Telegram Notifications] Sending reopened task alert to ${personalChatIds.length} personal student chat(s)...`);
-
-        const BATCH_SIZE = 15;
-        for (let i = 0; i < personalChatIds.length; i += BATCH_SIZE) {
-          const batch = personalChatIds.slice(i, i + BATCH_SIZE);
-          await Promise.allSettled(batch.map(cid => sendTelegramMessage(cid, html, { reply_markup: keyboard })));
-          await new Promise(r => setTimeout(r, 40));
-        }
-      }
-    } catch (err) {
-      console.error('[Telegram] Error dispatching reopened task alerts to students:', err);
+    } else {
+      // Fallback: If still no class IDs, notify all students who have linked Telegram
+      const studentsRes = await pool.query(`
+        SELECT telegram_chat_id
+        FROM users
+        WHERE telegram_chat_id IS NOT NULL AND role = 'STUDENT'
+      `);
+      rawChatIds = studentsRes.rows
+        .map(r => r.telegram_chat_id ? String(r.telegram_chat_id).trim() : '')
+        .filter(Boolean);
     }
+
+    // Filter to distinct personal chats (exclude groups with negative IDs and groupChatId)
+    const personalChatIds = Array.from(new Set(rawChatIds)).filter(cid => {
+      if (cid.startsWith('-')) return false;
+      if (normalizedGroupChatId && cid === normalizedGroupChatId) return false;
+      return true;
+    });
+
+    if (personalChatIds.length > 0) {
+      console.log(`[Telegram Notifications] 🚀 Sending reopened task alert for "${task.title}" to ${personalChatIds.length} personal student chat(s)...`);
+
+      const BATCH_SIZE = 15;
+      for (let i = 0; i < personalChatIds.length; i += BATCH_SIZE) {
+        const batch = personalChatIds.slice(i, i + BATCH_SIZE);
+        await Promise.allSettled(batch.map(cid => sendTelegramMessage(cid, html, { reply_markup: keyboard })));
+        await new Promise(r => setTimeout(r, 40));
+      }
+      console.log(`[Telegram Notifications] ✅ Successfully dispatched reopened task alert to ${personalChatIds.length} student(s).`);
+    } else {
+      console.log(`[Telegram Notifications] No personal student Telegram accounts found to notify for reopened task "${task.title}".`);
+    }
+  } catch (err) {
+    console.error('[Telegram] Error dispatching reopened task alerts to students:', err);
   }
 }
 
@@ -2129,10 +2261,10 @@ export async function notifyTaskSubmissionReceived(studentId: string, taskId: st
     const task = taskRes.rows[0];
     if (!task) return;
 
-    let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📥  <b>SUBMISSION RECEIVED — PENDING REVIEW</b>  ⏳\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+    let html = `📥 <b>SUBMISSION RECEIVED</b>  ⏳\n──────────────────────────────\n`;
     html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(user.full_name)}</b>\n`;
     html += `📌 <b>Assignment:</b> <b>"${escapeHtml(task.title)}"</b>\n`;
-    html += `🏷️ <b>Current Status:</b> <code>PENDING REVIEW</code> ⏳</blockquote>\n\n`;
+    html += `🏷 <b>Current Status:</b> <code>PENDING REVIEW</code> ⏳</blockquote>\n\n`;
     html += `<i>Your Class Advisor / Coordinator will verify your submission proof soon. You will receive an instant notification here once reviewed.</i>\n`;
     html += getWatermarkHtml();
 
@@ -2195,7 +2327,7 @@ export async function notifySubmissionVerifiedOrRejected(
         html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  🎉  <b>SUBMISSION APPROVED & VERIFIED!</b>  ✅\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
         html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(sub.full_name)}</b>\n`;
         html += `📌 <b>Assignment:</b> <b>"${escapeHtml(sub.task_title)}"</b>\n`;
-        html += `🏷️ <b>Status:</b> 🟢 <code>VERIFIED & APPROVED</code></blockquote>\n\n`;
+        html += `🏷 <b>Status:</b> 🟢 <code>VERIFIED & APPROVED</code></blockquote>\n\n`;
         if (noteOrReason) {
           html += `📝 <b>Reviewer Note:</b> <i>${escapeHtml(noteOrReason)}</i>\n\n`;
         }
@@ -2214,10 +2346,10 @@ export async function notifySubmissionVerifiedOrRejected(
           ]
         };
       } else {
-        html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  ⚠️  <b>SUBMISSION REQUIRES CORRECTION</b>  🚨\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+        html = `⚠️ <b>SUBMISSION REQUIRES CORRECTION</b>  🚨\n──────────────────────────────\n`;
         html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(sub.full_name)}</b>\n`;
         html += `📌 <b>Assignment:</b> <b>"${escapeHtml(sub.task_title)}"</b>\n`;
-        html += `🏷️ <b>Status:</b> 🔴 <code>REJECTED / ACTION REQUIRED</code></blockquote>\n\n`;
+        html += `🏷 <b>Status:</b> 🔴 <code>REJECTED / ACTION REQUIRED</code></blockquote>\n\n`;
         if (noteOrReason) {
           html += `📌 <b>Reason for Rejection:</b>\n<code>${escapeHtml(noteOrReason)}</code>\n\n`;
         }
@@ -2322,8 +2454,9 @@ export async function sendGroupSummary(targetChatId?: string, dateOverride?: str
       const classNameClean = r.class_name ? r.class_name.trim() : '';
       if (!classNameClean) return;
 
-      const yearChar = classNameClean.charAt(0);
-      if (yearStats[yearChar]) {
+      // Use getYearFromClassName to correctly handle Roman numerals (I/II/III/IV) and digit prefixes
+      const yearChar = getYearFromClassName(classNameClean);
+      if (yearChar && yearStats[yearChar]) {
         yearStats[yearChar].total++;
         yearStats[yearChar].solves += Number(r.solved_today) || 0;
         if (Number(r.solved_today) > 0) yearStats[yearChar].activeSolvers++;
@@ -2477,7 +2610,7 @@ export async function sendGroupSummary(targetChatId?: string, dateOverride?: str
     }
 
     // ── Build HTML Report ──────────────────────────────────────────────────
-    let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📊  <b>DEPARTMENT DAILY BRIEF</b>  🏛️\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+    let html = `📊 <b>DEPARTMENT DAILY BRIEF</b>  🏛\n──────────────────────────────\n`;
     html += `<blockquote>📅 <b>Date:</b> <i>${dateStr} (IST)</i>\n`;
     html += `👥 <b>Students:</b> <code>${totalStudents}</code>  |  📱 <b>Linked Telegram:</b> <code>${linkedTelegram}</code></blockquote>\n\n`;
 
@@ -2613,8 +2746,8 @@ export async function sendGroupDeadlineAlert(targetChatId?: string): Promise<{ s
         ) as total_targeted
       FROM tasks t
       JOIN users u ON t.created_by = u.id
-      JOIN task_classes tc ON tc.task_id = t.id
-      JOIN classes c ON tc.class_id = c.id
+      LEFT JOIN task_classes tc ON tc.task_id = t.id
+      LEFT JOIN classes c ON tc.class_id = c.id
       WHERE t.status = 'OPEN'
         AND t.deadline IS NOT NULL
         AND t.deadline > CURRENT_TIMESTAMP
@@ -2628,7 +2761,7 @@ export async function sendGroupDeadlineAlert(targetChatId?: string): Promise<{ s
     }
 
     const tasks = tasksRes.rows;
-    let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  ⏰  <b>UPCOMING TASK DEADLINE ALERT!</b>  ⏳\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+    let html = `⏰ <b>UPCOMING TASK DEADLINE ALERT!</b>  ⏳\n──────────────────────────────\n`;
     html += `<blockquote>⚠️ <i>The following assignment(s) are closing within the next <b>24 hours</b>. Please complete and submit before the deadline!</i></blockquote>\n\n`;
 
     tasks.forEach((t, i) => {
@@ -2750,7 +2883,7 @@ export async function triggerPendingTaskReminders(): Promise<{
         continue;
       }
 
-      let html = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  🔔  <b>PENDING TASK REMINDER</b>  ⏰\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+      let html = `🔔 <b>PENDING TASK REMINDER</b>  ⏰\n──────────────────────────────\n`;
       html += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(info.fullName)}</b>\n`;
       html += `🆔 <b>Reg No:</b> <code>${escapeHtml(info.registerNumber)}</code>\n`;
       html += `⏳ <b>Pending Assignments:</b> <b>${info.tasks.length}</b> awaiting submission</blockquote>\n\n`;
@@ -2782,7 +2915,7 @@ export async function triggerPendingTaskReminders(): Promise<{
         ]
       };
 
-      const sendRes = await sendTelegramMessage(info.telegramChatId, html, { reply_markup: inlineKeyboard });
+      const sendRes = await sendTelegramMessage(chatIdStr, html, { reply_markup: inlineKeyboard });
       if (sendRes.ok) {
         notifiedCount++;
       }
@@ -2897,7 +3030,65 @@ export function startTelegramPoller(): void {
 
         // Process all updates concurrently in parallel
         await Promise.allSettled(data.result.map(async (update: any) => {
-          // ── Handle Inline Button Callbacks ──────────────────────────────
+          // ── Handle Chat Join Requests (Group Request to Join) ──────────────
+          if (update.chat_join_request) {
+            const joinReq = update.chat_join_request;
+            const applicant = joinReq.from;
+            const applicantChatId = joinReq.user_chat_id || applicant.id;
+            const groupTitle = joinReq.chat?.title || 'IT Department Community';
+            const groupUsername = joinReq.chat?.username || 'it_taskmanager';
+
+            console.log(`[Telegram Group] 📥 Received Chat Join Request from User ID ${applicant.id} (${applicant.first_name || ''} @${applicant.username || ''}) for ${groupTitle}`);
+
+            try {
+              const userRes = await pool.query(
+                `SELECT id, full_name, register_number, role, class_id FROM users WHERE telegram_chat_id = $1 LIMIT 1`,
+                [String(applicant.id)]
+              );
+              const user = userRes.rows[0];
+
+              if (user) {
+                // Linked verified student: attempt auto-approval
+                let autoApproved = false;
+                try {
+                  const approveResp = await fetch(`https://api.telegram.org/bot${token}/approveChatJoinRequest`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chat_id: joinReq.chat.id, user_id: applicant.id })
+                  });
+                  const approveData = await approveResp.json();
+                  if (approveData.ok) {
+                    autoApproved = true;
+                    console.log(`[Telegram Group] ✅ Auto-approved verified student ${user.full_name} (${user.register_number}) into ${groupTitle}`);
+                  }
+                } catch (err: any) {
+                  console.warn('[Telegram Group] Auto-approve attempt note:', err.message);
+                }
+
+                if (autoApproved) {
+                  await sendTelegramMessage(
+                    applicantChatId,
+                    `🎉 <b>WELCOME TO THE DEPARTMENT GROUP!</b>\n──────────────────────────────\n<blockquote>👤 <b>Student:</b> <b>${escapeHtml(user.full_name)}</b>\n🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number)}</code></blockquote>\n\n✅ <i>Your join request has been verified and approved! You are now a member of <b>${escapeHtml(groupTitle)}</b>.</i>\n\n👉 <a href="https://t.me/${groupUsername}">Tap here to open the group chat!</a>\n${getWatermarkHtml()}`
+                  );
+                } else {
+                  await sendTelegramMessage(
+                    applicantChatId,
+                    `⏳ <b>GROUP JOIN REQUEST SUBMITTED</b>\n──────────────────────────────\n<blockquote>👤 <b>Student:</b> <b>${escapeHtml(user.full_name)}</b>\n🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number)}</code></blockquote>\n\n📌 <i>Your request to join <b>${escapeHtml(groupTitle)}</b> has been submitted. The admin will approve your request shortly!</i>\n${getWatermarkHtml()}`
+                  );
+                }
+              } else {
+                // Not yet linked
+                await sendTelegramMessage(
+                  applicantChatId,
+                  `👋 <b>GROUP JOIN REQUEST RECEIVED</b>\n──────────────────────────────\nHello <b>${escapeHtml(applicant.first_name || 'Student')}</b>!\n\nYour request to join <b>${escapeHtml(groupTitle)}</b> has been received.\n\n💡 <i>To verify your identity and get approved fast, please link your student account here by sending:</i>\n<code>/link YOUR_REGISTER_NUMBER</code>\n\n<i>(Example: <code>/link 922524205171</code>)</i>\n${getWatermarkHtml()}`
+                );
+              }
+            } catch (err: any) {
+              console.error('[Telegram Group] Error processing chat_join_request:', err.message);
+            }
+            return;
+          }
+
           if (update.callback_query) {
             const cb = update.callback_query;
             const cbData = cb.data;
@@ -2935,12 +3126,12 @@ export function startTelegramPoller(): void {
             if (!user && personalCallbackKeys.includes(cbData)) {
               if (cbIsGroup) {
                 if (cb.id) {
-                  await answerCallbackQuery(cb.id, 'ℹ️ Please message @' + (cachedBotUsername || 'the bot') + ' privately to link your student profile.', true);
+                  await answerCallbackQuery(cb.id, 'ℹ Please message @' + (cachedBotUsername || 'the bot') + ' privately to link your student profile.', true);
                 }
               } else {
                 await sendTelegramMessage(
                   cbChatId,
-                  `ℹ️ Your Telegram is not yet connected to a student profile.\n\nReply with <code>/link YOUR_REGISTER_NUMBER</code> to connect!\n${getWatermarkHtml()}`
+                  `ℹ Your Telegram is not yet connected to a student profile.\n\nReply with <code>/link YOUR_REGISTER_NUMBER</code> to connect!\n${getWatermarkHtml()}`
                 );
               }
               return;
@@ -3018,7 +3209,7 @@ export function startTelegramPoller(): void {
           if (text.startsWith('/id')) {
             await sendTelegramMessage(
               chatId,
-              `ℹ️ <b>Chat Details:</b>\n• Chat ID: <code>${chatId}</code>\n• Chat Type: <code>${msg.chat?.type}</code>\n• Your User ID: <code>${senderUserId}</code>\n${getWatermarkHtml()}`
+              `ℹ <b>Chat Details:</b>\n• Chat ID: <code>${chatId}</code>\n• Chat Type: <code>${msg.chat?.type}</code>\n• Your User ID: <code>${senderUserId}</code>\n${getWatermarkHtml()}`
             );
             return;
           }
@@ -3063,7 +3254,7 @@ export function startTelegramPoller(): void {
               const linkResult = await linkStudentTelegram(param, senderUserId, fromUsername);
               if (linkResult.success) {
                 const groupInviteUrl = await getGroupInviteLink();
-                let welcomeHtml = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  🎉  <b>ACCOUNT LINKED SUCCESSFULLY!</b>  ✅\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+                let welcomeHtml = `🎉 <b>ACCOUNT LINKED SUCCESSFULLY!</b>  ✅\n──────────────────────────────\n`;
                 welcomeHtml += `<blockquote>👤 <b>Student:</b> <b>${escapeHtml(linkResult.studentName)}</b>\n`;
                 welcomeHtml += `✨ <i>Your Telegram is now securely connected to IT TaskManager! You will receive private deadline alerts and evaluation notices here.</i></blockquote>\n\n`;
                 welcomeHtml += `👥 <b>RECOMMENDED NEXT STEP:</b>\n`;
@@ -3108,7 +3299,7 @@ export function startTelegramPoller(): void {
                 );
               } else {
                 const groupInviteUrl = await getGroupInviteLink();
-                let greetingHtml = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  👋  <b>WELCOME TO IT TASK MANAGER</b>  🎓\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+                let greetingHtml = `👋 <b>WELCOME TO IT TASK MANAGER</b>  🎓\n──────────────────────────────\n`;
                 greetingHtml += `<blockquote>Hello <b>${escapeHtml(senderName)}</b>!\n`;
                 greetingHtml += `Stay connected and never miss an assignment deadline or coding goal!</blockquote>\n\n`;
                 greetingHtml += `📌 <b>LINK YOUR ACCOUNT:</b>\n`;
@@ -3154,7 +3345,7 @@ export function startTelegramPoller(): void {
           // Command: /menu or /help
           if (text.startsWith('/menu') || text.startsWith('/help')) {
             const keyboard = getInteractiveMenuKeyboard(user?.role);
-            let helpHtml = `╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮\n  📱  <b>IT TASK MANAGER MENU</b>  ⚡\n╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯\n`;
+            let helpHtml = `📱 <b>IT TASK MANAGER MENU</b>  ⚡\n──────────────────────────────\n`;
             if (user) {
               helpHtml += `<blockquote>👤 <b>Connected:</b> <b>${escapeHtml(user.full_name)}</b>\n🆔 <b>Reg No:</b> <code>${escapeHtml(user.register_number)}</code>\n🏫 <b>Class:</b> <code>${escapeHtml(user.class_name || 'IT Department')}</code></blockquote>\n\n`;
             }
@@ -3232,7 +3423,7 @@ export function startTelegramPoller(): void {
             } else {
               await sendTelegramMessage(
                 chatId,
-                `ℹ️ <b>Usage:</b>\n• Student: <code>/check 922524205171</code>\n• Class: <code>/check 3itc</code> or <code>/check 2ita</code>\n• Year: <code>/check 3it</code> or <code>/check 2it</code>\n• Department: <code>/check dept</code>\n${getWatermarkHtml()}`
+                `ℹ <b>Usage:</b>\n• Student: <code>/check 922524205171</code>\n• Class: <code>/check 3itc</code> or <code>/check 2ita</code>\n• Year: <code>/check 3it</code> or <code>/check 2it</code>\n• Department: <code>/check dept</code>\n${getWatermarkHtml()}`
               );
               return;
             }
@@ -3315,7 +3506,7 @@ export function startTelegramPoller(): void {
               return;
             }
             if (!user) {
-              await sendTelegramMessage(chatId, `ℹ️ Please link your student account first: <code>/link &lt;Register_Number&gt;</code>\n${getWatermarkHtml()}`);
+              await sendTelegramMessage(chatId, `ℹ Please link your student account first: <code>/link &lt;Register_Number&gt;</code>\n${getWatermarkHtml()}`);
             } else {
               const card = await getStudentLeetCodeCard(user);
               await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
@@ -3330,7 +3521,7 @@ export function startTelegramPoller(): void {
               return;
             }
             if (!user) {
-              await sendTelegramMessage(chatId, `ℹ️ Please link your student account first: <code>/link &lt;Register_Number&gt;</code>\n${getWatermarkHtml()}`);
+              await sendTelegramMessage(chatId, `ℹ Please link your student account first: <code>/link &lt;Register_Number&gt;</code>\n${getWatermarkHtml()}`);
             } else {
               const card = await getStudentGitHubCard(user);
               await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
@@ -3345,7 +3536,7 @@ export function startTelegramPoller(): void {
               return;
             }
             if (!user) {
-              await sendTelegramMessage(chatId, `ℹ️ Please link your student account first: <code>/link &lt;Register_Number&gt;</code>\n${getWatermarkHtml()}`);
+              await sendTelegramMessage(chatId, `ℹ Please link your student account first: <code>/link &lt;Register_Number&gt;</code>\n${getWatermarkHtml()}`);
             } else {
               const card = await getStudentStatsCard(user);
               await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
@@ -3398,7 +3589,7 @@ export function startTelegramPoller(): void {
               return;
             }
             if (!user) {
-              await sendTelegramMessage(chatId, `ℹ️ Please link your student account first: <code>/link &lt;Register_Number&gt;</code>\n${getWatermarkHtml()}`);
+              await sendTelegramMessage(chatId, `ℹ Please link your student account first: <code>/link &lt;Register_Number&gt;</code>\n${getWatermarkHtml()}`);
             } else {
               const card = await getTasksCard(user);
               await sendTelegramMessage(chatId, card.html, { reply_markup: card.keyboard });
@@ -3434,7 +3625,7 @@ export function startTelegramPoller(): void {
                 { reply_markup: getInteractiveMenuKeyboard(user.role) }
               );
             } else {
-              await sendTelegramMessage(chatId, `ℹ️ This chat is not yet linked to any student profile. Send <code>/link &lt;Your_Register_Number&gt;</code> to link.\n${getWatermarkHtml()}`);
+              await sendTelegramMessage(chatId, `ℹ This chat is not yet linked to any student profile. Send <code>/link &lt;Your_Register_Number&gt;</code> to link.\n${getWatermarkHtml()}`);
             }
             return;
           }
@@ -3480,7 +3671,8 @@ export function startTelegramPoller(): void {
         }));
       }
     } catch (err: any) {
-      // Graceful poll loop recovery
+      // Log poll errors so they are visible in server logs for debugging
+      console.error('[Telegram Poll Error]:', err?.message || err);
     } finally {
       if (isPolling) {
         setTimeout(poll, 500);

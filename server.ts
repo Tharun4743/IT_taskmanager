@@ -34,7 +34,9 @@ import {
   sendTaskPendingReminderEmail,
   triggerManualTaskPendingReminders,
   notifyNewTaskCreatedEmail,
+  notifyTaskReopenedEmail,
   triggerDeadlineUrgentEmailReminders,
+  notifyNoticeBoardAnnouncementEmail,
   getLiveEmailNodesStatus
 } from './emailService.js';
 
@@ -46,6 +48,8 @@ export {
   sendTaskPendingReminderEmail,
   triggerManualTaskPendingReminders,
   notifyNewTaskCreatedEmail,
+  notifyTaskReopenedEmail,
+  notifyNoticeBoardAnnouncementEmail,
   triggerDeadlineUrgentEmailReminders
 };
 import {
@@ -501,11 +505,6 @@ async function startServer() {
             .then(() => generateDatabaseSnapshot())
             .catch(err => console.error('[LeetCode AutoSync] Nightly sync error:', err));
         }
-      }
-
-      // Check for incomplete tasks due within 2 hours and dispatch urgent email alerts (every 5-10 minutes)
-      if (minutes % 5 === 0) {
-        triggerDeadlineUrgentEmailReminders().catch(err => console.error('[Email Scheduler] Error checking 2-hour deadline alerts:', err));
       }
     } catch (schedErr) {
       console.error('[Scheduler] Check error:', schedErr);
@@ -2304,15 +2303,27 @@ async function startServer() {
     }
   });
 
-  app.patch('/api/tasks/:id/status', authenticate, authorize(['HOD', 'SUPREME_ADMIN']), async (req: any, res) => {
+  app.patch('/api/tasks/:id/status', authenticate, authorize(['HOD', 'SUPREME_ADMIN', 'CLASS_ADVISOR', 'STUDENT']), async (req: any, res) => {
     const { status } = req.body;
     const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [req.params.id]);
     const task = taskRes.rows[0];
     if (!task) return res.status(404).json({ error: 'Task not found' });
 
+    // 1. Fetch assigned classes with comprehensive fallbacks
     const tcRes = await pool.query('SELECT class_id FROM task_classes WHERE task_id = $1', [task.id]);
-    const taskClassIds = tcRes.rows.map(r => r.class_id.toString());
+    let taskClassIds = tcRes.rows.map(r => r.class_id.toString());
 
+    if (taskClassIds.length === 0) {
+      if (task.department_id) {
+        const deptClassesRes = await pool.query('SELECT id FROM classes WHERE department_id = $1', [task.department_id]);
+        taskClassIds = deptClassesRes.rows.map(r => r.id.toString());
+      } else {
+        const allClassesRes = await pool.query('SELECT id FROM classes');
+        taskClassIds = allClassesRes.rows.map(r => r.id.toString());
+      }
+    }
+
+    // 2. Authorization Verification
     let isAuthorized = false;
     if (req.user.role === 'SUPREME_ADMIN') {
       isAuthorized = true;
@@ -2328,28 +2339,81 @@ async function startServer() {
           isAuthorized = true;
         }
       }
+    } else if (req.user.role === 'CLASS_ADVISOR' || (req.user.role === 'STUDENT' && req.user.is_coordinator)) {
+      if (task.created_by?.toString() === req.user.id?.toString()) {
+        isAuthorized = true;
+      } else if (req.user.class_id && taskClassIds.includes(req.user.class_id.toString())) {
+        isAuthorized = true;
+      } else if (req.user.is_year_coordinator && req.user.year_scope && req.user.department_id) {
+        const yearClassRes = await pool.query(
+          'SELECT 1 FROM classes WHERE id = ANY($1::uuid[]) AND department_id = $2 AND year = $3 LIMIT 1',
+          [taskClassIds, req.user.department_id, req.user.year_scope]
+        );
+        if (yearClassRes.rowCount && yearClassRes.rowCount > 0) {
+          isAuthorized = true;
+        }
+      }
     }
 
-    if (!isAuthorized) return res.status(403).json({ error: 'Forbidden' });
+    if (!isAuthorized) return res.status(403).json({ error: 'Forbidden: You do not have permission to change this task status' });
 
     const previousStatus = task.status;
     await pool.query('UPDATE tasks SET status = $1, updated_at = NOW() WHERE id = $2', [status, req.params.id]);
 
     if (status === 'OPEN' && previousStatus !== 'OPEN') {
+      // Re-fetch the task deadline after UPDATE so notifications always show the current value
+      const freshTaskRes = await pool.query('SELECT deadline FROM tasks WHERE id = $1 LIMIT 1', [req.params.id]);
+      const freshDeadline = freshTaskRes.rows[0]?.deadline ?? task.deadline;
+
+      // 1. In-App Notification Dispatch
+      if (taskClassIds.length > 0) {
+        await pool.query(
+          `INSERT INTO notifications (user_id, message, type)
+           SELECT id, $1, 'TASK_REOPENED'
+           FROM users
+           WHERE class_id = ANY($2::uuid[]) AND role = 'STUDENT'`,
+          [`Task reopened by ${req.user.full_name || req.user.role}: "${task.title}".`, taskClassIds]
+        ).catch(e => console.error('[In-App Notification Reopen Error]:', e));
+      }
+
+      // 2. Telegram Bot Group & Personal Notification Dispatch
       notifyTaskReopened({
         id: task.id,
         title: task.title,
         category: task.category,
-        deadline: task.deadline,
+        deadline: freshDeadline,
         reopened_by: req.user.full_name || req.user.role
       }, taskClassIds).catch(err => console.error('[Telegram Reopen Task Error]:', err));
+
+      // 3. Multi-Node Institutional Email Notification Dispatch
+      notifyTaskReopenedEmail({
+        id: task.id,
+        title: task.title,
+        category: task.category,
+        deadline: freshDeadline,
+        reopened_by: req.user.full_name || req.user.role,
+        submission_type: task.submission_type
+      }, taskClassIds).catch(err => console.error('[Email Reopen Task Error]:', err));
+
+      // 4. Web Push Notification Dispatch
+      try {
+        const pushTitle = `🔄 Task Reopened: ${task.title}`;
+        const pushBody = `Task reopened by ${req.user.full_name || 'Admin'}. Please submit your work!`;
+        if (taskClassIds.length > 0) {
+          sendPushToClasses(taskClassIds, { title: pushTitle, body: pushBody, url: '/' }).catch(e => console.error('[Push Reopen Task Error]:', e));
+        } else {
+          sendPushToAll({ title: pushTitle, body: pushBody, url: '/' }).catch(e => console.error('[Push Reopen Task Error]:', e));
+        }
+      } catch (pushErr) {
+        console.error('[Push Notification Reopen Error]:', pushErr);
+      }
     }
 
     invalidateApiCache('tasks_');
-    res.json({ success: true });
+    res.json({ success: true, status });
   });
 
-  app.patch('/api/tasks/:id/reopen', authenticate, authorize(['HOD', 'SUPREME_ADMIN']), async (req: any, res) => {
+  app.patch('/api/tasks/:id/reopen', authenticate, authorize(['HOD', 'SUPREME_ADMIN', 'CLASS_ADVISOR', 'STUDENT']), async (req: any, res) => {
     const { deadline } = req.body;
     if (!deadline) {
       return res.status(400).json({ error: 'New deadline date and time is required to reopen the task.' });
@@ -2364,9 +2428,21 @@ async function startServer() {
     const task = taskRes.rows[0];
     if (!task) return res.status(404).json({ error: 'Task not found' });
 
+    // 1. Fetch assigned classes with comprehensive fallbacks
     const tcRes = await pool.query('SELECT class_id FROM task_classes WHERE task_id = $1', [task.id]);
-    const taskClassIds = tcRes.rows.map(r => r.class_id.toString());
+    let taskClassIds = tcRes.rows.map(r => r.class_id.toString());
 
+    if (taskClassIds.length === 0) {
+      if (task.department_id) {
+        const deptClassesRes = await pool.query('SELECT id FROM classes WHERE department_id = $1', [task.department_id]);
+        taskClassIds = deptClassesRes.rows.map(r => r.id.toString());
+      } else {
+        const allClassesRes = await pool.query('SELECT id FROM classes');
+        taskClassIds = allClassesRes.rows.map(r => r.id.toString());
+      }
+    }
+
+    // 2. Authorization Verification
     let isAuthorized = false;
     if (req.user.role === 'SUPREME_ADMIN') {
       isAuthorized = true;
@@ -2382,26 +2458,41 @@ async function startServer() {
           isAuthorized = true;
         }
       }
+    } else if (req.user.role === 'CLASS_ADVISOR' || (req.user.role === 'STUDENT' && req.user.is_coordinator)) {
+      if (task.created_by?.toString() === req.user.id?.toString()) {
+        isAuthorized = true;
+      } else if (req.user.class_id && taskClassIds.includes(req.user.class_id.toString())) {
+        isAuthorized = true;
+      } else if (req.user.is_year_coordinator && req.user.year_scope && req.user.department_id) {
+        const yearClassRes = await pool.query(
+          'SELECT 1 FROM classes WHERE id = ANY($1::uuid[]) AND department_id = $2 AND year = $3 LIMIT 1',
+          [taskClassIds, req.user.department_id, req.user.year_scope]
+        );
+        if (yearClassRes.rowCount && yearClassRes.rowCount > 0) {
+          isAuthorized = true;
+        }
+      }
     }
 
-    if (!isAuthorized) return res.status(403).json({ error: 'Forbidden: Only HOD of the task department can reopen and extend deadline' });
+    if (!isAuthorized) return res.status(403).json({ error: 'Forbidden: You do not have permission to reopen this task' });
 
     await pool.query(
       'UPDATE tasks SET status = \'OPEN\', deadline = $1, updated_at = NOW() WHERE id = $2',
       [newDeadline.toISOString(), req.params.id]
     );
 
+    // 1. In-App Notification Dispatch
     if (taskClassIds.length > 0) {
       await pool.query(
         `INSERT INTO notifications (user_id, message, type)
          SELECT id, $1, 'TASK_REOPENED'
          FROM users
          WHERE class_id = ANY($2::uuid[]) AND role = 'STUDENT'`,
-        [`Deadline extended & task reopened by HOD for "${task.title}". New deadline: ${newDeadline.toLocaleString()}`, taskClassIds]
-      );
+        [`Deadline extended & task reopened by ${req.user.full_name || req.user.role} for "${task.title}". New deadline: ${newDeadline.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`, taskClassIds]
+      ).catch(e => console.error('[In-App Notification Reopen Error]:', e));
     }
 
-    // 🚀 Telegram Group & Personal Notification Dispatch
+    // 2. 🚀 Telegram Group & Personal Notification Dispatch
     notifyTaskReopened({
       id: task.id,
       title: task.title,
@@ -2410,7 +2501,17 @@ async function startServer() {
       reopened_by: req.user.full_name || req.user.role
     }, taskClassIds).catch(err => console.error('[Telegram Reopen Task Error]:', err));
 
-    // 📱 Web Push Notification Dispatch
+    // 3. 📧 Multi-Node Institutional Email Notification Dispatch
+    notifyTaskReopenedEmail({
+      id: task.id,
+      title: task.title,
+      category: task.category,
+      deadline: newDeadline,
+      reopened_by: req.user.full_name || req.user.role,
+      submission_type: task.submission_type
+    }, taskClassIds).catch(err => console.error('[Email Reopen Task Error]:', err));
+
+    // 4. 📱 Web Push Notification Dispatch
     try {
       const pushTitle = `🔄 Task Reopened: ${task.title}`;
       const pushBody = `Deadline extended to ${newDeadline.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}. Please submit your work!`;
@@ -5185,6 +5286,8 @@ async function startServer() {
           u.id, publish_at || new Date().toISOString(), expire_at || null,
         ]);
         insertedNotices.push(result.rows[0]);
+        // Trigger email announcement asynchronously
+        notifyNoticeBoardAnnouncementEmail(result.rows[0]).catch(e => console.error('[Email Notice Multi] Error:', e));
       }
       invalidateApiCache('notices_');
       return res.status(201).json(insertedNotices[0] || { success: true });
@@ -5203,6 +5306,11 @@ async function startServer() {
       attachment_url || null, attachment_cloudinary_public_id || null,
       u.id, publish_at || new Date().toISOString(), expire_at || null,
     ]);
+
+    // Trigger email announcement asynchronously
+    if (result.rows[0]) {
+      notifyNoticeBoardAnnouncementEmail(result.rows[0]).catch(e => console.error('[Email Notice] Error:', e));
+    }
 
     invalidateApiCache('notices_');
     res.status(201).json(result.rows[0]);

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ExcelJS from 'exceljs';
 import { API_URL } from './config';
 import {
@@ -4134,6 +4134,8 @@ export default function App() {
   const [supremeStats, setSupremeStats] = useState<any>(null);
   const [myClass, setMyClass] = useState<Class | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const knownNotificationIdsRef = useRef<Set<number>>(new Set());
+  const initialNotifsLoadedRef = useRef<boolean>(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [reportFilters, setReportFilters] = useState<{ classIds: string[]; taskId: string; status: string }>({ classIds: [], taskId: '', status: 'ALL' });
@@ -5057,14 +5059,31 @@ export default function App() {
     if (isServerAwake) {
       if (token) {
         fetchInitialData();
-        // Poll for live updates every 60 seconds
+        // Fast live polling for notifications and updates every 12 seconds
         const interval = setInterval(() => {
           fetchTasks();
           fetchSubmissions();
           fetchNotifications();
           if (user?.role === 'STUDENT') fetchMyTeamsAndInvitations();
-        }, 60000);
-        return () => clearInterval(interval);
+        }, 12000);
+
+        // Immediate refresh when tab/window gains focus
+        const handleFocusOrVisible = () => {
+          if (document.visibilityState === 'visible') {
+            fetchTasks();
+            fetchSubmissions();
+            fetchNotifications();
+          }
+        };
+
+        document.addEventListener('visibilitychange', handleFocusOrVisible);
+        window.addEventListener('focus', handleFocusOrVisible);
+
+        return () => {
+          clearInterval(interval);
+          document.removeEventListener('visibilitychange', handleFocusOrVisible);
+          window.removeEventListener('focus', handleFocusOrVisible);
+        };
       } else {
         setIsLoading(false);
       }
@@ -5293,10 +5312,48 @@ export default function App() {
     } catch (e) { }
   };
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = async (isInitial = false) => {
     try {
       const res = await fetch(`${API_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) setNotifications(await res.json());
+      if (res.ok) {
+        const data: Notification[] = await res.json();
+
+        // If not initial page load, trigger live alerts for newly arrived unread notifications
+        if (initialNotifsLoadedRef.current && !isInitial) {
+          const newUnreads = data.filter(n => !n.is_read && !knownNotificationIdsRef.current.has(n.id));
+          if (newUnreads.length > 0) {
+            newUnreads.forEach(n => {
+              addToast(`🔔 ${n.message}`, 'info');
+
+              // Trigger native browser notification if enabled
+              if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+                try {
+                  navigator.serviceWorker?.ready?.then(reg => {
+                    if (reg && reg.showNotification) {
+                      reg.showNotification('🔔 IT TaskManager', {
+                        body: n.message,
+                        icon: '/logo.png',
+                        badge: '/badge.png',
+                        tag: `notif-${n.id}`,
+                        data: { url: '/' }
+                      });
+                    } else {
+                      new Notification('🔔 IT TaskManager', { body: n.message, icon: '/logo.png' });
+                    }
+                  }).catch(() => {
+                    new Notification('🔔 IT TaskManager', { body: n.message, icon: '/logo.png' });
+                  });
+                } catch { }
+              }
+            });
+          }
+        }
+
+        // Keep track of all seen notification IDs
+        data.forEach(n => knownNotificationIdsRef.current.add(n.id));
+        initialNotifsLoadedRef.current = true;
+        setNotifications(data);
+      }
     } catch (e) { }
   };
 
@@ -12113,7 +12170,7 @@ export default function App() {
                                 )}
                               </div>
                             )}
-                            {(isAdmin || isHOD || isAdvisor) && (
+                            {(isAdmin || isHOD || isAdvisor || isCoordinator) && (
                               <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-zinc-100 pt-4">
                                 <Button
                                   variant="secondary"
@@ -12124,7 +12181,7 @@ export default function App() {
                                   <Mail size={14} className="text-amber-600" /> Send Pending Email Alert
                                 </Button>
 
-                                {(isAdmin || isHOD) && (
+                                {(isAdmin || isHOD || isAdvisor || isCoordinator) && (
                                   <>
                                     <Button
                                       variant="secondary"

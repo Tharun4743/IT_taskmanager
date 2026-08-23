@@ -15,6 +15,42 @@ import { pool } from './db.js';
 
 const COLLEGE_LOGO_URL = 'https://raw.githubusercontent.com/Tharun4743/IT_taskmanager/main/public/logo.png';
 
+function getTelegramCommunityBoxHtml(): string {
+  return `
+        <!-- Telegram Community & Alerts Connect Box -->
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border: 1px solid #7dd3fc; border-radius: 12px; margin: 28px 0 16px 0; overflow: hidden; box-shadow: 0 2px 8px rgba(2, 132, 199, 0.08);">
+          <tr>
+            <td style="padding: 18px 20px;">
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td style="vertical-align: top; width: 44px; padding-right: 14px;">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg" alt="Telegram" width="42" height="42" style="display: block; width: 42px; height: 42px; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.15);" />
+                  </td>
+                  <td style="vertical-align: middle;">
+                    <p style="margin: 0 0 4px 0; font-size: 13px; font-weight: 800; color: #0369a1; text-transform: uppercase; letter-spacing: 0.05em;">
+                      ⚡ Telegram Alerts Bot & Department Community
+                    </p>
+                    <p style="margin: 0 0 12px 0; font-size: 12.5px; color: #334155; line-height: 1.45;">
+                      Stay updated with instant deadline alerts, daily coding leaderboards & official department briefs.
+                    </p>
+                    <div>
+                      <a href="https://t.me/IT_TaskManager_Alerts_bot" style="display: inline-block; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: #ffffff; text-decoration: none; font-size: 11.5px; font-weight: 700; padding: 8px 16px; border-radius: 6px; margin-right: 8px; margin-bottom: 6px; box-shadow: 0 2px 4px rgba(2, 132, 199, 0.25);">
+                        🤖 Open Telegram Bot
+                      </a>
+                      <a href="https://t.me/it_taskmanager" style="display: inline-block; background: linear-gradient(135deg, #0f766e 0%, #047857 100%); color: #ffffff; text-decoration: none; font-size: 11.5px; font-weight: 700; padding: 8px 16px; border-radius: 6px; margin-bottom: 6px; box-shadow: 0 2px 4px rgba(4, 120, 87, 0.25);">
+                        👥 Join Department Group
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+  `;
+}
+
+
 interface BrevoAccountNode {
   nodeId: string;
   apiKey: string;
@@ -438,9 +474,13 @@ export async function sendNewTaskPostedEmail(payload: NewTaskEmailPayload): Prom
       <td height="6" style="background: linear-gradient(90deg, #1e3a8a 0%, #d97706 50%, #1e3a8a 100%);"></td>
     </tr>
 
+        <!-- Top Color Bar -->
+    <tr>
+      <td style="height: 5px; background: linear-gradient(90deg, #1e3a8a 0%, #2563eb 50%, #d97706 100%); font-size: 0; line-height: 0;">&nbsp;</td>
+    </tr>
     <!-- Institutional Header -->
     <tr>
-      <td style="padding: 24px 24px 16px 24px; background-color: #ffffff; border-bottom: 2px solid #0f172a; text-align: center;">
+      <td style="padding: 28px 24px 20px 24px; background-color: #ffffff; border-bottom: 2px solid #0f172a; text-align: center;">
         <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
           <tr>
             <td align="center" style="padding-bottom: 12px;">
@@ -449,9 +489,6 @@ export async function sendNewTaskPostedEmail(payload: NewTaskEmailPayload): Prom
           </tr>
           <tr>
             <td align="center">
-              <span style="font-size: 11px; font-weight: 800; color: #d97706; letter-spacing: 0.15em; text-transform: uppercase; display: block; margin-bottom: 2px;">
-                Autonomous Institution • Accredited by NAAC with 'A' Grade
-              </span>
               <h1 style="margin: 0 0 4px 0; font-size: 20px; font-weight: 900; color: #0f172a; letter-spacing: -0.01em; text-transform: uppercase; font-family: Georgia, 'Times New Roman', serif;">
                 VSB Engineering College
               </h1>
@@ -472,8 +509,8 @@ export async function sendNewTaskPostedEmail(payload: NewTaskEmailPayload): Prom
       <td style="background-color: #0f172a; padding: 10px 24px; color: #f8fafc; font-size: 11px;">
         <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
           <tr>
-            <td align="left" style="font-family: monospace; font-weight: 600; letter-spacing: 0.05em; color: #cbd5e1;">
-              REF: ${refCode}
+            <td align="left" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 700; letter-spacing: 0.03em; color: #cbd5e1;">
+              TASK: ${taskTitle}
             </td>
             <td align="right" style="font-weight: 600; color: #f59e0b;">
               DATE: ${currentDate}
@@ -545,6 +582,8 @@ export async function sendNewTaskPostedEmail(payload: NewTaskEmailPayload): Prom
             📝 View Assignment & Submit
           </a>
         </div>
+        ${getTelegramCommunityBoxHtml()}
+
 
       </td>
     </tr>
@@ -552,17 +591,11 @@ export async function sendNewTaskPostedEmail(payload: NewTaskEmailPayload): Prom
     <!-- Institutional Footer -->
     <tr>
       <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 24px; text-align: center; font-size: 11px; color: #64748b; line-height: 1.6;">
-        <p style="margin: 0 0 4px 0; font-weight: 700; color: #0f172a; text-transform: uppercase;">
-          Department of Information Technology • VSB Engineering College (Autonomous)
-        </p>
-        <p style="margin: 0 0 4px 0;">
-          NH-67, Covai Road, Karur — 639 111, Tamil Nadu, India
-        </p>
-        <p style="margin: 6px 0 4px 0; font-size: 11px; color: #334155; font-weight: 600;">
-          Developed by <a href="https://tharunkumark4743.netlify.app/" style="color: #1e3a8a; text-decoration: underline; font-weight: 800;">Tharunkumar K</a> • 🏛️ Department of Information Technology, VSBEC
+        <p style="margin: 0 0 6px 0; font-size: 12px; color: #334155; font-weight: 600; letter-spacing: 0.02em;">
+          Developed and Maintained by <a href="https://tharunkumark4743.netlify.app/" style="color: #1d4ed8; text-decoration: underline; font-weight: 800;">Tharunkumar K</a>
         </p>
         <p style="margin: 6px 0 0 0; font-size: 10px; color: #94a3b8;">
-          🔒 <i>CONFIDENTIALITY NOTICE: Official Academic Notification • Generated automatically by VSB TaskManager</i>
+          🔒 <i>CONFIDENTIALITY NOTICE: This transmission is intended solely for the registered student. Generated automatically by VSBEC IT DEPARTMENT.</i>
         </p>
       </td>
     </tr>
@@ -626,6 +659,223 @@ export async function notifyNewTaskCreatedEmail(task: {
   }
 }
 
+/**
+ * 🔄 Send Individual Task Reopened & Deadline Extended Email
+ */
+export interface TaskReopenedEmailPayload {
+  to: string;
+  studentName: string;
+  registerNumber?: string;
+  taskTitle: string;
+  taskCategory?: string;
+  deadline?: string | Date | null;
+  newDeadline?: string | Date | null;
+  reopenedBy?: string;
+  reopenReason?: string;
+  submissionType?: string;
+  portalUrl?: string;
+}
+
+export async function sendTaskReopenedEmail(payload: TaskReopenedEmailPayload): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const { to, studentName, registerNumber, taskTitle, taskCategory, reopenedBy, submissionType, portalUrl } = payload;
+  const deadline = payload.newDeadline || payload.deadline;
+  const portalLink = portalUrl || process.env.FRONTEND_URL || 'https://it-taskmanager.onrender.com';
+  const currentDate = new Date().toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  });
+
+  const formattedDeadline = deadline
+    ? new Date(deadline).toLocaleString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Kolkata'
+      })
+    : 'Open / Extended (No Strict Cutoff)';
+
+  const refCode = `VSB-REOPEN-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+  const subject = `🔄 Assignment Reopened & Extended: "${taskTitle}" — VSBEC IT TaskManager`;
+
+  const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assignment Reopened</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b;">
+  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; margin: 24px auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <tr>
+      <td style="background-color: #0f172a; padding: 24px; text-align: left; border-bottom: 3px solid #10b981;">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+          <tr>
+            <td>
+              <h1 style="margin: 0 0 4px 0; color: #ffffff; font-size: 16px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;">
+                VSB Engineering College
+              </h1>
+              <h2 style="margin: 0 0 10px 0; color: #94a3b8; font-size: 12px; font-weight: 500; text-transform: uppercase;">
+                Department of Information Technology • Academic Portal
+              </h2>
+              <span style="display: inline-block; background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 4px; padding: 3px 10px; font-size: 11px; font-weight: 700; color: #047857; letter-spacing: 0.05em;">
+                🔄 ASSIGNMENT REOPENED & DEADLINE EXTENDED
+              </span>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td style="background-color: #1e293b; padding: 10px 24px; color: #f8fafc; font-size: 11px;">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+          <tr>
+            <td align="left" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 700; letter-spacing: 0.03em; color: #cbd5e1;">
+              TASK: ${taskTitle}
+            </td>
+            <td align="right" style="font-weight: 600; color: #34d399;">
+              DATE: ${currentDate}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 28px 24px;">
+        <p style="margin: 0 0 16px 0; font-size: 15px; color: #0f172a;">
+          Dear <b>${studentName}</b> ${registerNumber ? `(${registerNumber})` : ''},
+        </p>
+        <p style="margin: 0 0 20px 0; font-size: 14px; color: #334155; line-height: 1.6;">
+          The submission window for the assignment <b>"${taskTitle}"</b> has been reopened and the deadline has been extended. If you have pending or incomplete submissions, please submit your proof on the portal before the new deadline.
+        </p>
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 24px; font-size: 13px;">
+          <tr>
+            <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0; width: 35%; color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px;">
+              Assignment Title
+            </td>
+            <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-weight: 700;">
+              ${taskTitle}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px;">
+              Category
+            </td>
+            <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0; color: #1e3a8a; font-weight: 700;">
+              ${taskCategory || 'General Academic Task'}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px;">
+              New Extended Deadline
+            </td>
+            <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0; font-weight: 700; color: #047857;">
+              ⏰ ${formattedDeadline}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 12px 16px; color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px;">
+              Extended By
+            </td>
+            <td style="padding: 12px 16px; color: #0f172a; font-weight: 600;">
+              ${reopenedBy || 'HOD / Faculty'}
+            </td>
+          </tr>
+        </table>
+        <div style="text-align: center; margin: 28px 0 16px 0;">
+          <a href="${portalLink}" style="display: inline-block; background-color: #047857; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 14px 32px; border-radius: 6px; box-shadow: 0 4px 12px rgba(4, 120, 87, 0.25);">
+            📝 View & Submit Proof on Portal
+          </a>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 24px; text-align: center; font-size: 11px; color: #64748b; line-height: 1.6;">
+        <p style="margin: 0 0 6px 0; font-size: 12px; color: #334155; font-weight: 600; letter-spacing: 0.02em;">
+          Developed and Maintained by <a href="https://tharunkumark4743.netlify.app/" style="color: #1d4ed8; text-decoration: underline; font-weight: 800;">Tharunkumar K</a>
+        </p>
+        <p style="margin: 6px 0 0 0; font-size: 10px; color: #94a3b8;">
+          🔒 <i>CONFIDENTIALITY NOTICE: This transmission is intended solely for the registered student. Generated automatically by VSBEC IT DEPARTMENT.</i>
+        </p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+
+  return await dispatchEmailThroughPool(to, studentName, subject, htmlContent, 'VSBEC IT Department');
+}
+
+/**
+ * 🔄 Broadcast Task Reopened & Deadline Extended Email to all Students in Assigned Classes (Background non-blocking)
+ */
+export async function notifyTaskReopenedEmail(task: {
+  id: string | number;
+  title: string;
+  category?: string;
+  deadline?: string | Date | null;
+  reopened_by?: string;
+  submission_type?: string;
+}, classIds?: string[]) {
+  try {
+    let studentRows: any[] = [];
+    const validClassIds = Array.isArray(classIds)
+      ? classIds.filter(id => id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id).trim()))
+      : [];
+
+    if (validClassIds.length > 0) {
+      const res = await pool.query(
+        `SELECT full_name, register_number, email FROM users WHERE class_id = ANY($1::uuid[]) AND role = 'STUDENT' AND email IS NOT NULL AND email != ''`,
+        [validClassIds]
+      );
+      studentRows = res.rows;
+    } else if (task.id) {
+      const res = await pool.query(`
+        SELECT u.full_name, u.register_number, u.email
+        FROM users u
+        WHERE u.role = 'STUDENT' AND u.email IS NOT NULL AND u.email != ''
+          AND (
+            u.class_id IN (SELECT class_id FROM task_classes WHERE task_id = $1)
+            OR u.department_id IN (SELECT department_id FROM tasks WHERE id = $1)
+          )
+      `, [task.id]);
+      studentRows = res.rows;
+    } else {
+      const res = await pool.query(
+        `SELECT full_name, register_number, email FROM users WHERE role = 'STUDENT' AND email IS NOT NULL AND email != ''`
+      );
+      studentRows = res.rows;
+    }
+
+    if (studentRows.length === 0) return;
+
+    console.log(`[EmailService] 🔄 Broadcasting Reopened Task email for "${task.title}" to ${studentRows.length} students...`);
+
+    for (let i = 0; i < studentRows.length; i += 5) {
+      const batch = studentRows.slice(i, i + 5);
+      await Promise.allSettled(batch.map(student => 
+        sendTaskReopenedEmail({
+          to: student.email,
+          studentName: student.full_name,
+          registerNumber: student.register_number,
+          taskTitle: task.title,
+          taskCategory: task.category,
+          deadline: task.deadline,
+          reopenedBy: task.reopened_by,
+          submissionType: task.submission_type
+        })
+      ));
+    }
+    console.log(`[EmailService] ✅ Successfully dispatched reopened task emails for "${task.title}".`);
+  } catch (err: any) {
+    console.error('[EmailService] Error broadcasting reopened task email:', err.message);
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. TASK VERIFIED / REJECTED NOTIFICATION
 // ─────────────────────────────────────────────────────────────────────────────
@@ -633,15 +883,21 @@ export async function notifyNewTaskCreatedEmail(task: {
 export interface EmailNotificationPayload {
   to: string;
   studentName: string;
-  registerNumber: string;
+  registerNumber?: string;
   taskTitle: string;
-  status: 'VERIFIED' | 'REJECTED';
+  status: 'VERIFIED' | 'REJECTED' | string;
   noteOrReason?: string;
+  reason?: string;
+  feedback?: string;
+  reviewedBy?: string;
+  reviewerRole?: string;
+  taskCategory?: string;
   portalUrl?: string;
 }
 
 export async function sendTaskStatusEmail(payload: EmailNotificationPayload): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  const { to, studentName, registerNumber, taskTitle, status, noteOrReason, portalUrl } = payload;
+  const { to, studentName, registerNumber, taskTitle, status, portalUrl } = payload;
+  const noteOrReason = payload.noteOrReason || payload.feedback || payload.reason || '';
   const isVerified = status === 'VERIFIED';
   const portalLink = portalUrl || process.env.FRONTEND_URL || 'https://it-taskmanager.onrender.com';
 
@@ -673,9 +929,13 @@ export async function sendTaskStatusEmail(payload: EmailNotificationPayload): Pr
       <td height="6" style="background: linear-gradient(90deg, #1e3a8a 0%, #d97706 50%, #1e3a8a 100%);"></td>
     </tr>
 
+        <!-- Top Color Bar -->
+    <tr>
+      <td style="height: 5px; background: linear-gradient(90deg, #1e3a8a 0%, #2563eb 50%, #d97706 100%); font-size: 0; line-height: 0;">&nbsp;</td>
+    </tr>
     <!-- Institutional Header -->
     <tr>
-      <td style="padding: 24px 24px 16px 24px; background-color: #ffffff; border-bottom: 2px solid #0f172a; text-align: center;">
+      <td style="padding: 28px 24px 20px 24px; background-color: #ffffff; border-bottom: 2px solid #0f172a; text-align: center;">
         <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
           <tr>
             <td align="center" style="padding-bottom: 12px;">
@@ -684,9 +944,6 @@ export async function sendTaskStatusEmail(payload: EmailNotificationPayload): Pr
           </tr>
           <tr>
             <td align="center">
-              <span style="font-size: 11px; font-weight: 800; color: #d97706; letter-spacing: 0.15em; text-transform: uppercase; display: block; margin-bottom: 2px;">
-                Autonomous Institution • Accredited by NAAC with 'A' Grade
-              </span>
               <h1 style="margin: 0 0 4px 0; font-size: 20px; font-weight: 900; color: #0f172a; letter-spacing: -0.01em; text-transform: uppercase; font-family: Georgia, 'Times New Roman', serif;">
                 VSB Engineering College
               </h1>
@@ -707,8 +964,8 @@ export async function sendTaskStatusEmail(payload: EmailNotificationPayload): Pr
       <td style="background-color: #0f172a; padding: 10px 24px; color: #f8fafc; font-size: 11px;">
         <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
           <tr>
-            <td align="left" style="font-family: monospace; font-weight: 600; letter-spacing: 0.05em; color: #cbd5e1;">
-              REF: ${refCode}
+            <td align="left" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 700; letter-spacing: 0.03em; color: #cbd5e1;">
+              TASK: ${taskTitle}
             </td>
             <td align="right" style="font-weight: 600; color: #f59e0b;">
               DATE: ${currentDate}
@@ -786,6 +1043,8 @@ export async function sendTaskStatusEmail(payload: EmailNotificationPayload): Pr
         <p style="margin: 20px 0 0 0; font-size: 12px; color: #64748b; line-height: 1.5; text-align: center;">
           For any academic inquiries regarding this evaluation, kindly contact your designated <b>Class Advisor</b> or <b>Year Coordinator</b>.
         </p>
+        ${getTelegramCommunityBoxHtml()}
+
 
       </td>
     </tr>
@@ -793,17 +1052,11 @@ export async function sendTaskStatusEmail(payload: EmailNotificationPayload): Pr
     <!-- Institutional Footer -->
     <tr>
       <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 24px; text-align: center; font-size: 11px; color: #64748b; line-height: 1.6;">
-        <p style="margin: 0 0 4px 0; font-weight: 700; color: #0f172a; text-transform: uppercase;">
-          Department of Information Technology • VSB Engineering College (Autonomous)
-        </p>
-        <p style="margin: 0 0 4px 0;">
-          NH-67, Covai Road, Karur — 639 111, Tamil Nadu, India
-        </p>
-        <p style="margin: 6px 0 4px 0; font-size: 11px; color: #334155; font-weight: 600;">
-          Developed by <a href="https://tharunkumark4743.netlify.app/" style="color: #1e3a8a; text-decoration: underline; font-weight: 800;">Tharunkumar K</a> • 🏛️ Department of Information Technology, VSBEC
+        <p style="margin: 0 0 6px 0; font-size: 12px; color: #334155; font-weight: 600; letter-spacing: 0.02em;">
+          Developed and Maintained by <a href="https://tharunkumark4743.netlify.app/" style="color: #1d4ed8; text-decoration: underline; font-weight: 800;">Tharunkumar K</a>
         </p>
         <p style="margin: 6px 0 0 0; font-size: 10px; color: #94a3b8;">
-          🔒 <i>CONFIDENTIALITY NOTICE: This transmission is intended solely for the registered student. Generated automatically by VSB Academic Task Management System.</i>
+          🔒 <i>CONFIDENTIALITY NOTICE: This transmission is intended solely for the registered student. Generated automatically by VSBEC IT DEPARTMENT.</i>
         </p>
       </td>
     </tr>
@@ -856,9 +1109,13 @@ export async function sendDeadlineAlertEmail(payload: DeadlineAlertEmailPayload)
       <td height="6" style="background: linear-gradient(90deg, #dc2626 0%, #f59e0b 50%, #dc2626 100%);"></td>
     </tr>
 
+        <!-- Top Color Bar -->
+    <tr>
+      <td style="height: 5px; background: linear-gradient(90deg, #1e3a8a 0%, #2563eb 50%, #d97706 100%); font-size: 0; line-height: 0;">&nbsp;</td>
+    </tr>
     <!-- Institutional Header -->
     <tr>
-      <td style="padding: 24px 24px 16px 24px; background-color: #ffffff; border-bottom: 2px solid #0f172a; text-align: center;">
+      <td style="padding: 28px 24px 20px 24px; background-color: #ffffff; border-bottom: 2px solid #0f172a; text-align: center;">
         <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
           <tr>
             <td align="center" style="padding-bottom: 12px;">
@@ -867,9 +1124,6 @@ export async function sendDeadlineAlertEmail(payload: DeadlineAlertEmailPayload)
           </tr>
           <tr>
             <td align="center">
-              <span style="font-size: 11px; font-weight: 800; color: #dc2626; letter-spacing: 0.15em; text-transform: uppercase; display: block; margin-bottom: 2px;">
-                Autonomous Institution • Accredited by NAAC with 'A' Grade
-              </span>
               <h1 style="margin: 0 0 4px 0; font-size: 20px; font-weight: 900; color: #0f172a; letter-spacing: -0.01em; text-transform: uppercase; font-family: Georgia, 'Times New Roman', serif;">
                 VSB Engineering College
               </h1>
@@ -890,8 +1144,8 @@ export async function sendDeadlineAlertEmail(payload: DeadlineAlertEmailPayload)
       <td style="background-color: #0f172a; padding: 10px 24px; color: #f8fafc; font-size: 11px;">
         <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
           <tr>
-            <td align="left" style="font-family: monospace; font-weight: 600; letter-spacing: 0.05em; color: #cbd5e1;">
-              REF: ${refCode}
+            <td align="left" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 700; letter-spacing: 0.03em; color: #cbd5e1;">
+              TASK: ${taskTitle}
             </td>
             <td align="right" style="font-weight: 600; color: #f59e0b;">
               DATE: ${currentDate}
@@ -964,6 +1218,8 @@ export async function sendDeadlineAlertEmail(payload: DeadlineAlertEmailPayload)
             🚀 Submit Assignment Now
           </a>
         </div>
+        ${getTelegramCommunityBoxHtml()}
+
 
       </td>
     </tr>
@@ -971,17 +1227,11 @@ export async function sendDeadlineAlertEmail(payload: DeadlineAlertEmailPayload)
     <!-- Institutional Footer -->
     <tr>
       <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 24px; text-align: center; font-size: 11px; color: #64748b; line-height: 1.6;">
-        <p style="margin: 0 0 4px 0; font-weight: 700; color: #0f172a; text-transform: uppercase;">
-          Department of Information Technology • VSB Engineering College (Autonomous)
-        </p>
-        <p style="margin: 0 0 4px 0;">
-          NH-67, Covai Road, Karur — 639 111, Tamil Nadu, India
-        </p>
-        <p style="margin: 6px 0 4px 0; font-size: 11px; color: #334155; font-weight: 600;">
-          Developed by <a href="https://tharunkumark4743.netlify.app/" style="color: #1e3a8a; text-decoration: underline; font-weight: 800;">Tharunkumar K</a> • 🏛️ Department of Information Technology, VSBEC
+        <p style="margin: 0 0 6px 0; font-size: 12px; color: #334155; font-weight: 600; letter-spacing: 0.02em;">
+          Developed and Maintained by <a href="https://tharunkumark4743.netlify.app/" style="color: #1d4ed8; text-decoration: underline; font-weight: 800;">Tharunkumar K</a>
         </p>
         <p style="margin: 6px 0 0 0; font-size: 10px; color: #94a3b8;">
-          🔒 <i>CONFIDENTIALITY NOTICE: Automated Academic Urgency Transmission • Generated by VSB TaskManager</i>
+          🔒 <i>CONFIDENTIALITY NOTICE: This transmission is intended solely for the registered student. Generated automatically by VSBEC IT DEPARTMENT.</i>
         </p>
       </td>
     </tr>
@@ -1068,14 +1318,21 @@ export async function triggerDeadlineUrgentEmailReminders(): Promise<{ dispatche
 
 export interface PasswordResetOtpPayload {
   to: string;
-  studentName: string;
+  studentName?: string;
+  name?: string;
   registerNumber?: string;
-  otpCode: string;
+  otpCode?: string | number;
+  otp?: string | number;
   expiresInMinutes?: number;
+  expiryMinutes?: number;
+  portalUrl?: string;
 }
 
 export async function sendPasswordResetOtpEmail(payload: PasswordResetOtpPayload): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  const { to, studentName, registerNumber, otpCode, expiresInMinutes = 10 } = payload;
+  const { to, registerNumber } = payload;
+  const studentName = payload.studentName || payload.name || 'User';
+  const otpCode = String(payload.otpCode || payload.otp || '000000');
+  const expiresInMinutes = payload.expiresInMinutes || payload.expiryMinutes || 10;
   const subject = `🔐 Security Verification Code: ${otpCode} — VSBEC IT`;
   const currentDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
 
@@ -1096,9 +1353,13 @@ export async function sendPasswordResetOtpEmail(payload: PasswordResetOtpPayload
       <td height="6" style="background: linear-gradient(90deg, #1e3a8a 0%, #d97706 50%, #1e3a8a 100%);"></td>
     </tr>
 
+        <!-- Top Color Bar -->
+    <tr>
+      <td style="height: 5px; background: linear-gradient(90deg, #1e3a8a 0%, #2563eb 50%, #d97706 100%); font-size: 0; line-height: 0;">&nbsp;</td>
+    </tr>
     <!-- Institutional Header -->
     <tr>
-      <td style="padding: 24px 24px 16px 24px; background-color: #ffffff; border-bottom: 2px solid #0f172a; text-align: center;">
+      <td style="padding: 28px 24px 20px 24px; background-color: #ffffff; border-bottom: 2px solid #0f172a; text-align: center;">
         <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
           <tr>
             <td align="center" style="padding-bottom: 12px;">
@@ -1107,9 +1368,6 @@ export async function sendPasswordResetOtpEmail(payload: PasswordResetOtpPayload
           </tr>
           <tr>
             <td align="center">
-              <span style="font-size: 11px; font-weight: 800; color: #d97706; letter-spacing: 0.15em; text-transform: uppercase; display: block; margin-bottom: 2px;">
-                Autonomous Institution • Accredited by NAAC with 'A' Grade
-              </span>
               <h1 style="margin: 0 0 4px 0; font-size: 20px; font-weight: 900; color: #0f172a; letter-spacing: -0.01em; text-transform: uppercase; font-family: Georgia, 'Times New Roman', serif;">
                 VSB Engineering College
               </h1>
@@ -1130,8 +1388,8 @@ export async function sendPasswordResetOtpEmail(payload: PasswordResetOtpPayload
       <td style="background-color: #0f172a; padding: 10px 24px; color: #f8fafc; font-size: 11px;">
         <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
           <tr>
-            <td align="left" style="font-family: monospace; font-weight: 600; letter-spacing: 0.05em; color: #cbd5e1;">
-              REF: VSBEC/IT/AUTH/RESET
+            <td align="left" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 700; letter-spacing: 0.03em; color: #cbd5e1;">
+              SECURITY: PASSWORD RESET OTP
             </td>
             <td align="right" style="font-weight: 600; color: #f59e0b;">
               DATE: ${currentDate}
@@ -1176,6 +1434,8 @@ export async function sendPasswordResetOtpEmail(payload: PasswordResetOtpPayload
         <p style="margin: 0; font-size: 12px; color: #64748b; line-height: 1.5;">
           If you did not make this request, please disregard this email. Your portal credentials remain secure.
         </p>
+        ${getTelegramCommunityBoxHtml()}
+
 
       </td>
     </tr>
@@ -1183,17 +1443,11 @@ export async function sendPasswordResetOtpEmail(payload: PasswordResetOtpPayload
     <!-- Institutional Footer -->
     <tr>
       <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 24px; text-align: center; font-size: 11px; color: #64748b; line-height: 1.6;">
-        <p style="margin: 0 0 4px 0; font-weight: 700; color: #0f172a; text-transform: uppercase;">
-          Department of Information Technology • VSB Engineering College (Autonomous)
-        </p>
-        <p style="margin: 0 0 4px 0;">
-          NH-67, Covai Road, Karur — 639 111, Tamil Nadu, India
-        </p>
-        <p style="margin: 6px 0 4px 0; font-size: 11px; color: #334155; font-weight: 600;">
-          Developed by <a href="https://tharunkumark4743.netlify.app/" style="color: #1e3a8a; text-decoration: underline; font-weight: 800;">Tharunkumar K</a> • 🏛️ Department of Information Technology, VSBEC
+        <p style="margin: 0 0 6px 0; font-size: 12px; color: #334155; font-weight: 600; letter-spacing: 0.02em;">
+          Developed and Maintained by <a href="https://tharunkumark4743.netlify.app/" style="color: #1d4ed8; text-decoration: underline; font-weight: 800;">Tharunkumar K</a>
         </p>
         <p style="margin: 6px 0 0 0; font-size: 10px; color: #94a3b8;">
-          🔒 <i>CONFIDENTIALITY NOTICE: Automated Security Transmission • Department of Information Technology</i>
+          🔒 <i>CONFIDENTIALITY NOTICE: This transmission is intended solely for the registered student. Generated automatically by VSBEC IT DEPARTMENT.</i>
         </p>
       </td>
     </tr>
@@ -1211,16 +1465,59 @@ export async function sendPasswordResetOtpEmail(payload: PasswordResetOtpPayload
  * Dispatches an official Task Pending Reminder email to an incomplete student.
  */
 export async function sendTaskPendingReminderEmail(
-  to: string,
-  studentName: string,
-  registerNumber: string,
-  className: string,
-  taskTitle: string,
-  deadline: string,
-  category?: string,
-  customMessage?: string,
-  senderTitle?: string
+  toOrPayload: string | {
+    to: string;
+    studentName: string;
+    registerNumber?: string;
+    className?: string;
+    taskTitle: string;
+    deadline?: string;
+    category?: string;
+    customMessage?: string;
+    senderTitle?: string;
+    senderRole?: string;
+    senderName?: string;
+  },
+  argStudentName?: string,
+  argRegisterNumber?: string,
+  argClassName?: string,
+  argTaskTitle?: string,
+  argDeadline?: string,
+  argCategory?: string,
+  argCustomMessage?: string,
+  argSenderTitle?: string
 ): Promise<{ success: boolean; provider?: string; error?: string }> {
+  let to: string;
+  let studentName: string;
+  let registerNumber: string;
+  let className: string;
+  let taskTitle: string;
+  let deadline: string;
+  let category: string | undefined;
+  let customMessage: string | undefined;
+  let senderTitle: string | undefined;
+
+  if (typeof toOrPayload === 'object' && toOrPayload !== null) {
+    to = toOrPayload.to;
+    studentName = toOrPayload.studentName;
+    registerNumber = toOrPayload.registerNumber || '';
+    className = toOrPayload.className || '';
+    taskTitle = toOrPayload.taskTitle;
+    deadline = toOrPayload.deadline || 'Approaching Soon';
+    category = toOrPayload.category;
+    customMessage = toOrPayload.customMessage;
+    senderTitle = toOrPayload.senderTitle || (toOrPayload.senderRole ? `${toOrPayload.senderName || 'Faculty'} (${toOrPayload.senderRole})` : 'VSBEC IT Department');
+  } else {
+    to = toOrPayload as string;
+    studentName = argStudentName || '';
+    registerNumber = argRegisterNumber || '';
+    className = argClassName || '';
+    taskTitle = argTaskTitle || 'Academic Assignment';
+    deadline = argDeadline || 'Approaching Soon';
+    category = argCategory;
+    customMessage = argCustomMessage;
+    senderTitle = argSenderTitle;
+  }
   const formattedDeadline = new Date(deadline).toLocaleString('en-IN', {
     dateStyle: 'full',
     timeStyle: 'short',
@@ -1256,9 +1553,6 @@ export async function sendTaskPendingReminderEmail(
         <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 800; color: #ffffff; letter-spacing: 0.06em; text-transform: uppercase;">
           VSB ENGINEERING COLLEGE
         </h1>
-        <p style="margin: 0 0 6px 0; font-size: 11px; color: #93c5fd; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600;">
-          An Autonomous Institution • Accredited by NAAC with 'A' Grade
-        </p>
         <p style="margin: 0; font-size: 13px; color: #fde047; font-weight: 700; letter-spacing: 0.04em;">
           DEPARTMENT OF INFORMATION TECHNOLOGY
         </p>
@@ -1338,6 +1632,8 @@ export async function sendTaskPendingReminderEmail(
             🚀 Submit Task Proof Now
           </a>
         </div>
+        ${getTelegramCommunityBoxHtml()}
+
 
       </td>
     </tr>
@@ -1345,17 +1641,11 @@ export async function sendTaskPendingReminderEmail(
     <!-- Institutional Footer -->
     <tr>
       <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 24px; text-align: center; font-size: 11px; color: #64748b; line-height: 1.6;">
-        <p style="margin: 0 0 4px 0; font-weight: 700; color: #0f172a; text-transform: uppercase;">
-          Department of Information Technology • VSB Engineering College (Autonomous)
-        </p>
-        <p style="margin: 0 0 4px 0;">
-          NH-67, Covai Road, Karur — 639 111, Tamil Nadu, India
-        </p>
-        <p style="margin: 6px 0 4px 0; font-size: 11px; color: #334155; font-weight: 600;">
-          Developed by <a href="https://tharunkumark4743.netlify.app/" style="color: #1e3a8a; text-decoration: underline; font-weight: 800;">Tharunkumar K</a> • 🏛️ Department of Information Technology, VSBEC
+        <p style="margin: 0 0 6px 0; font-size: 12px; color: #334155; font-weight: 600; letter-spacing: 0.02em;">
+          Developed and Maintained by <a href="https://tharunkumark4743.netlify.app/" style="color: #1d4ed8; text-decoration: underline; font-weight: 800;">Tharunkumar K</a>
         </p>
         <p style="margin: 6px 0 0 0; font-size: 10px; color: #94a3b8;">
-          🔒 <i>CONFIDENTIALITY NOTICE: Automated Official Academic Notification • Department of Information Technology</i>
+          🔒 <i>CONFIDENTIALITY NOTICE: This transmission is intended solely for the registered student. Generated automatically by VSBEC IT DEPARTMENT.</i>
         </p>
       </td>
     </tr>
@@ -1532,3 +1822,235 @@ export async function triggerManualTaskPendingReminders(
   }
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. NOTICE BOARD ANNOUNCEMENT NOTIFICATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface NoticeEmailPayload {
+  to: string;
+  studentName: string;
+  registerNumber?: string;
+  noticeTitle: string;
+  noticeDescription: string;
+  priority?: string;
+  publisherName?: string;
+  publisherRole?: string;
+  attachmentUrl?: string | null;
+  portalUrl?: string;
+}
+
+export async function sendNoticeAnnouncementEmail(payload: NoticeEmailPayload): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const { to, studentName, registerNumber, noticeTitle, noticeDescription, priority, publisherName, publisherRole, attachmentUrl, portalUrl } = payload;
+  const portalLink = portalUrl || process.env.FRONTEND_URL || 'https://it-taskmanager.onrender.com';
+  const isUrgent = priority === 'URGENT' || priority === 'HIGH';
+
+  const subject = isUrgent
+    ? `🚨 Urgent Official Announcement: "${noticeTitle}" — VSBEC IT Department`
+    : `📢 New Department Notice: "${noticeTitle}" — VSBEC IT Department`;
+
+  const priorityBadgeColor = priority === 'URGENT' ? '#dc2626' : priority === 'HIGH' ? '#ea580c' : '#2563eb';
+  const priorityBadgeBg = priority === 'URGENT' ? '#fef2f2' : priority === 'HIGH' ? '#fff7ed' : '#eff6ff';
+  const currentDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+
+  const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #1e293b;">
+
+  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f1f5f9; padding: 32px 12px;">
+    <tr>
+      <td align="center">
+
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="width: 100%; max-width: 620px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(226, 232, 240, 0.8);">
+
+          <!-- Top Color Bar -->
+          <tr>
+            <td style="height: 5px; background: linear-gradient(90deg, #1e3a8a 0%, #2563eb 50%, ${priorityBadgeColor} 100%); font-size: 0; line-height: 0;">&nbsp;</td>
+          </tr>
+
+          <!-- Institutional Header -->
+          <tr>
+            <td style="padding: 28px 24px 20px 24px; background-color: #ffffff; border-bottom: 2px solid #0f172a; text-align: center;">
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td align="center" style="padding-bottom: 12px;">
+                    <img src="${COLLEGE_LOGO_URL}" alt="VSBEC IT Emblem" width="76" height="76" style="display: block; width: 76px; height: 76px; border-radius: 50%; border: 2px solid #d97706; box-shadow: 0 2px 8px rgba(0,0,0,0.15);" />
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center">
+                    <h1 style="margin: 0 0 4px 0; font-size: 20px; font-weight: 900; color: #0f172a; letter-spacing: -0.01em; text-transform: uppercase; font-family: Georgia, 'Times New Roman', serif;">
+                      VSB Engineering College
+                    </h1>
+                    <h2 style="margin: 0 0 6px 0; font-size: 13px; font-weight: 700; color: #1e3a8a; letter-spacing: 0.08em; text-transform: uppercase;">
+                      Department of Information Technology
+                    </h2>
+                    <span style="display: inline-block; background-color: ${priorityBadgeBg}; border: 1px solid ${priorityBadgeColor}; border-radius: 4px; padding: 3px 10px; font-size: 11px; font-weight: 800; color: ${priorityBadgeColor}; letter-spacing: 0.05em;">
+                      📢 OFFICIAL DIGITAL NOTICE BOARD
+                    </span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Reference Bar -->
+          <tr>
+            <td style="background-color: #0f172a; padding: 10px 24px; color: #f8fafc; font-size: 11px;">
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td align="left" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 700; letter-spacing: 0.03em; color: #cbd5e1;">
+                    ANNOUNCEMENT: ${noticeTitle}
+                  </td>
+                  <td align="right" style="font-weight: 600; color: #f59e0b;">
+                    DATE: ${currentDate}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 28px 24px;">
+              <p style="margin: 0 0 16px 0; font-size: 15px; color: #0f172a;">
+                Dear <b>${studentName}</b> ${registerNumber ? `(${registerNumber})` : ''},
+              </p>
+
+              <p style="margin: 0 0 20px 0; font-size: 14px; color: #334155; line-height: 1.6;">
+                A new official circular has been published on the <b>Department Digital Notice Board</b>:
+              </p>
+
+              <!-- Notice Summary Box -->
+              <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid ${priorityBadgeColor}; border-radius: 8px; padding: 18px 20px; margin-bottom: 24px;">
+                <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 800; color: #0f172a;">
+                  ${noticeTitle}
+                </h3>
+                <p style="margin: 0 0 12px 0; font-size: 13.5px; color: #334155; line-height: 1.6; white-space: pre-wrap;">
+                  ${noticeDescription}
+                </p>
+                <div style="font-size: 11.5px; color: #64748b; font-weight: 600;">
+                  🏛 Published By: <b>${publisherName || 'Faculty / HOD'}</b> ${publisherRole ? `(${publisherRole})` : ''}
+                </div>
+              </div>
+
+              ${attachmentUrl ? `
+              <!-- Attachment Download Button -->
+              <div style="text-align: center; margin: 16px 0 24px 0;">
+                <a href="${attachmentUrl}" style="display: inline-block; background-color: #f1f5f9; color: #1e3a8a; border: 1px solid #cbd5e1; text-decoration: none; font-size: 12.5px; font-weight: 700; padding: 10px 20px; border-radius: 6px;">
+                  📎 Download Attached File / Circular
+                </a>
+              </div>` : ''}
+
+              <!-- CTA Button -->
+              <div style="text-align: center; margin: 24px 0 16px 0;">
+                <a href="${portalLink}?tab=notice-board" style="display: inline-block; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 14px 34px; border-radius: 8px; border: 1px solid #1e3a8a; box-shadow: 0 4px 14px rgba(15, 23, 42, 0.25);">
+                  📋 Open Digital Notice Board
+                </a>
+              </div>
+
+              ${getTelegramCommunityBoxHtml()}
+
+            </td>
+          </tr>
+
+          <!-- Institutional Footer -->
+          <tr>
+            <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 24px; text-align: center; font-size: 11px; color: #64748b; line-height: 1.6;">
+              <p style="margin: 0 0 6px 0; font-size: 12px; color: #334155; font-weight: 600; letter-spacing: 0.02em;">
+                Developed and Maintained by <a href="https://tharunkumark4743.netlify.app/" style="color: #1d4ed8; text-decoration: underline; font-weight: 800;">Tharunkumar K</a>
+              </p>
+              <p style="margin: 6px 0 0 0; font-size: 10px; color: #94a3b8;">
+                🔒 <i>CONFIDENTIALITY NOTICE: This transmission is intended solely for the registered student. Generated automatically by VSBEC IT DEPARTMENT.</i>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>
+  `;
+
+  return await dispatchEmailThroughPool(to, studentName, subject, htmlContent, 'VSBEC IT Department Notices');
+}
+
+/**
+ * Broadcasts an announcement email to all targeted students based on notice scope
+ */
+export async function notifyNoticeBoardAnnouncementEmail(notice: {
+  id?: string | number;
+  title: string;
+  description: string;
+  scope?: string;
+  department_id?: string | number | null;
+  class_id?: string | number | null;
+  year?: string | number | null;
+  priority?: string;
+  attachment_url?: string | null;
+  created_by?: string | number;
+}): Promise<void> {
+  try {
+    let query = `
+      SELECT u.id, u.full_name, u.register_number, u.email 
+      FROM users u
+      LEFT JOIN classes c ON u.class_id = c.id
+      WHERE u.role = 'STUDENT' AND u.email IS NOT NULL AND TRIM(u.email) != ''
+    `;
+    const params: any[] = [];
+
+    if (notice.scope === 'CLASS' && notice.class_id) {
+      params.push(notice.class_id);
+      query += ` AND u.class_id = $1`;
+    } else if (notice.scope === 'YEAR' && notice.year) {
+      params.push(notice.year);
+      query += ` AND c.year = $1`;
+    } else if (notice.scope === 'DEPARTMENT' && notice.department_id) {
+      params.push(notice.department_id);
+      query += ` AND u.department_id = $1`;
+    }
+
+    const studentsRes = await pool.query(query, params);
+    const students = studentsRes.rows;
+
+    let publisherName = 'Department Faculty';
+    let publisherRole = 'STAFF';
+    if (notice.created_by) {
+      const pubRes = await pool.query('SELECT full_name, role FROM users WHERE id = $1 LIMIT 1', [notice.created_by]);
+      if (pubRes.rows[0]) {
+        publisherName = pubRes.rows[0].full_name;
+        publisherRole = pubRes.rows[0].role;
+      }
+    }
+
+    console.log(`[EmailService] 📢 Broadcasting Notice Board Announcement "${notice.title}" to ${students.length} student(s)...`);
+
+    for (const st of students) {
+      sendNoticeAnnouncementEmail({
+        to: st.email,
+        studentName: st.full_name,
+        registerNumber: st.register_number,
+        noticeTitle: notice.title,
+        noticeDescription: notice.description,
+        priority: notice.priority,
+        publisherName,
+        publisherRole,
+        attachmentUrl: notice.attachment_url
+      }).catch(err => {
+        console.warn(`[EmailService] Notice email send failed for ${st.email}:`, err.message);
+      });
+    }
+  } catch (err: any) {
+    console.error('[EmailService] Error broadcasting notice board email:', err.message);
+  }
+}
