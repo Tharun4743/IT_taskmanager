@@ -5382,7 +5382,7 @@ async function startServer() {
     res.json(result.rows[0]);
   }));
 
-  // POST /api/notices/upload â€” Cloudinary attachment upload
+  // POST /api/notices/upload — Cloudinary attachment upload
   app.post('/api/notices/upload', authenticate, authorize(['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN']),
     upload.single('attachment'), asyncHandler(async (req: any, res: Response) => {
       if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -5390,6 +5390,23 @@ async function startServer() {
       res.json({ attachment_url: f.path, attachment_cloudinary_public_id: f.filename });
     })
   );
+
+  // POST /api/notices/:id/broadcast — manually trigger/re-broadcast notice email to targeted students
+  app.post('/api/notices/:id/broadcast', authenticate, authorize(['CLASS_ADVISOR', 'HOD', 'SUPREME_ADMIN']), asyncHandler(async (req: any, res: Response) => {
+    const noticeRes = await pool.query('SELECT * FROM notices WHERE id = $1', [req.params.id]);
+    if (!noticeRes.rows[0]) return res.status(404).json({ error: 'Notice not found' });
+
+    const notice = noticeRes.rows[0];
+    const isCreator = String(notice.created_by) === String(req.user.id);
+    const isAdmin = req.user.role === 'SUPREME_ADMIN';
+    const isHOD = req.user.role === 'HOD';
+    if (!isCreator && !isAdmin && !isHOD) return res.status(403).json({ error: 'Forbidden' });
+
+    // Trigger asynchronous broadcast
+    notifyNoticeBoardAnnouncementEmail(notice).catch(e => console.error('[Email Notice Broadcast] Error:', e));
+
+    res.json({ success: true, message: `Email broadcast queued for notice: ${notice.title}` });
+  }));
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // MODULE 4 â€” SMART REMINDER SETTINGS

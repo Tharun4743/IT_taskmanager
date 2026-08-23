@@ -1832,6 +1832,7 @@ export interface NoticeEmailPayload {
   to: string;
   studentName: string;
   registerNumber?: string;
+  noticeId?: string | number;
   noticeTitle: string;
   noticeDescription: string;
   priority?: string;
@@ -1842,17 +1843,24 @@ export interface NoticeEmailPayload {
 }
 
 export async function sendNoticeAnnouncementEmail(payload: NoticeEmailPayload): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  const { to, studentName, registerNumber, noticeTitle, noticeDescription, priority, publisherName, publisherRole, attachmentUrl, portalUrl } = payload;
-  const portalLink = portalUrl || process.env.FRONTEND_URL || 'https://it-taskmanager-6rgp.onrender.com';
+  const { to, studentName, registerNumber, noticeId, noticeTitle, noticeDescription, priority, publisherName, publisherRole, attachmentUrl, portalUrl } = payload;
+  const portalLink = (portalUrl || process.env.FRONTEND_URL || 'https://it-taskmanager-6rgp.onrender.com').replace(/\/$/, '');
+  const directNoticeUrl = noticeId ? `${portalLink}/?tab=notice-board&noticeId=${noticeId}` : `${portalLink}/?tab=notice-board`;
   const isUrgent = priority === 'URGENT' || priority === 'HIGH';
 
   const subject = isUrgent
     ? `🚨 Urgent Official Announcement: "${noticeTitle}" — VSBEC IT Department`
-    : `📢 New Department Notice: "${noticeTitle}" — VSBEC IT Department`;
+    : `📢 Official Department Notice: "${noticeTitle}" — VSBEC IT Department`;
 
   const priorityBadgeColor = priority === 'URGENT' ? '#dc2626' : priority === 'HIGH' ? '#ea580c' : '#2563eb';
   const priorityBadgeBg = priority === 'URGENT' ? '#fef2f2' : priority === 'HIGH' ? '#fff7ed' : '#eff6ff';
+  const priorityLabel = priority === 'URGENT' ? '🚨 URGENT NOTICE' : priority === 'HIGH' ? '⚠️ HIGH PRIORITY' : '📢 OFFICIAL NOTICE';
   const currentDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+
+  // Convert raw URLs inside text into clickable links
+  const formattedDescription = (noticeDescription || '')
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" style="color: #2563eb; font-weight: 700; text-decoration: underline;" target="_blank">$1</a>')
+    .replace(/\n/g, '<br/>');
 
   const htmlContent = `
 <!DOCTYPE html>
@@ -1868,32 +1876,32 @@ export async function sendNoticeAnnouncementEmail(payload: NoticeEmailPayload): 
     <tr>
       <td align="center">
 
-        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="width: 100%; max-width: 620px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(226, 232, 240, 0.8);">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="width: 100%; max-width: 640px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(226, 232, 240, 0.8);">
 
-          <!-- Top Color Bar -->
+          <!-- Top Gradient Accent Bar -->
           <tr>
-            <td style="height: 5px; background: linear-gradient(90deg, #1e3a8a 0%, #2563eb 50%, ${priorityBadgeColor} 100%); font-size: 0; line-height: 0;">&nbsp;</td>
+            <td style="height: 6px; background: linear-gradient(90deg, #1e3a8a 0%, #2563eb 40%, ${priorityBadgeColor} 100%); font-size: 0; line-height: 0;">&nbsp;</td>
           </tr>
 
           <!-- Institutional Header -->
           <tr>
-            <td style="padding: 28px 24px 20px 24px; background-color: #ffffff; border-bottom: 2px solid #0f172a; text-align: center;">
+            <td style="padding: 30px 24px 22px 24px; background-color: #ffffff; border-bottom: 2px solid #0f172a; text-align: center;">
               <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
                 <tr>
-                  <td align="center" style="padding-bottom: 12px;">
-                    <img src="${COLLEGE_LOGO_URL}" alt="VSBEC IT Emblem" width="76" height="76" style="display: block; width: 76px; height: 76px; border-radius: 50%; border: 2px solid #d97706; box-shadow: 0 2px 8px rgba(0,0,0,0.15);" />
+                  <td align="center" style="padding-bottom: 14px;">
+                    <img src="${COLLEGE_LOGO_URL}" alt="VSBEC IT Emblem" width="80" height="80" style="display: block; width: 80px; height: 80px; border-radius: 50%; border: 2px solid #d97706; box-shadow: 0 4px 10px rgba(0,0,0,0.12);" />
                   </td>
                 </tr>
                 <tr>
                   <td align="center">
-                    <h1 style="margin: 0 0 4px 0; font-size: 20px; font-weight: 900; color: #0f172a; letter-spacing: -0.01em; text-transform: uppercase; font-family: Georgia, 'Times New Roman', serif;">
+                    <h1 style="margin: 0 0 4px 0; font-size: 21px; font-weight: 900; color: #0f172a; letter-spacing: -0.01em; text-transform: uppercase; font-family: Georgia, 'Times New Roman', serif;">
                       VSB Engineering College
                     </h1>
-                    <h2 style="margin: 0 0 6px 0; font-size: 13px; font-weight: 700; color: #1e3a8a; letter-spacing: 0.08em; text-transform: uppercase;">
+                    <h2 style="margin: 0 0 8px 0; font-size: 13px; font-weight: 700; color: #1e3a8a; letter-spacing: 0.08em; text-transform: uppercase;">
                       Department of Information Technology
                     </h2>
-                    <span style="display: inline-block; background-color: ${priorityBadgeBg}; border: 1px solid ${priorityBadgeColor}; border-radius: 4px; padding: 3px 10px; font-size: 11px; font-weight: 800; color: ${priorityBadgeColor}; letter-spacing: 0.05em;">
-                      📢 OFFICIAL DIGITAL NOTICE BOARD
+                    <span style="display: inline-block; background-color: ${priorityBadgeBg}; border: 1px solid ${priorityBadgeColor}; border-radius: 6px; padding: 4px 12px; font-size: 11px; font-weight: 800; color: ${priorityBadgeColor}; letter-spacing: 0.06em;">
+                      ${priorityLabel}
                     </span>
                   </td>
                 </tr>
@@ -1903,11 +1911,11 @@ export async function sendNoticeAnnouncementEmail(payload: NoticeEmailPayload): 
 
           <!-- Reference Bar -->
           <tr>
-            <td style="background-color: #0f172a; padding: 10px 24px; color: #f8fafc; font-size: 11px;">
+            <td style="background-color: #0f172a; padding: 12px 24px; color: #f8fafc; font-size: 11px;">
               <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
                 <tr>
                   <td align="left" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 700; letter-spacing: 0.03em; color: #cbd5e1;">
-                    ANNOUNCEMENT: ${noticeTitle}
+                    DIGITAL NOTICE BOARD
                   </td>
                   <td align="right" style="font-weight: 600; color: #f59e0b;">
                     DATE: ${currentDate}
@@ -1917,9 +1925,9 @@ export async function sendNoticeAnnouncementEmail(payload: NoticeEmailPayload): 
             </td>
           </tr>
 
-          <!-- Content -->
+          <!-- Main Content -->
           <tr>
-            <td style="padding: 28px 24px;">
+            <td style="padding: 30px 24px;">
               <p style="margin: 0 0 16px 0; font-size: 15px; color: #0f172a;">
                 Dear <b>${studentName}</b> ${registerNumber ? `(${registerNumber})` : ''},
               </p>
@@ -1928,15 +1936,20 @@ export async function sendNoticeAnnouncementEmail(payload: NoticeEmailPayload): 
                 A new official circular has been published on the <b>Department Digital Notice Board</b>:
               </p>
 
-              <!-- Notice Summary Box -->
-              <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid ${priorityBadgeColor}; border-radius: 8px; padding: 18px 20px; margin-bottom: 24px;">
-                <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 800; color: #0f172a;">
+              <!-- Notice Summary Card -->
+              <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 5px solid ${priorityBadgeColor}; border-radius: 10px; padding: 20px 22px; margin-bottom: 24px; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);">
+                <div style="margin-bottom: 8px;">
+                  <span style="display: inline-block; background-color: ${priorityBadgeBg}; color: ${priorityBadgeColor}; font-size: 10.5px; font-weight: 800; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">
+                    ${priority || 'NORMAL'}
+                  </span>
+                </div>
+                <h3 style="margin: 0 0 12px 0; font-size: 17px; font-weight: 800; color: #0f172a; line-height: 1.4;">
                   ${noticeTitle}
                 </h3>
-                <p style="margin: 0 0 12px 0; font-size: 13.5px; color: #334155; line-height: 1.6; white-space: pre-wrap;">
-                  ${noticeDescription}
-                </p>
-                <div style="font-size: 11.5px; color: #64748b; font-weight: 600;">
+                <div style="margin: 0 0 16px 0; font-size: 14px; color: #334155; line-height: 1.65; white-space: normal; word-break: break-word;">
+                  ${formattedDescription}
+                </div>
+                <div style="padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 11.5px; color: #64748b; font-weight: 600;">
                   🏛 Published By: <b>${publisherName || 'Faculty / HOD'}</b> ${publisherRole ? `(${publisherRole})` : ''}
                 </div>
               </div>
@@ -1944,17 +1957,34 @@ export async function sendNoticeAnnouncementEmail(payload: NoticeEmailPayload): 
               ${attachmentUrl ? `
               <!-- Attachment Download Button -->
               <div style="text-align: center; margin: 16px 0 24px 0;">
-                <a href="${attachmentUrl}" style="display: inline-block; background-color: #f1f5f9; color: #1e3a8a; border: 1px solid #cbd5e1; text-decoration: none; font-size: 12.5px; font-weight: 700; padding: 10px 20px; border-radius: 6px;">
-                  📎 Download Attached File / Circular
+                <a href="${attachmentUrl}" target="_blank" style="display: inline-block; background-color: #f1f5f9; color: #1e3a8a; border: 1px solid #cbd5e1; text-decoration: none; font-size: 12.5px; font-weight: 700; padding: 10px 22px; border-radius: 6px;">
+                  📎 Download Attached Document / Circular
                 </a>
               </div>` : ''}
 
-              <!-- CTA Button -->
-              <div style="text-align: center; margin: 24px 0 16px 0;">
-                <a href="${portalLink}?tab=notice-board" style="display: inline-block; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 14px 34px; border-radius: 8px; border: 1px solid #1e3a8a; box-shadow: 0 4px 14px rgba(15, 23, 42, 0.25);">
-                  📋 Open Digital Notice Board
+              <!-- Direct CTA Section -->
+              <div style="text-align: center; margin: 26px 0 20px 0;">
+                <a href="${directNoticeUrl}" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); color: #ffffff; text-decoration: none; font-size: 13.5px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; padding: 14px 36px; border-radius: 8px; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);">
+                  📋 View Notice on Digital Portal
                 </a>
               </div>
+
+              <!-- Portal Status & Feature Summary Box -->
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 18px; margin: 20px 0;">
+                <tr>
+                  <td>
+                    <p style="margin: 0 0 6px 0; font-size: 12.5px; font-weight: 800; color: #0f172a; text-transform: uppercase;">
+                      🌐 Academic Portal Information
+                    </p>
+                    <p style="margin: 0 0 8px 0; font-size: 12px; color: #475569; line-height: 1.5;">
+                      Direct Portal Link: <a href="${portalLink}" style="color: #2563eb; font-weight: 700; text-decoration: underline;" target="_blank">${portalLink}</a>
+                    </p>
+                    <p style="margin: 0; font-size: 11.5px; color: #64748b; line-height: 1.5;">
+                      ✅ All existing accounts, tasks, LeetCode, and GitHub progress remain fully active and synced.
+                    </p>
+                  </td>
+                </tr>
+              </table>
 
               ${getTelegramCommunityBoxHtml()}
 
@@ -1963,12 +1993,12 @@ export async function sendNoticeAnnouncementEmail(payload: NoticeEmailPayload): 
 
           <!-- Institutional Footer -->
           <tr>
-            <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 24px; text-align: center; font-size: 11px; color: #64748b; line-height: 1.6;">
+            <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 22px 24px; text-align: center; font-size: 11px; color: #64748b; line-height: 1.6;">
               <p style="margin: 0 0 6px 0; font-size: 12px; color: #334155; font-weight: 600; letter-spacing: 0.02em;">
                 Developed and Maintained by <a href="https://tharunkumark4743.netlify.app/" style="color: #1d4ed8; text-decoration: underline; font-weight: 800;">Tharunkumar K</a>
               </p>
               <p style="margin: 6px 0 0 0; font-size: 10px; color: #94a3b8;">
-                🔒 <i>CONFIDENTIALITY NOTICE: This transmission is intended solely for the registered student. Generated automatically by VSBEC IT DEPARTMENT.</i>
+                🔒 <i>CONFIDENTIALITY NOTICE: This transmission is intended solely for registered students of the Department of Information Technology, VSB Engineering College.</i>
               </p>
             </td>
           </tr>
@@ -2000,7 +2030,7 @@ export async function notifyNoticeBoardAnnouncementEmail(notice: {
   priority?: string;
   attachment_url?: string | null;
   created_by?: string | number;
-}): Promise<void> {
+}): Promise<{ totalTargeted: number; totalDispatched: number }> {
   try {
     let query = `
       SELECT u.id, u.full_name, u.register_number, u.email, u.class_id, u.department_id 
@@ -2016,6 +2046,9 @@ export async function notifyNoticeBoardAnnouncementEmail(notice: {
     } else if (notice.scope === 'YEAR' && notice.year) {
       params.push(notice.year);
       query += ` AND c.year = $1`;
+    } else if (notice.scope === 'DEPARTMENT' && notice.department_id) {
+      params.push(notice.department_id);
+      query += ` AND (u.department_id = $1 OR c.department_id = $1)`;
     }
 
     const studentsRes = await pool.query(query, params);
@@ -2055,15 +2088,17 @@ export async function notifyNoticeBoardAnnouncementEmail(notice: {
       }
     }
 
-    console.log(`[EmailService] 📢 Broadcasting Notice Board Announcement "${notice.title}" to ${targetStudents.length} verified student email(s)...`);
+    console.log(`[EmailService] 📢 Broadcasting Notice Board Announcement "${notice.title}" (Notice ID: ${notice.id || 'N/A'}) to ${targetStudents.length} verified student email(s)...`);
 
+    let dispatchedCount = 0;
     for (let i = 0; i < targetStudents.length; i += 5) {
       const batch = targetStudents.slice(i, i + 5);
-      await Promise.allSettled(batch.map(st =>
+      const results = await Promise.allSettled(batch.map(st =>
         sendNoticeAnnouncementEmail({
           to: st.email,
           studentName: st.full_name,
           registerNumber: st.register_number,
+          noticeId: notice.id ? String(notice.id) : undefined,
           noticeTitle: notice.title,
           noticeDescription: notice.description,
           priority: notice.priority,
@@ -2072,8 +2107,23 @@ export async function notifyNoticeBoardAnnouncementEmail(notice: {
           attachmentUrl: notice.attachment_url
         })
       ));
+
+      for (const res of results) {
+        if (res.status === 'fulfilled' && res.value.success) {
+          dispatchedCount++;
+        }
+      }
+
+      // Small throttle interval to avoid API rate bursts
+      if (i + 5 < targetStudents.length) {
+        await new Promise(r => setTimeout(r, 350));
+      }
     }
+
+    console.log(`[EmailService] ✅ Completed Notice Board broadcast: ${dispatchedCount}/${targetStudents.length} emails dispatched successfully.`);
+    return { totalTargeted: targetStudents.length, totalDispatched: dispatchedCount };
   } catch (err: any) {
     console.error('[EmailService] Error broadcasting notice board email:', err.message);
+    return { totalTargeted: 0, totalDispatched: 0 };
   }
 }
