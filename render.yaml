@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: vsbec-task-manager
+    name: it-taskmanager
     env: node
     plan: free
     branch: main
