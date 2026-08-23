@@ -23,10 +23,14 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "types": []
   },
+  "include": [
+    "src"
+  ],
   "exclude": [
     "node_modules",
-    "drop_db.ts"
+    "dist"
   ]
 }
