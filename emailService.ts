@@ -449,7 +449,7 @@ export interface NewTaskEmailPayload {
 
 export async function sendNewTaskPostedEmail(payload: NewTaskEmailPayload): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const { to, studentName, registerNumber, taskTitle, taskCategory, deadline, creatorName, submissionType, portalUrl } = payload;
-  const portalLink = portalUrl || process.env.FRONTEND_URL || 'https://it-taskmanager.onrender.com';
+  const portalLink = portalUrl || process.env.FRONTEND_URL || 'https://it-taskmanager-6rgp.onrender.com';
   const subject = `📢 New Academic Assignment: "${taskTitle}" — VSBEC IT`;
   const currentDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
   const formattedDeadline = deadline 
@@ -679,7 +679,7 @@ export interface TaskReopenedEmailPayload {
 export async function sendTaskReopenedEmail(payload: TaskReopenedEmailPayload): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const { to, studentName, registerNumber, taskTitle, taskCategory, reopenedBy, submissionType, portalUrl } = payload;
   const deadline = payload.newDeadline || payload.deadline;
-  const portalLink = portalUrl || process.env.FRONTEND_URL || 'https://it-taskmanager.onrender.com';
+  const portalLink = portalUrl || process.env.FRONTEND_URL || 'https://it-taskmanager-6rgp.onrender.com';
   const currentDate = new Date().toLocaleDateString('en-IN', {
     day: 'numeric',
     month: 'short',
@@ -899,7 +899,7 @@ export async function sendTaskStatusEmail(payload: EmailNotificationPayload): Pr
   const { to, studentName, registerNumber, taskTitle, status, portalUrl } = payload;
   const noteOrReason = payload.noteOrReason || payload.feedback || payload.reason || '';
   const isVerified = status === 'VERIFIED';
-  const portalLink = portalUrl || process.env.FRONTEND_URL || 'https://it-taskmanager.onrender.com';
+  const portalLink = portalUrl || process.env.FRONTEND_URL || 'https://it-taskmanager-6rgp.onrender.com';
 
   const subject = isVerified 
     ? `📜 Official Academic Notification: Submission Approved — "${taskTitle}" — VSBEC IT`
@@ -1086,7 +1086,7 @@ export interface DeadlineAlertEmailPayload {
 
 export async function sendDeadlineAlertEmail(payload: DeadlineAlertEmailPayload): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const { to, studentName, registerNumber, taskTitle, deadline, remainingText = '2 Hours Remaining', portalUrl } = payload;
-  const portalLink = portalUrl || process.env.FRONTEND_URL || 'https://it-taskmanager.onrender.com';
+  const portalLink = portalUrl || process.env.FRONTEND_URL || 'https://it-taskmanager-6rgp.onrender.com';
   const subject = `⏰ Urgent Reminder: ${remainingText} for "${taskTitle}" — VSBEC IT`;
   const currentDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
   const formattedDeadline = new Date(deadline).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
@@ -1525,7 +1525,7 @@ export async function sendTaskPendingReminderEmail(
   });
 
   const subject = `⚠️ URGENT ACTION: Pending Submission for "${taskTitle}" — VSBEC IT Department`;
-  const portalLink = (process.env.APP_URL || 'https://it-taskmanager.onrender.com').replace(/\/$/, '');
+  const portalLink = (process.env.APP_URL || process.env.FRONTEND_URL || 'https://it-taskmanager-6rgp.onrender.com').replace(/\/$/, '');
   const refCode = `VSBEC/IT/PENDING/${Date.now().toString(36).toUpperCase()}`;
 
   const htmlContent = `
@@ -1842,7 +1842,7 @@ export interface NoticeEmailPayload {
 
 export async function sendNoticeAnnouncementEmail(payload: NoticeEmailPayload): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const { to, studentName, registerNumber, noticeTitle, noticeDescription, priority, publisherName, publisherRole, attachmentUrl, portalUrl } = payload;
-  const portalLink = portalUrl || process.env.FRONTEND_URL || 'https://it-taskmanager.onrender.com';
+  const portalLink = portalUrl || process.env.FRONTEND_URL || 'https://it-taskmanager-6rgp.onrender.com';
   const isUrgent = priority === 'URGENT' || priority === 'HIGH';
 
   const subject = isUrgent

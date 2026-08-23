@@ -535,7 +535,15 @@ async function startServer() {
   app.use(express.json({ limit: '10mb' }));
   app.use(cors({
     origin: function (origin, callback) {
-      const allowedOrigins = ['http://localhost:5173', 'http://localhost:3000', 'https://vsbec.unaux.com', 'https://it-taskmanager.onrender.com'];
+      const allowedOrigins = [
+        'http://localhost:5173',
+        'http://localhost:3000',
+        'https://vsbec.unaux.com',
+        'https://it-taskmanager-6rgp.onrender.com',
+        'https://it-taskmanager.onrender.com',
+        'http://it-taskmanager.mooo.com',
+        'https://it-taskmanager.mooo.com'
+      ];
       if (!origin || allowedOrigins.includes(origin) || (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL)) {
         callback(null, true);
       } else {

@@ -38,7 +38,7 @@ export function getAdminChatId(): string {
 }
 
 export function getPortalUrl(): string {
-  return process.env.FRONTEND_URL || 'https://it-taskmanager.onrender.com';
+  return process.env.FRONTEND_URL || 'https://it-taskmanager-6rgp.onrender.com';
 }
 
 export function getWatermarkHtml(): string {
