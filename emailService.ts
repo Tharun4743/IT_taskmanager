@@ -12,6 +12,7 @@
 
 import nodemailer from 'nodemailer';
 import { pool } from './db.js';
+import { constantStudentByRegNoMap } from './studentDirectoryService.js';
 
 const COLLEGE_LOGO_URL = 'https://raw.githubusercontent.com/Tharun4743/IT_taskmanager/main/public/logo.png';
 
@@ -2002,10 +2003,10 @@ export async function notifyNoticeBoardAnnouncementEmail(notice: {
 }): Promise<void> {
   try {
     let query = `
-      SELECT u.id, u.full_name, u.register_number, u.email 
+      SELECT u.id, u.full_name, u.register_number, u.email, u.class_id, u.department_id 
       FROM users u
       LEFT JOIN classes c ON u.class_id = c.id
-      WHERE u.role = 'STUDENT' AND u.email IS NOT NULL AND TRIM(u.email) != ''
+      WHERE u.role = 'STUDENT'
     `;
     const params: any[] = [];
 
@@ -2015,13 +2016,10 @@ export async function notifyNoticeBoardAnnouncementEmail(notice: {
     } else if (notice.scope === 'YEAR' && notice.year) {
       params.push(notice.year);
       query += ` AND c.year = $1`;
-    } else if (notice.scope === 'DEPARTMENT' && notice.department_id) {
-      params.push(notice.department_id);
-      query += ` AND u.department_id = $1`;
     }
 
     const studentsRes = await pool.query(query, params);
-    const students = studentsRes.rows;
+    const rawStudents = studentsRes.rows;
 
     let publisherName = 'Department Faculty';
     let publisherRole = 'STAFF';
@@ -2033,22 +2031,47 @@ export async function notifyNoticeBoardAnnouncementEmail(notice: {
       }
     }
 
-    console.log(`[EmailService] 📢 Broadcasting Notice Board Announcement "${notice.title}" to ${students.length} student(s)...`);
+    // Resolve valid emails with Student Directory fallback
+    const targetStudents: { email: string; full_name: string; register_number?: string }[] = [];
+    const seenEmails = new Set<string>();
 
-    for (const st of students) {
-      sendNoticeAnnouncementEmail({
-        to: st.email,
-        studentName: st.full_name,
-        registerNumber: st.register_number,
-        noticeTitle: notice.title,
-        noticeDescription: notice.description,
-        priority: notice.priority,
-        publisherName,
-        publisherRole,
-        attachmentUrl: notice.attachment_url
-      }).catch(err => {
-        console.warn(`[EmailService] Notice email send failed for ${st.email}:`, err.message);
-      });
+    for (const st of rawStudents) {
+      let email = st.email ? st.email.trim() : '';
+      const regKey = st.register_number ? st.register_number.toLowerCase().trim() : '';
+      if ((!email || !email.includes('@') || email.endsWith('@vsbec.ac.in')) && regKey) {
+        const dir = constantStudentByRegNoMap.get(regKey);
+        if (dir && dir.email && dir.email.includes('@')) {
+          email = dir.email.trim();
+        }
+      }
+
+      if (email && email.includes('@') && !seenEmails.has(email.toLowerCase())) {
+        seenEmails.add(email.toLowerCase());
+        targetStudents.push({
+          email,
+          full_name: st.full_name,
+          register_number: st.register_number
+        });
+      }
+    }
+
+    console.log(`[EmailService] 📢 Broadcasting Notice Board Announcement "${notice.title}" to ${targetStudents.length} verified student email(s)...`);
+
+    for (let i = 0; i < targetStudents.length; i += 5) {
+      const batch = targetStudents.slice(i, i + 5);
+      await Promise.allSettled(batch.map(st =>
+        sendNoticeAnnouncementEmail({
+          to: st.email,
+          studentName: st.full_name,
+          registerNumber: st.register_number,
+          noticeTitle: notice.title,
+          noticeDescription: notice.description,
+          priority: notice.priority,
+          publisherName,
+          publisherRole,
+          attachmentUrl: notice.attachment_url
+        })
+      ));
     }
   } catch (err: any) {
     console.error('[EmailService] Error broadcasting notice board email:', err.message);
