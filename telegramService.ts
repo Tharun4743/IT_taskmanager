@@ -66,12 +66,12 @@ export function getWeekRange(dateStr: string) {
   };
 }
 
-let _cachedGroupChatId: string | null | undefined = undefined;
+let _cachedGroupChatId: string | null = null;
 let _cachedGroupChatIdAt: number = 0;
 const GROUP_CHAT_ID_TTL_MS = 60_000; // 1-minute TTL
 
 export async function getGroupChatId(): Promise<string | null> {
-  if (_cachedGroupChatId !== undefined && Date.now() - _cachedGroupChatIdAt < GROUP_CHAT_ID_TTL_MS) {
+  if (_cachedGroupChatId && Date.now() - _cachedGroupChatIdAt < GROUP_CHAT_ID_TTL_MS) {
     return _cachedGroupChatId;
   }
   try {
@@ -2440,15 +2440,15 @@ export async function sendGroupSummary(targetChatId?: string, dateOverride?: str
     const ghTotalCommits = studentProgressRes.rows.reduce((sum, r) => sum + (Number(r.commits_today) || 0), 0);
 
     // ── Aggregation: Year-wise and Class-wise ──────────────────────────────
-    const yearMap = { '1': 'I Year', '2': 'II Year', '3': 'III Year', '4': 'IV Year' };
-    const yearStats = {
+    const yearMap: Record<string, string> = { '1': 'I Year', '2': 'II Year', '3': 'III Year', '4': 'IV Year' };
+    const yearStats: Record<string, { solves: number; activeSolvers: number; commits: number; activeCommitters: number; total: number }> = {
       '1': { solves: 0, activeSolvers: 0, commits: 0, activeCommitters: 0, total: 0 },
       '2': { solves: 0, activeSolvers: 0, commits: 0, activeCommitters: 0, total: 0 },
       '3': { solves: 0, activeSolvers: 0, commits: 0, activeCommitters: 0, total: 0 },
       '4': { solves: 0, activeSolvers: 0, commits: 0, activeCommitters: 0, total: 0 }
     };
 
-    const classStats = {};
+    const classStats: Record<string, any> = {};
 
     studentProgressRes.rows.forEach(r => {
       const classNameClean = r.class_name ? r.class_name.trim() : '';
@@ -2557,7 +2557,7 @@ export async function sendGroupSummary(targetChatId?: string, dateOverride?: str
       .slice(0, 3);
 
     // ── Group incomplete LeetCode solvers class-wise ───────────────────────
-    const incompleteByClass = {};
+    const incompleteByClass: Record<string, any[]> = {};
     const lcTargetedCount = studentProgressRes.rows.filter(r => (Number(r.leetcode_target) || 0) > 0).length;
     const lcIncompleteRows = studentProgressRes.rows.filter(r => {
       const target = Number(r.leetcode_target) || 0;

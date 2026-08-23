@@ -346,7 +346,7 @@ const asyncHandler = (fn: (req: any, res: any, next: NextFunction) => Promise<an
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || 'vsbec_super_secret_jwt_key_2026';
 if (!JWT_SECRET) {
   console.error("FATAL STARTUP ERROR: JWT_SECRET environment variable is missing!");
   process.exit(1);
@@ -5773,9 +5773,9 @@ async function startServer() {
 
             let prevTotal: number | null = null;
 
-            if (prevRes.rowCount > 0 && prevRes.rows[0].total_solved !== null) {
+            if ((prevRes.rowCount ?? 0) > 0 && prevRes.rows[0].total_solved !== null) {
               prevTotal = Number(prevRes.rows[0].total_solved);
-            } else if (todayRes.rowCount > 0 && todayRes.rows[0].total_solved !== null) {
+            } else if ((todayRes.rowCount ?? 0) > 0 && todayRes.rows[0].total_solved !== null) {
               const tSolved = Number(todayRes.rows[0].total_solved);
               const sToday = Number(todayRes.rows[0].solved_today);
               prevTotal = tSolved - sToday;
@@ -5802,7 +5802,7 @@ async function startServer() {
               SELECT solved_today FROM leetcode_daily_progress
               WHERE user_id = $1 AND date = $2
             `, [userId, yesterdayStr]);
-            const solvedYesterday = yesterdayRes.rowCount > 0 ? Number(yesterdayRes.rows[0].solved_today) : 0;
+            const solvedYesterday = (yesterdayRes.rowCount ?? 0) > 0 ? Number(yesterdayRes.rows[0].solved_today) : 0;
 
             const status = activeTarget.id !== null
               ? (solvedToday >= activeTarget.daily_target ? 'COMPLETED' : 'INCOMPLETE')
@@ -6052,7 +6052,7 @@ async function startServer() {
     `, [startDate, endDate, userId, classId, year, departmentId]);
 
     let targetId: string;
-    if (existingCheck.rowCount > 0) {
+    if ((existingCheck.rowCount ?? 0) > 0) {
       targetId = existingCheck.rows[0].id;
       await pool.query(`
         UPDATE leetcode_targets 
