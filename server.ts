@@ -605,6 +605,16 @@ async function startServer() {
     }
   });
 
+  app.get('/google:code.html', (req, res) => {
+    const fileName = `google${req.params.code}.html`;
+    const filePath = path.join(__dirname, 'public', fileName);
+    if (fs.existsSync(filePath)) {
+      res.type('text/html').sendFile(filePath);
+    } else {
+      res.type('text/html').send(`google-site-verification: ${fileName}`);
+    }
+  });
+
   // ── High-Speed In-Memory User Auth Cache (TTL: 45s) ──────────────────────
   interface CachedAuthUser {
     user: any;
