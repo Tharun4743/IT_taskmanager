@@ -182,7 +182,7 @@ export async function buildExcelReportBuffer(
       if (numCols > startCol) {
         try {
           worksheet.mergeCells(rowNum, startCol, rowNum, numCols);
-        } catch (e) {}
+        } catch (e) { }
       }
     });
 
@@ -424,7 +424,7 @@ async function startServer() {
   let lastGroupSummaryMorningDate = '';
   let lastGroupSummaryEveningDate = '';
   let lastLeetcodePushDate = '';
- 
+
   setInterval(async () => {
     try {
       const now = new Date();
@@ -433,7 +433,7 @@ async function startServer() {
       const todayStr = istDate.toISOString().split('T')[0];
       const hours = istDate.getUTCHours();
       const minutes = istDate.getUTCMinutes();
- 
+
       // 8:00 AM IST (08:00) -> Morning Group Summary & Deadline Alerts (strictly once per day)
       if (hours === 8 && minutes >= 0 && minutes <= 10 && lastGroupSummaryMorningDate !== todayStr) {
         const checkRes = await pool.query("SELECT value FROM system_settings WHERE key = 'telegram_last_group_summary_morning_date' LIMIT 1").catch(() => ({ rows: [] }));
@@ -444,8 +444,8 @@ async function startServer() {
             INSERT INTO system_settings (key, value, updated_at)
             VALUES ('telegram_last_group_summary_morning_date', $1, CURRENT_TIMESTAMP)
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
-          `, [todayStr]).catch(() => {});
-          
+          `, [todayStr]).catch(() => { });
+
           const prevIstDate = new Date(istDate.getTime() - 24 * 60 * 60 * 1000);
           const prevDayStr = prevIstDate.toISOString().split('T')[0];
           console.log(`[Telegram Scheduler] 📊 Running automated 8:00 AM IST daily group summary (for previous day: ${prevDayStr})...`);
@@ -466,12 +466,12 @@ async function startServer() {
             INSERT INTO system_settings (key, value, updated_at)
             VALUES ('telegram_last_reminders_date', $1, CURRENT_TIMESTAMP)
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
-          `, [todayStr]).catch(() => {});
+          `, [todayStr]).catch(() => { });
           console.log(`[Telegram Scheduler] 📢 Running automated 8:00 PM IST student deadline reminders for ${todayStr}...`);
           triggerPendingTaskReminders().catch(err => console.error('[Telegram Scheduler] Error sending reminders:', err));
         }
       }
- 
+
       // 9:00 PM IST (21:00) -> Evening Group Summary (strictly once per day)
       if (hours === 21 && minutes >= 0 && minutes <= 10 && lastGroupSummaryEveningDate !== todayStr) {
         const checkRes = await pool.query("SELECT value FROM system_settings WHERE key = 'telegram_last_group_summary_evening_date' LIMIT 1").catch(() => ({ rows: [] }));
@@ -482,7 +482,7 @@ async function startServer() {
             INSERT INTO system_settings (key, value, updated_at)
             VALUES ('telegram_last_group_summary_evening_date', $1, CURRENT_TIMESTAMP)
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
-          `, [todayStr]).catch(() => {});
+          `, [todayStr]).catch(() => { });
           console.log(`[Telegram Scheduler] 📊 Running automated 9:00 PM IST daily group summary for ${todayStr}...`);
           sendGroupSummary().catch(err => console.error('[Telegram Scheduler] Error sending evening group summary:', err));
         }
@@ -498,7 +498,7 @@ async function startServer() {
             INSERT INTO system_settings (key, value, updated_at)
             VALUES ('leetcode_last_daily_csv_push_date', $1, CURRENT_TIMESTAMP)
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
-          `, [todayStr]).catch(() => {});
+          `, [todayStr]).catch(() => { });
           console.log(`[LeetCode AutoSync] 🚀 Running automated 11:55 PM IST daily LeetCode sync & CSV export for ${todayStr}...`);
           syncLeetcodeProgressForScope()
             .then(() => exportAndPushLeetcodeDailyProgress(todayStr))
@@ -530,6 +530,11 @@ async function startServer() {
   });
 
   app.use('/api/', apiLimiter);
+  // Search Engine Shielding for API Endpoints (prevents duplicate or raw JSON indexing)
+  app.use('/api/', (_req, res, next) => {
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    next();
+  });
   // Gzip/Brotli compression — reduces JSON response sizes by ~70%, critical for slow mobile connections
   app.use(compression());
   app.use(express.json({ limit: '10mb' }));
@@ -541,6 +546,8 @@ async function startServer() {
         'https://vsbec.unaux.com',
         'https://it-taskmanager-6rgp.onrender.com',
         'https://it-taskmanager.onrender.com',
+        'https://vsb-it.onrender.com',
+        'https://vsbec-it.onrender.com',
         'http://it-taskmanager.mooo.com',
         'https://it-taskmanager.mooo.com'
       ];
@@ -555,6 +562,7 @@ async function startServer() {
   }));
 
   const healthCheckHandler = async (req: Request, res: Response) => {
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
     try {
       await pool.query('SELECT 1');
       res.status(200).json({
@@ -577,6 +585,25 @@ async function startServer() {
 
   app.get('/health', healthCheckHandler);
   app.get('/api/health', healthCheckHandler);
+
+  // ── SEO Crawling Endpoints ──────────────────────────────────────────────────
+  app.get('/robots.txt', (req, res) => {
+    const robotsPath = path.join(__dirname, 'public', 'robots.txt');
+    if (fs.existsSync(robotsPath)) {
+      res.type('text/plain').sendFile(robotsPath);
+    } else {
+      res.type('text/plain').send("User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\nDisallow: /dashboard\nSitemap: https://it-taskmanager-6rgp.onrender.com/sitemap.xml\n");
+    }
+  });
+
+  app.get('/sitemap.xml', (req, res) => {
+    const sitemapPath = path.join(__dirname, 'public', 'sitemap.xml');
+    if (fs.existsSync(sitemapPath)) {
+      res.type('application/xml').sendFile(sitemapPath);
+    } else {
+      res.type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://it-taskmanager-6rgp.onrender.com/</loc><lastmod>2026-08-24</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url></urlset>');
+    }
+  });
 
   // ── High-Speed In-Memory User Auth Cache (TTL: 45s) ──────────────────────
   interface CachedAuthUser {
@@ -695,11 +722,11 @@ async function startServer() {
   // 1. Get Telegram Bot Status & Stats
   app.get('/api/telegram/status', authenticate, asyncHandler(async (req: any, res: Response) => {
     const stats = await getTelegramStats();
-    
+
     // Check if the current requesting user has telegram linked
     const userRes = await pool.query('SELECT telegram_chat_id, telegram_username, telegram_linked_at FROM users WHERE id = $1', [req.user.id]);
     const user = userRes.rows[0];
-    
+
     res.json({
       ...stats,
       currentUserLinked: Boolean(user?.telegram_chat_id),
@@ -755,7 +782,7 @@ async function startServer() {
 
     const testMsg = `🔔 *IT TaskManager — Test Notification*\n\n✅ Your connection to the IT TaskManager Telegram Bot is working perfectly!\n📅 Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
     const result = await sendTelegramMessage(chatId, testMsg, { parse_mode: 'Markdown' });
-    
+
     if (result.ok) {
       res.json({ success: true, message: 'Test message sent successfully!' });
     } else {
@@ -826,7 +853,7 @@ async function startServer() {
 
     // Send a confirmation ping to the linked Telegram Chat
     const confirmMsg = `🎉 <b>TELEGRAM ACCOUNT LINKED SUCCESSFULLY!</b>\n\nHello <b>${user.full_name}</b> (<code>${user.register_number || user.username}</code>),\nYour Telegram account has been linked to the IT TaskManager portal!\nYou will now receive instant task updates, verification notices, and deadline alerts directly here. 🚀`;
-    sendTelegramMessage(strChatId, confirmMsg).catch(() => {});
+    sendTelegramMessage(strChatId, confirmMsg).catch(() => { });
 
     res.json({ success: true, message: 'Telegram account linked successfully!', studentName: user.full_name });
   }));
@@ -866,7 +893,7 @@ async function startServer() {
 
     let sentCount = 0;
     for (const cid of chatIds) {
-      sendTelegramMessage(cid, broadcastHtml).catch(() => {});
+      sendTelegramMessage(cid, broadcastHtml).catch(() => { });
       sentCount++;
     }
 
@@ -987,12 +1014,12 @@ async function startServer() {
     let officialRegNo = user.register_number;
     if ((!officialRegNo || officialRegNo === 'N/A' || officialRegNo.includes('@')) && user.role === 'STUDENT') {
       const dirStudent = (user.email && constantStudentByEmailMap.get(user.email.toLowerCase().trim())) ||
-                         (user.username && constantStudentByRegNoMap.get(user.username.toLowerCase().trim())) ||
-                         (loginId && constantStudentByRegNoMap.get(loginId.toLowerCase().trim())) ||
-                         (loginId && constantStudentByEmailMap.get(loginId.toLowerCase().trim()));
+        (user.username && constantStudentByRegNoMap.get(user.username.toLowerCase().trim())) ||
+        (loginId && constantStudentByRegNoMap.get(loginId.toLowerCase().trim())) ||
+        (loginId && constantStudentByEmailMap.get(loginId.toLowerCase().trim()));
       if (dirStudent?.register_number) {
         officialRegNo = dirStudent.register_number.trim();
-        pool.query("UPDATE users SET register_number = $1 WHERE id = $2 AND (register_number IS NULL OR register_number = '' OR register_number = 'N/A')", [officialRegNo, user.id]).catch(() => {});
+        pool.query("UPDATE users SET register_number = $1 WHERE id = $2 AND (register_number IS NULL OR register_number = '' OR register_number = 'N/A')", [officialRegNo, user.id]).catch(() => { });
       }
     }
 
@@ -1270,10 +1297,10 @@ async function startServer() {
     let officialRegNo = user.register_number;
     if ((!officialRegNo || officialRegNo === 'N/A' || officialRegNo.includes('@')) && user.role === 'STUDENT') {
       const dirStudent = (user.email && constantStudentByEmailMap.get(user.email.toLowerCase().trim())) ||
-                         (user.username && constantStudentByRegNoMap.get(user.username.toLowerCase().trim()));
+        (user.username && constantStudentByRegNoMap.get(user.username.toLowerCase().trim()));
       if (dirStudent?.register_number) {
         officialRegNo = dirStudent.register_number.trim();
-        pool.query("UPDATE users SET register_number = $1 WHERE id = $2 AND (register_number IS NULL OR register_number = '' OR register_number = 'N/A')", [officialRegNo, user.id]).catch(() => {});
+        pool.query("UPDATE users SET register_number = $1 WHERE id = $2 AND (register_number IS NULL OR register_number = '' OR register_number = 'N/A')", [officialRegNo, user.id]).catch(() => { });
       }
     }
 
@@ -4095,7 +4122,7 @@ async function startServer() {
     `, [note, submission_ids]);
 
     notifySubmissionBatchVerified(submission_ids).catch(err => console.error('[Telegram Batch Verify Error]:', err));
-    
+
     // Dispatch Web Push notification to verified students
     pool.query('SELECT DISTINCT user_id FROM task_submissions WHERE id = ANY($1)', [submission_ids])
       .then(r => {
@@ -5738,7 +5765,7 @@ async function startServer() {
           const classId = student.class_id;
           const year = student.year ? Number(student.year) : null;
           const departmentId = student.department_id;
-          
+
           const studentDir = constantStudentByIdMap.get(userId);
           const leetcodeProfile = studentDir?.leetcode || student.leetcode_url || '';
 
@@ -5768,7 +5795,7 @@ async function startServer() {
 
             // Filter today's submissions
             const todaySubmissions = details.recentSubmissions
-                .filter(s => s.timestamp >= todayStartSec && s.timestamp <= todayEndSec);
+              .filter(s => s.timestamp >= todayStartSec && s.timestamp <= todayEndSec);
 
             // Calculate count of unique accepted problems solved ON current date
             const recentTodayCount = new Set(
@@ -5879,7 +5906,7 @@ async function startServer() {
       if (students.rows.length === 0) return;
 
       const studentIds = students.rows.map(s => s.id);
-      
+
       // Bulk fetch all progress records in this range
       const progressRes = await pool.query(
         'SELECT id, user_id, date, solved_today, total_solved FROM leetcode_daily_progress WHERE user_id = ANY($1) AND date >= $2 AND date <= $3',
@@ -6120,26 +6147,26 @@ async function startServer() {
     // Since LeetCode's recent submissions maxes at 50, any solved_today > 30 is highly likely 
     // to be this bug (unless they genuinely grinded 30+ problems in one day, which is rare, 
     // but resetting it to 0 is the safest way to repair weekly/monthly aggregates).
-    
+
     const result = await pool.query(`
       UPDATE leetcode_daily_progress 
       SET solved_today = 0, updated_at = CURRENT_TIMESTAMP
       WHERE solved_today > 25
     `);
-    
+
     // Also recalculate progress statuses for the last 30 days to fix daily status texts
     const today = new Date();
     const endDateStr = today.toISOString().split('T')[0];
     const startDate = new Date();
     startDate.setDate(today.getDate() - 30);
     const startDateStr = startDate.toISOString().split('T')[0];
-    
+
     await recalculateProgressStatuses(startDateStr, endDateStr, {}).catch(err => console.error(err));
-    
-    res.json({ 
-      success: true, 
-      message: "Anomalous historical data has been fixed and statuses recalculated.", 
-      fixedRows: result.rowCount 
+
+    res.json({
+      success: true,
+      message: "Anomalous historical data has been fixed and statuses recalculated.",
+      fixedRows: result.rowCount
     });
   }));
 
@@ -6477,7 +6504,7 @@ async function startServer() {
       const offsetDate = new Date(Date.UTC(y, m, d));
       offsetDate.setUTCDate(offsetDate.getUTCDate() - k * 7);
       const week = getWeekRange(offsetDate.toISOString().split('T')[0]);
-      
+
       const dataRes = await pool.query(`
         SELECT SUM(solved_today) as actual_total, MAX(daily_target) * 5 as target_total
         FROM leetcode_daily_progress
@@ -6485,7 +6512,7 @@ async function startServer() {
       `, [studentId, week.start, week.end]);
 
       weeklyPoints.push({
-        week: `Week ${4-k}`,
+        week: `Week ${4 - k}`,
         start: week.start,
         end: week.end,
         actual: Number(dataRes.rows[0]?.actual_total) || 0,
@@ -6726,15 +6753,15 @@ async function startServer() {
     const now = new Date();
     const istOffset = 5.5 * 60 * 60 * 1000;
     const nowIST = new Date(now.getTime() + istOffset);
-    
+
     // Target 1: 8:00 AM IST today
     const target8AM = new Date(nowIST);
     target8AM.setUTCHours(8, 0, 0, 0);
-    
+
     // Target 2: 11:50 PM IST today
     const target1150PM = new Date(nowIST);
     target1150PM.setUTCHours(23, 50, 0, 0);
-    
+
     // Determine the next target time
     let nextTarget: Date;
     if (nowIST.getTime() < target8AM.getTime()) {
@@ -6747,11 +6774,11 @@ async function startServer() {
       tomorrow.setUTCHours(8, 0, 0, 0);
       nextTarget = tomorrow;
     }
-    
+
     const timeUntilSync = nextTarget.getTime() - nowIST.getTime();
     const targetTimeStr = `${nextTarget.getUTCHours().toString().padStart(2, '0')}:${nextTarget.getUTCMinutes().toString().padStart(2, '0')}`;
     console.log(`[LeetCode Sync Daemon] Scheduled next sync at ${targetTimeStr} IST (in ${Math.round(timeUntilSync / 1000 / 60)} minutes).`);
-    
+
     setTimeout(async () => {
       console.log(`[LeetCode Sync Daemon] Running scheduled sync...`);
       try {
@@ -7094,8 +7121,8 @@ async function startServer() {
     const filtered = enrichedList.filter(row => {
       if (!search) return true;
       return row.fullName.toLowerCase().includes(search) ||
-             row.registerNumber.toLowerCase().includes(search) ||
-             row.githubUsername.toLowerCase().includes(search);
+        row.registerNumber.toLowerCase().includes(search) ||
+        row.githubUsername.toLowerCase().includes(search);
     });
 
     res.json(filtered);
@@ -7113,8 +7140,8 @@ async function startServer() {
     const filtered = enrichedList.filter(row => {
       if (!search) return true;
       return row.fullName.toLowerCase().includes(search) ||
-             row.registerNumber.toLowerCase().includes(search) ||
-             row.githubUsername.toLowerCase().includes(search);
+        row.registerNumber.toLowerCase().includes(search) ||
+        row.githubUsername.toLowerCase().includes(search);
     });
 
     res.json(filtered);
@@ -7252,7 +7279,7 @@ async function startServer() {
   app.post(['/api/github/sync/daily-commits', '/api/github/sync'], authenticate, authorizeTargetManagement, asyncHandler(async (req: any, res: Response) => {
     const { departmentId, classId, year, studentId, userId, date } = req.body || {};
     const scope = enforceUserScopeFilter(req.user, { departmentId, classId, year, studentId, userId });
-    
+
     // Run sync and return full summary
     const summary = await syncDailyGitHubCommits({ ...scope, date });
     res.json({
@@ -7531,13 +7558,13 @@ async function startServer() {
     const studentRows = await fetchStudentsForScope(scope);
     const studentIds = studentRows.map(s => s.id);
     const week = getWeekRange(dateStr);
-    
+
     // Calculate previous week range (subtract 7 days from start and end)
     const prevWeekStart = new Date(week.start + 'T00:00:00Z');
     prevWeekStart.setUTCDate(prevWeekStart.getUTCDate() - 7);
     const prevWeekEnd = new Date(week.end + 'T00:00:00Z');
     prevWeekEnd.setUTCDate(prevWeekEnd.getUTCDate() - 7);
-    
+
     const prevWeekStartStr = prevWeekStart.toISOString().split('T')[0];
     const prevWeekEndStr = prevWeekEnd.toISOString().split('T')[0];
 
@@ -7559,14 +7586,14 @@ async function startServer() {
         }));
     } else if (view === 'GITHUB' || view === 'GITHUB_WEEKLY') {
       const enrichedList = await enrichStudentGitHubDailyCommitsBatch(studentRows, dateStr);
-      
+
       const prevWeeklyRes = await pool.query(`
         SELECT student_id, SUM(daily_commit_count) as commits_prev_week
         FROM github_daily_commits 
         WHERE student_id = ANY($1) AND date >= $2 AND date <= $3
         GROUP BY student_id
       `, [studentIds, prevWeekStartStr, prevWeekEndStr]);
-      
+
       const prevWeeklyMap = new Map();
       for (const row of prevWeeklyRes.rows) prevWeeklyMap.set(row.student_id, Number(row.commits_prev_week) || 0);
 
@@ -7599,14 +7626,14 @@ async function startServer() {
         }));
     } else {
       const enrichedList = await enrichStudentProgressBatch(studentRows, dateStr);
-      
+
       const prevWeeklyRes = await pool.query(`
         SELECT user_id, SUM(solved_today) as solved_prev_week
         FROM leetcode_daily_progress 
         WHERE user_id = ANY($1) AND date >= $2 AND date <= $3
         GROUP BY user_id
       `, [studentIds, prevWeekStartStr, prevWeekEndStr]);
-      
+
       const prevWeeklyMap = new Map();
       for (const row of prevWeeklyRes.rows) prevWeeklyMap.set(row.user_id, Number(row.solved_prev_week) || 0);
 
@@ -7652,7 +7679,7 @@ async function startServer() {
       console.log(`[LeetCode AutoSync] 🚀 Generating datewise & classwise CSV exports for date: ${dateStr}...`);
       const leetcodeBaseDir = path.join(process.cwd(), 'leetcode');
       const dateDir = path.join(leetcodeBaseDir, dateStr);
-      
+
       if (!fs.existsSync(leetcodeBaseDir)) {
         fs.mkdirSync(leetcodeBaseDir, { recursive: true });
       }

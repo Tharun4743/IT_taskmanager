@@ -1,8 +1,9 @@
 <div align="center">
 
-# 🎓 IT TASK MANAGER & ACADEMIC MANAGEMENT SYSTEM
-### *Enterprise Academic Governance, Live Coding Analytics & Automated Telegram Bot Engine*
+# 🎓 IT Task Manager — VSB Engineering College
+### *Student Task Management, Verification Workflow & Live Coding Analytics Platform*
 
+[![Live Portal](https://img.shields.io/badge/Live_Portal-IT_Task_Manager-4F46E5?style=for-the-badge&logo=render&logoColor=white)](https://it-taskmanager-6rgp.onrender.com/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18.x-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-5.x-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
@@ -13,7 +14,9 @@
 [![Telegram Bot](https://img.shields.io/badge/Telegram_Bot-Automated-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://core.telegram.org/bots/api)
 
 <p align="center">
-  <b>Department of Information Technology</b> • <b>VSB Engineering College, Karur</b>
+  <b>Department of Information Technology</b> • <b>VSB Engineering College, Karur</b><br>
+  <b>Lead Architect & Developer:</b> <a href="https://tharunkumark4743.netlify.app/">Tharunkumar K</a><br>
+  <b>Live Application:</b> <a href="https://it-taskmanager-6rgp.onrender.com/">https://it-taskmanager-6rgp.onrender.com/</a>
 </p>
 
 ---
@@ -22,7 +25,7 @@
 
 ## 📌 Executive Summary
 
-**IT Task Manager** is an enterprise-grade academic task tracking and coding analytics platform engineered for educational institutions, faculty coordinators, department leadership (HODs), and students.
+**IT Task Manager** is a web-based academic task management, submission, verification, and coding progress tracking platform developed for the Information Technology department of VSB Engineering College. Engineered by **Tharunkumar K**, the platform streamlines academic task governance, coding competency tracking (LeetCode & GitHub), automated communication, and departmental analytics.
 
 ### Core Capabilities:
 1. **Academic Task Governance**: Precision scope assignments (Individual, Class Section, Batch Year, Department), team submissions, and multi-tier verification workflows.
