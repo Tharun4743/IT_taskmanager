@@ -90,6 +90,21 @@
     "github": "https://github.com/Abirubha2007"
   },
   {
+    "id": "980641c6-540e-4ebb-b6df-b73f368204ba",
+    "register_number": "922524205007",
+    "full_name": "ABHISHEK",
+    "email": "abishek.s9344@gmail.com",
+    "gender": "MALE",
+    "class_id": "a1a12dd8-1863-4a21-9d3d-f6d67486788a",
+    "class_name": "III IT A",
+    "department_id": "a6a12dd8-1863-4a21-9d3d-f6d67486788a",
+    "department_name": "Information Technology",
+    "year": 3,
+    "batch": "2024-2028",
+    "leetcode": "",
+    "github": ""
+  },
+  {
     "id": "fbc2ec18-a931-4c91-b30f-dab0d66ef78f",
     "register_number": "922524205008",
     "full_name": "ADHITHYA N",
