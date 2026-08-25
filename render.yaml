@@ -28,7 +28,7 @@ services:
       - key: CRON_SECRET
         sync: false
       - key: FRONTEND_URL
-        value: "https://it-taskmanager-6rgp.onrender.com"
+        value: "https://it-taskmanager.vercel.app"
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY

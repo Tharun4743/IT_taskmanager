@@ -600,7 +600,7 @@ async function startServer() {
     if (fs.existsSync(robotsPath)) {
       res.type('text/plain').sendFile(robotsPath);
     } else {
-      res.type('text/plain').send("User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\nDisallow: /dashboard\nSitemap: https://it-taskmanager-6rgp.onrender.com/sitemap.xml\n");
+      res.type('text/plain').send("User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\nDisallow: /dashboard\nSitemap: https://it-taskmanager.vercel.app/sitemap.xml\nSitemap: https://it-taskmanager-6rgp.onrender.com/sitemap.xml\n");
     }
   });
 
@@ -609,7 +609,7 @@ async function startServer() {
     if (fs.existsSync(sitemapPath)) {
       res.type('application/xml').sendFile(sitemapPath);
     } else {
-      res.type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://it-taskmanager-6rgp.onrender.com/</loc><lastmod>2026-08-24</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url></urlset>');
+      res.type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://it-taskmanager.vercel.app/</loc><lastmod>2026-08-25</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url><url><loc>https://it-taskmanager-6rgp.onrender.com/</loc><lastmod>2026-08-25</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url></urlset>');
     }
   });
 

@@ -3,7 +3,7 @@
 # 🎓 IT Task Manager — VSB Engineering College
 ### *Student Task Management, Verification Workflow & Live Coding Analytics Platform*
 
-[![Live Portal](https://img.shields.io/badge/Live_Portal-IT_Task_Manager-4F46E5?style=for-the-badge&logo=render&logoColor=white)](https://it-taskmanager-6rgp.onrender.com/)
+[![Live Portal](https://img.shields.io/badge/Live_Portal-IT_Task_Manager-4F46E5?style=for-the-badge&logo=vercel&logoColor=white)](https://it-taskmanager.vercel.app/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18.x-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-5.x-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
@@ -16,7 +16,7 @@
 <p align="center">
   <b>Department of Information Technology</b> • <b>VSB Engineering College, Karur</b><br>
   <b>Lead Architect & Developer:</b> <a href="https://tharunkumark4743.netlify.app/">Tharunkumar K</a><br>
-  <b>Live Application:</b> <a href="https://it-taskmanager-6rgp.onrender.com/">https://it-taskmanager-6rgp.onrender.com/</a>
+  <b>Live Application:</b> <a href="https://it-taskmanager.vercel.app/">https://it-taskmanager.vercel.app/</a>
 </p>
 
 ---

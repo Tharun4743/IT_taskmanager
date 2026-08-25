@@ -4,4 +4,5 @@ Disallow: /api/
 Disallow: /admin
 Disallow: /dashboard
 
+Sitemap: https://it-taskmanager.vercel.app/sitemap.xml
 Sitemap: https://it-taskmanager-6rgp.onrender.com/sitemap.xml

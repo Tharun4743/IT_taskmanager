@@ -51,8 +51,54 @@ function getTelegramCommunityBoxHtml(): string {
   `;
 }
 
+export const VERCEL_PORTAL_URL = 'https://it-taskmanager.vercel.app';
+export const RENDER_PORTAL_URL = 'https://it-taskmanager-6rgp.onrender.com';
+
 export function getDefaultPortalUrl(): string {
-  return (process.env.FRONTEND_URL || process.env.APP_URL || 'https://it-taskmanager.vercel.app').replace(/\/$/, '');
+  const envUrl = process.env.FRONTEND_URL || process.env.APP_URL;
+  if (envUrl && !envUrl.includes('onrender.com') && !envUrl.includes('render.com')) {
+    return envUrl.replace(/\/$/, '');
+  }
+  return VERCEL_PORTAL_URL;
+}
+
+export function getDualPortalCtaHtml(
+  buttonLabel: string,
+  primaryColor: string = '#0f172a',
+  targetPath: string = ''
+): string {
+  const cleanPath = targetPath ? (targetPath.startsWith('/') || targetPath.startsWith('?') ? targetPath : `/${targetPath}`) : '';
+  const vercelUrl = `${VERCEL_PORTAL_URL}${cleanPath ? (cleanPath.startsWith('?') ? `/${cleanPath}` : cleanPath) : ''}`;
+  const renderUrl = `${RENDER_PORTAL_URL}${cleanPath ? (cleanPath.startsWith('?') ? `/${cleanPath}` : cleanPath) : ''}`;
+
+  return `
+        <!-- Dual Portal Access Links (Vercel Primary & Render Mirror) -->
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin: 24px 0 16px 0;">
+          <tr>
+            <td align="center">
+              <div style="margin-bottom: 12px;">
+                <a href="${vercelUrl}" style="display: inline-block; background-color: ${primaryColor}; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; padding: 13px 26px; border-radius: 6px; box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22); margin: 4px;">
+                  ${buttonLabel}
+                </a>
+                <a href="${renderUrl}" style="display: inline-block; background-color: #f1f5f9; color: #1e293b; text-decoration: none; font-size: 12px; font-weight: 700; padding: 12px 20px; border-radius: 6px; border: 1px solid #cbd5e1; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04); margin: 4px;">
+                  ⚡ Render Mirror Link
+                </a>
+              </div>
+              <div style="font-size: 11.5px; color: #64748b; line-height: 1.6; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 14px; display: inline-block; text-align: left; max-width: 90%;">
+                <div>🌐 <b>Primary Portal:</b> <a href="${vercelUrl}" style="color: #2563eb; text-decoration: underline; font-weight: 600;">${vercelUrl}</a></div>
+                <div>⚡ <b>Mirror Portal:</b> <a href="${renderUrl}" style="color: #475569; text-decoration: underline;">${renderUrl}</a></div>
+              </div>
+            </td>
+          </tr>
+        </table>
+  `;
+}
+
+function resolveValidPortalUrl(portalUrl?: string): string {
+  if (portalUrl && !portalUrl.includes('onrender.com') && !portalUrl.includes('render.com')) {
+    return portalUrl.replace(/\/$/, '');
+  }
+  return getDefaultPortalUrl();
 }
 
 /**
@@ -525,7 +571,7 @@ export interface NewTaskEmailPayload {
 
 export async function sendNewTaskPostedEmail(payload: NewTaskEmailPayload): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const { to, studentName, registerNumber, taskTitle, taskCategory, deadline, creatorName, submissionType, portalUrl } = payload;
-  const portalLink = (portalUrl || getDefaultPortalUrl()).replace(/\/$/, '');
+  const portalLink = resolveValidPortalUrl(portalUrl);
   const subject = `📢 New Academic Assignment: "${taskTitle}" — VSBEC IT`;
   const currentDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
   const formattedDeadline = deadline 
@@ -652,12 +698,8 @@ export async function sendNewTaskPostedEmail(payload: NewTaskEmailPayload): Prom
           </tr>
         </table>
 
-        <!-- CTA Button -->
-        <div style="text-align: center; margin: 28px 0 16px 0;">
-          <a href="${portalLink}" style="display: inline-block; background-color: #0f172a; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 14px 32px; border-radius: 6px; border: 1px solid #1e3a8a; box-shadow: 0 4px 12px rgba(15, 23, 42, 0.25);">
-            📝 View Assignment & Submit
-          </a>
-        </div>
+        <!-- CTA Buttons -->
+        ${getDualPortalCtaHtml('📝 View Assignment & Submit', '#0f172a')}
         ${getTelegramCommunityBoxHtml()}
 
 
@@ -759,7 +801,7 @@ export interface TaskReopenedEmailPayload {
 export async function sendTaskReopenedEmail(payload: TaskReopenedEmailPayload): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const { to, studentName, registerNumber, taskTitle, taskCategory, reopenedBy, submissionType, portalUrl } = payload;
   const deadline = payload.newDeadline || payload.deadline;
-  const portalLink = (portalUrl || getDefaultPortalUrl()).replace(/\/$/, '');
+  const portalLink = resolveValidPortalUrl(portalUrl);
   const currentDate = new Date().toLocaleDateString('en-IN', {
     day: 'numeric',
     month: 'short',
@@ -865,11 +907,8 @@ export async function sendTaskReopenedEmail(payload: TaskReopenedEmailPayload): 
             </td>
           </tr>
         </table>
-        <div style="text-align: center; margin: 28px 0 16px 0;">
-          <a href="${portalLink}" style="display: inline-block; background-color: #047857; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 14px 32px; border-radius: 6px; box-shadow: 0 4px 12px rgba(4, 120, 87, 0.25);">
-            📝 View & Submit Proof on Portal
-          </a>
-        </div>
+        <!-- CTA Buttons -->
+        ${getDualPortalCtaHtml('📝 View & Submit Proof on Portal', '#047857')}
       </td>
     </tr>
     <tr>
@@ -987,7 +1026,7 @@ export async function sendTaskStatusEmail(payload: EmailNotificationPayload): Pr
   const { to, studentName, registerNumber, taskTitle, status, portalUrl } = payload;
   const noteOrReason = payload.noteOrReason || payload.feedback || payload.reason || '';
   const isVerified = status === 'VERIFIED';
-  const portalLink = (portalUrl || getDefaultPortalUrl()).replace(/\/$/, '');
+  const portalLink = resolveValidPortalUrl(portalUrl);
 
   const subject = isVerified 
     ? `📜 Official Academic Notification: Submission Approved — "${taskTitle}" — VSBEC IT`
@@ -1121,12 +1160,8 @@ export async function sendTaskStatusEmail(payload: EmailNotificationPayload): Pr
           </p>
         </div>` : ''}
 
-        <!-- CTA Button -->
-        <div style="text-align: center; margin: 28px 0 16px 0;">
-          <a href="${portalLink}" style="display: inline-block; background-color: #0f172a; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 14px 32px; border-radius: 6px; border: 1px solid #1e3a8a; box-shadow: 0 4px 12px rgba(15, 23, 42, 0.25);">
-            ${isVerified ? '📊 Access Portal Scorecard' : '🔄 Access Portal to Resubmit'}
-          </a>
-        </div>
+        <!-- CTA Buttons -->
+        ${getDualPortalCtaHtml(isVerified ? '📊 Access Portal Scorecard' : '🔄 Access Portal to Resubmit', '#0f172a')}
 
         <p style="margin: 20px 0 0 0; font-size: 12px; color: #64748b; line-height: 1.5; text-align: center;">
           For any academic inquiries regarding this evaluation, kindly contact your designated <b>Class Advisor</b> or <b>Year Coordinator</b>.
@@ -1174,7 +1209,7 @@ export interface DeadlineAlertEmailPayload {
 
 export async function sendDeadlineAlertEmail(payload: DeadlineAlertEmailPayload): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const { to, studentName, registerNumber, taskTitle, deadline, remainingText = '2 Hours Remaining', portalUrl } = payload;
-  const portalLink = (portalUrl || getDefaultPortalUrl()).replace(/\/$/, '');
+  const portalLink = resolveValidPortalUrl(portalUrl);
   const subject = `⏰ Urgent Reminder: ${remainingText} for "${taskTitle}" — VSBEC IT`;
   const currentDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
   const formattedDeadline = new Date(deadline).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
@@ -1300,12 +1335,8 @@ export async function sendDeadlineAlertEmail(payload: DeadlineAlertEmailPayload)
           </p>
         </div>
 
-        <!-- CTA Button -->
-        <div style="text-align: center; margin: 28px 0 16px 0;">
-          <a href="${portalLink}" style="display: inline-block; background-color: #dc2626; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 14px 32px; border-radius: 6px; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35);">
-            🚀 Submit Assignment Now
-          </a>
-        </div>
+        <!-- CTA Buttons -->
+        ${getDualPortalCtaHtml('🚀 Submit Assignment Now', '#dc2626')}
         ${getTelegramCommunityBoxHtml()}
 
 
@@ -1525,6 +1556,7 @@ export async function sendPasswordResetOtpEmail(payload: PasswordResetOtpPayload
         <p style="margin: 0; font-size: 12px; color: #64748b; line-height: 1.5;">
           If you did not make this request, please disregard this email. Your portal credentials remain secure.
         </p>
+        ${getDualPortalCtaHtml('🔐 Open Academic Portal', '#0f172a')}
         ${getTelegramCommunityBoxHtml()}
 
 
@@ -1616,7 +1648,7 @@ export async function sendTaskPendingReminderEmail(
   });
 
   const subject = `⚠️ URGENT ACTION: Pending Submission for "${taskTitle}" — VSBEC IT Department`;
-  const portalLink = (process.env.APP_URL || process.env.FRONTEND_URL || getDefaultPortalUrl()).replace(/\/$/, '');
+  const portalLink = resolveValidPortalUrl();
   const refCode = `VSBEC/IT/PENDING/${Date.now().toString(36).toUpperCase()}`;
 
   const htmlContent = `
@@ -1717,12 +1749,8 @@ export async function sendTaskPendingReminderEmail(
           </p>
         </div>
 
-        <!-- CTA Button -->
-        <div style="text-align: center; margin: 28px 0 16px 0;">
-          <a href="${portalLink}" style="display: inline-block; background-color: #dc2626; color: #ffffff; text-decoration: none; font-size: 13.5px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 14px 34px; border-radius: 6px; border: 1px solid #b91c1c; box-shadow: 0 4px 14px rgba(220, 38, 38, 0.35);">
-            🚀 Submit Task Proof Now
-          </a>
-        </div>
+        <!-- CTA Buttons -->
+        ${getDualPortalCtaHtml('🚀 Submit Task Proof Now', '#dc2626')}
         ${getTelegramCommunityBoxHtml()}
 
 
@@ -1944,7 +1972,7 @@ export interface NoticeEmailPayload {
 
 export async function sendNoticeAnnouncementEmail(payload: NoticeEmailPayload): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const { to, studentName, registerNumber, noticeId, noticeTitle, noticeDescription, priority, publisherName, publisherRole, attachmentUrl, portalUrl } = payload;
-  const portalLink = (portalUrl || getDefaultPortalUrl()).replace(/\/$/, '');
+  const portalLink = resolveValidPortalUrl(portalUrl);
   const directNoticeUrl = noticeId ? `${portalLink}/?tab=notice-board&noticeId=${noticeId}` : `${portalLink}/?tab=notice-board`;
   const isUrgent = priority === 'URGENT' || priority === 'HIGH';
 
@@ -2063,21 +2091,20 @@ export async function sendNoticeAnnouncementEmail(payload: NoticeEmailPayload): 
               </div>` : ''}
 
               <!-- Direct CTA Section -->
-              <div style="text-align: center; margin: 26px 0 20px 0;">
-                <a href="${directNoticeUrl}" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); color: #ffffff; text-decoration: none; font-size: 13.5px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; padding: 14px 36px; border-radius: 8px; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);">
-                  📋 View Notice on Digital Portal
-                </a>
-              </div>
+              ${getDualPortalCtaHtml('📋 View Notice on Digital Portal', '#1e3a8a', noticeId ? `?tab=notice-board&noticeId=${noticeId}` : '?tab=notice-board')}
 
               <!-- Portal Status & Feature Summary Box -->
               <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 18px; margin: 20px 0;">
                 <tr>
                   <td>
                     <p style="margin: 0 0 6px 0; font-size: 12.5px; font-weight: 800; color: #0f172a; text-transform: uppercase;">
-                      🌐 Academic Portal Information
+                      🌐 Academic Portal Access Links
+                    </p>
+                    <p style="margin: 0 0 6px 0; font-size: 12px; color: #475569; line-height: 1.5;">
+                      <b>Primary Portal (Vercel):</b> <a href="https://it-taskmanager.vercel.app/" style="color: #2563eb; font-weight: 700; text-decoration: underline;" target="_blank">https://it-taskmanager.vercel.app/</a>
                     </p>
                     <p style="margin: 0 0 8px 0; font-size: 12px; color: #475569; line-height: 1.5;">
-                      Direct Portal Link: <a href="${portalLink}" style="color: #2563eb; font-weight: 700; text-decoration: underline;" target="_blank">${portalLink}</a>
+                      <b>Mirror Portal (Render):</b> <a href="https://it-taskmanager-6rgp.onrender.com/" style="color: #475569; font-weight: 700; text-decoration: underline;" target="_blank">https://it-taskmanager-6rgp.onrender.com/</a>
                     </p>
                     <p style="margin: 0; font-size: 11.5px; color: #64748b; line-height: 1.5;">
                       ✅ All existing accounts, tasks, LeetCode, and GitHub progress remain fully active and synced.

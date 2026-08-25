@@ -38,7 +38,15 @@ export function getAdminChatId(): string {
 }
 
 export function getPortalUrl(): string {
-  return process.env.FRONTEND_URL || 'https://it-taskmanager.vercel.app';
+  const envUrl = process.env.FRONTEND_URL || process.env.APP_URL;
+  if (envUrl && !envUrl.includes('onrender.com') && !envUrl.includes('render.com')) {
+    return envUrl.replace(/\/$/, '');
+  }
+  return 'https://it-taskmanager.vercel.app';
+}
+
+export function getMirrorPortalUrl(): string {
+  return 'https://it-taskmanager-6rgp.onrender.com';
 }
 
 export function getWatermarkHtml(): string {
