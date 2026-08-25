@@ -37,7 +37,8 @@ import {
   notifyTaskReopenedEmail,
   triggerDeadlineUrgentEmailReminders,
   notifyNoticeBoardAnnouncementEmail,
-  getLiveEmailNodesStatus
+  getLiveEmailNodesStatus,
+  isEmailServiceEnabled
 } from './emailService.js';
 
 export {
@@ -50,7 +51,8 @@ export {
   notifyNewTaskCreatedEmail,
   notifyTaskReopenedEmail,
   notifyNoticeBoardAnnouncementEmail,
-  triggerDeadlineUrgentEmailReminders
+  triggerDeadlineUrgentEmailReminders,
+  isEmailServiceEnabled
 };
 import {
   startTelegramPoller,
@@ -398,6 +400,11 @@ async function startServer() {
 
   // Initialize Sentry Production Error Tracking
   initSentry();
+
+  // Log Email Notification Service state
+  console.log('[EmailService] 🛑 Automated Background Email Broadcasts: DISABLED (Prevents duplicate notifications across deployments)');
+  console.log('[EmailService] 🛑 Task Verification / Approval Emails: DISABLED (Silenced)');
+  console.log('[EmailService] 🔐 On-Demand Essential Emails (Password Reset OTP & Manual HOD Reminders): ENABLED');
 
   // Initialize Web Push VAPID Notification Service
   await initPushNotifications().catch(err => console.error('[WebPush] Startup init warning:', err));

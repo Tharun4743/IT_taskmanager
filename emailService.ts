@@ -55,6 +55,57 @@ export function getDefaultPortalUrl(): string {
   return (process.env.FRONTEND_URL || process.env.APP_URL || 'https://it-taskmanager.vercel.app').replace(/\/$/, '');
 }
 
+/**
+ * 🛑 Automated Background Broadcast Toggle
+ * Controls background automated mass-email broadcasts:
+ *  - Automated New Task Announcement Emails
+ *  - Automated Reopened Task Announcement Emails
+ *  - Automated 2-Hour Incomplete Deadline Alert Cron
+ *  - Automated Notice Board Broadcast Emails
+ * 
+ * Defaults to FALSE in this repository because this repository is deployed across
+ * 2 Render instances (and another repository is deployed on Vercel), which prevents
+ * duplicate and repeating background broadcast emails.
+ */
+export function isAutomatedEmailBroadcastEnabled(): boolean {
+  if (process.env.DISABLE_AUTOMATED_EMAIL_BROADCASTS === 'true' || process.env.DISABLE_AUTOMATED_EMAIL_BROADCASTS === '1') {
+    return false;
+  }
+  if (process.env.ENABLE_AUTOMATED_EMAIL_BROADCASTS === 'true' || process.env.ENABLE_AUTOMATED_EMAIL_BROADCASTS === '1') {
+    return true;
+  }
+  // Default: Disabled in this repo to prevent duplicate automated broadcasts across deployments
+  return false;
+}
+
+/**
+ * 🛑 Task Status / Verification / Approval Email Toggle
+ * Controls if evaluation status emails (Approved, Verified, Rejected) are sent.
+ * Defaults to FALSE to prevent individual evaluation email traffic.
+ */
+export function isTaskStatusEmailEnabled(): boolean {
+  if (process.env.ENABLE_TASK_STATUS_EMAILS === 'true' || process.env.ENABLE_TASK_STATUS_EMAILS === '1') {
+    return true;
+  }
+  // Default: Disabled (no evaluation status emails sent)
+  return false;
+}
+
+/**
+ * ✉️ General Email Service Dispatch Toggle
+ * Controls if direct, on-demand emails (such as Forgot Password OTP and Manual HOD Reminders) can be sent.
+ * Defaults to TRUE so essential user-initiated actions work properly.
+ */
+export function isEmailServiceEnabled(): boolean {
+  if (process.env.DISABLE_ALL_EMAILS === 'true' || process.env.DISABLE_ALL_EMAILS === '1') {
+    return false;
+  }
+  if (process.env.ENABLE_EMAIL_SERVICE === 'false' || process.env.ENABLE_EMAIL_SERVICE === '0') {
+    return false;
+  }
+  return true;
+}
+
 
 interface BrevoAccountNode {
   nodeId: string;
@@ -197,7 +248,20 @@ export async function getLiveEmailNodesStatus(): Promise<{
   totalAvailableCredits: number;
   healthyNodesCount: number;
   activeFallback: string;
+  isEmailServiceEnabled: boolean;
+  isAutomatedBroadcastEnabled: boolean;
 }> {
+  if (!isEmailServiceEnabled()) {
+    return {
+      nodes: [],
+      totalAvailableCredits: 0,
+      healthyNodesCount: 0,
+      activeFallback: 'STOPPED / DISABLED (All email services disabled)',
+      isEmailServiceEnabled: false,
+      isAutomatedBroadcastEnabled: false
+    };
+  }
+
   const brevoNodes = getBrevoNodes();
   const statuses: EmailNodeLiveStatus[] = [];
   let totalCredits = 0;
@@ -314,7 +378,9 @@ export async function getLiveEmailNodesStatus(): Promise<{
     nodes: statuses,
     totalAvailableCredits: totalCredits,
     healthyNodesCount: healthyCount,
-    activeFallback: smtp ? 'SMTP Relay' : resendKey ? 'Resend' : 'Brevo HTTPS Pool (Port 443)'
+    activeFallback: smtp ? 'SMTP Relay' : resendKey ? 'Resend' : 'Brevo HTTPS Pool (Port 443)',
+    isEmailServiceEnabled: true,
+    isAutomatedBroadcastEnabled: isAutomatedEmailBroadcastEnabled()
   };
 }
 
@@ -328,6 +394,11 @@ async function dispatchEmailThroughPool(
   htmlContent: string,
   customSenderName?: string
 ): Promise<{ success: boolean; messageId?: string; provider?: string; error?: string }> {
+  if (!isEmailServiceEnabled()) {
+    console.log(`[EmailService] 🛑 Email service is stopped/disabled in this repo. Suppressed dispatch to: ${to} (Subject: "${subject}")`);
+    return { success: true, messageId: 'SUPPRESSED_EMAIL_SERVICE_DISABLED_IN_REPO', provider: 'DISABLED' };
+  }
+
   const allNodes = getBrevoNodes();
   // Filter only healthy, non-exhausted nodes
   const availableNodes = allNodes.filter(n => isNodeAvailable(n.nodeId));
@@ -625,6 +696,10 @@ export async function notifyNewTaskCreatedEmail(task: {
   creator_name?: string;
   submission_type?: string;
 }, classIds: string[]) {
+  if (!isAutomatedEmailBroadcastEnabled()) {
+    console.log(`[EmailService] 🛑 Automated email broadcasts disabled in this deployment. Skipped new task broadcast for "${task.title}".`);
+    return;
+  }
   try {
     let studentRows: any[] = [];
     if (classIds && classIds.length > 0) {
@@ -826,6 +901,10 @@ export async function notifyTaskReopenedEmail(task: {
   reopened_by?: string;
   submission_type?: string;
 }, classIds?: string[]) {
+  if (!isAutomatedEmailBroadcastEnabled()) {
+    console.log(`[EmailService] 🛑 Automated email broadcasts disabled in this deployment. Skipped reopened task broadcast for "${task.title}".`);
+    return;
+  }
   try {
     let studentRows: any[] = [];
     const validClassIds = Array.isArray(classIds)
@@ -901,6 +980,10 @@ export interface EmailNotificationPayload {
 }
 
 export async function sendTaskStatusEmail(payload: EmailNotificationPayload): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  if (!isTaskStatusEmailEnabled() || !isEmailServiceEnabled()) {
+    console.log(`[EmailService] ℹ️ Task verification/approval status emails are disabled. Skipped status email to: ${payload.to} (Status: ${payload.status})`);
+    return { success: true, messageId: 'SUPPRESSED_TASK_STATUS_EMAIL_DISABLED' };
+  }
   const { to, studentName, registerNumber, taskTitle, status, portalUrl } = payload;
   const noteOrReason = payload.noteOrReason || payload.feedback || payload.reason || '';
   const isVerified = status === 'VERIFIED';
@@ -1254,6 +1337,9 @@ export async function sendDeadlineAlertEmail(payload: DeadlineAlertEmailPayload)
  * ⏰ Automated Scheduler: Scans tasks due within 2 hours for incomplete students and dispatches email alerts
  */
 export async function triggerDeadlineUrgentEmailReminders(): Promise<{ dispatchedCount: number }> {
+  if (!isAutomatedEmailBroadcastEnabled()) {
+    return { dispatchedCount: 0 };
+  }
   try {
     const query = `
       SELECT DISTINCT 
@@ -1673,6 +1759,16 @@ export async function triggerManualTaskPendingReminders(
   senderRole?: string,
   senderName?: string
 ): Promise<{ success: boolean; totalStudents: number; sentCount: number; failedCount: number; errors: string[] }> {
+  if (!isEmailServiceEnabled()) {
+    console.log(`[EmailService] 🛑 Mail service disabled. Skipped manual pending reminder email for task ${taskId}.`);
+    return {
+      success: true,
+      totalStudents: 0,
+      sentCount: 0,
+      failedCount: 0,
+      errors: ['Mail service is disabled in this repo to prevent duplicate email dispatches across deployments.']
+    };
+  }
   try {
     const taskRes = await pool.query('SELECT * FROM tasks WHERE id = $1 LIMIT 1', [taskId]);
     const task = taskRes.rows[0];
@@ -2035,6 +2131,10 @@ export async function notifyNoticeBoardAnnouncementEmail(notice: {
   attachment_url?: string | null;
   created_by?: string | number;
 }): Promise<{ totalTargeted: number; totalDispatched: number }> {
+  if (!isAutomatedEmailBroadcastEnabled()) {
+    console.log(`[EmailService] 🛑 Automated email broadcasts disabled in this deployment. Skipped notice board email broadcast for "${notice.title}".`);
+    return { totalTargeted: 0, totalDispatched: 0 };
+  }
   try {
     let query = `
       SELECT u.id, u.full_name, u.register_number, u.email, u.class_id, u.department_id 

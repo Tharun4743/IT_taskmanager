@@ -51,6 +51,12 @@ services:
         sync: false
       - key: VAPID_SUBJECT
         value: "mailto:vsbecitc2428@gmail.com"
+      - key: DISABLE_AUTOMATED_EMAIL_BROADCASTS
+        value: "true"
+      - key: ENABLE_TASK_STATUS_EMAILS
+        value: "false"
+      - key: ENABLE_EMAIL_SERVICE
+        value: "true"
       - key: BREVO_API_KEY
         sync: false
       - key: BREVO_SENDER_EMAIL
