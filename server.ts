@@ -554,7 +554,6 @@ async function startServer() {
         'https://it-taskmanager.vercel.app',
         'https://it-taskmanager-6rgp.onrender.com',
         'https://it-taskmanager.onrender.com',
-        'https://vsb-it.onrender.com',
         'https://vsbec-it.onrender.com',
         'http://it-taskmanager.mooo.com',
         'https://it-taskmanager.mooo.com'
