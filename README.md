@@ -4,19 +4,21 @@
 ### *Student Task Management, Verification Workflow & Live Coding Analytics Platform*
 
 [![Live Portal](https://img.shields.io/badge/Live_Portal-IT_Task_Manager-4F46E5?style=for-the-badge&logo=vercel&logoColor=white)](https://it-taskmanager.vercel.app/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![React](https://img.shields.io/badge/React-18.x-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
-[![Vite](https://img.shields.io/badge/Vite-5.x-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-19.x-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-6.x-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-v4.x-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Express](https://img.shields.io/badge/Express-4.x-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14+-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![ExcelJS](https://img.shields.io/badge/ExcelJS-OpenXML-217346?style=for-the-badge&logo=microsoft-excel&logoColor=white)](https://github.com/exceljs/exceljs)
 [![Telegram Bot](https://img.shields.io/badge/Telegram_Bot-Automated-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://core.telegram.org/bots/api)
+[![Web Push](https://img.shields.io/badge/Web_Push-VAPID-FF6B6B?style=for-the-badge&logo=pwa&logoColor=white)](https://w3c.github.io/push-api/)
 
 <p align="center">
   <b>Department of Information Technology</b> • <b>VSB Engineering College, Karur</b><br>
   <b>Lead Architect & Developer:</b> <a href="https://tharunkumark4743.netlify.app/">Tharunkumar K</a><br>
-  <b>Live Application:</b> <a href="https://it-taskmanager.vercel.app/">https://it-taskmanager.vercel.app/</a>
+  <b>Primary Web App:</b> <a href="https://it-taskmanager.vercel.app/">https://it-taskmanager.vercel.app/</a> • <b>Backend / Mirror:</b> <a href="https://it-taskmanager.onrender.com">https://it-taskmanager.onrender.com</a>
 </p>
 
 ---
@@ -25,15 +27,17 @@
 
 ## 📌 Executive Summary
 
-**IT Task Manager** is a web-based academic task management, submission, verification, and coding progress tracking platform developed for the Information Technology department of VSB Engineering College. Engineered by **Tharunkumar K**, the platform streamlines academic task governance, coding competency tracking (LeetCode & GitHub), automated communication, and departmental analytics.
+**IT Task Manager** is a high-performance academic task management, submission, verification, and coding analytics platform engineered for the Department of Information Technology at VSB Engineering College. Designed and architected by **Tharunkumar K**, the platform streamlines departmental task governance, live coding metrics (LeetCode & GitHub), real-time Web Push notifications, automated Telegram communications, and institutional reporting.
 
 ### Core Capabilities:
-1. **Academic Task Governance**: Precision scope assignments (Individual, Class Section, Batch Year, Department), team submissions, and multi-tier verification workflows.
-2. **Live Coding Analytics (LeetCode & GitHub)**: Real-time synchronization of LeetCode problem velocity, student daily total GitHub commit counts, multi-level LeetCode target inheritance, and defaulter tracking.
-3. **Automated Telegram Bot Engine (`@IT_TaskManager_Alerts_bot`)**: Register Number instant lookup, class/year analysis shortcuts (`/3ita`, `/2it`, `/year3`) with section breakdowns, private deadline reminders, and daily department briefs.
-4. **Institutional Reporting Suite**: Direct OpenXML `.xlsx` generation across 9 specialized formats with dynamic boundary trimming and zero file corruption.
+1. **Academic Task Governance**: Precision scope assignments (Individual, Class Section, Batch Year, Department), collaborative team submissions (2–5 members), and multi-tier verification workflows.
+2. **Live Coding Analytics (LeetCode & GitHub)**: Real-time synchronization of LeetCode problem velocity, student daily total GitHub commit counts, 4-level target inheritance hierarchy, and automated defaulter tracking.
+3. **Automated Telegram Bot Engine (`@IT_TaskManager_Alerts_bot`)**: Instant student scorecard lookup by Register Number, section-wise class/year shortcuts (`/3ita`, `/2it`, `/year3`), private deadline alerts, and daily department briefs with persistent deduplication locks.
+4. **Institutional Reporting Suite**: Pure OpenXML `.xlsx` generation using **ExcelJS** across 9 specialized formats with dynamic boundary trimming, official letterhead styling, and auto-fitted columns.
 5. **Automated Cloud Sync & Snapshots**: 11:55 PM IST daily LeetCode CSV auto-export pushed to GitHub, alongside daily 31-table JSON snapshot backups with 7-day rolling retention.
-6. **Automated Email Dispatch & Security OTP Engine**: Multi-node load balanced email delivery with instant failover, 4 institutional notification streams, and self-service 1-click easy copy OTP password reset.
+6. **Multi-Node Email & Security OTP Engine**: High-availability load-balanced email delivery with instant failover, 4 institutional notification streams, and self-service 1-click copy OTP password reset.
+7. **Web Push & PWA Experience**: Native VAPID Web Push notifications, offline-ready service worker, installable PWA experience, smooth splash loader, and Google AI structured SEO metadata.
+8. **High-Resilience Database Architecture**: Supabase connection routing to Transaction Mode (Port 6543) eliminating connection saturation, coupled with sub-millisecond in-memory RAM caching.
 
 ---
 
@@ -41,28 +45,32 @@
 
 ```mermaid
 flowchart TD
-    subgraph UI["🖥️ Client Layer (React 18 + Vite + TailwindCSS)"]
+    subgraph UI["🖥️ Client Layer (React 19 + Vite 6 + Tailwind v4 + PWA)"]
         A1["🛡️ HOD & Admin Portal"]
         A2["👨‍🏫 Faculty & Advisor Workspace"]
         A3["🎓 Student Learning Dashboard"]
+        A4["🔔 Web Push Service Worker"]
     end
 
     subgraph API["⚡ Backend Gateway (Node.js + Express + TypeScript)"]
-        B1["🔐 Auth & RBAC Security"]
+        B1["🔐 Auth & RBAC Security (Email / RegNo + Bcrypt)"]
         B2["📝 Task & Verification Engine"]
         B3["💻 LeetCode & GitHub Sync Engine"]
-        B4["🤖 Telegram Bot Service"]
+        B4["🤖 Telegram Bot Service (@IT_TaskManager_Alerts_bot)"]
         B5["📧 Multi-Node Email & OTP Engine"]
         B6["📊 ExcelJS Report Builder"]
-        B7["🚀 RAM Directory Cache"]
+        B7["🚀 RAM Directory Cache (< 0.01ms)"]
+        B8["🔔 Web Push VAPID Dispatcher"]
+        B9["🛡️ Sentry Real-Time Error Observability"]
     end
 
     subgraph Storage["💾 Persistence & Cloud Services"]
-        C1[("🗄️ PostgreSQL Database")]
-        C2["📱 Telegram API"]
-        C3["☁️ LeetCode GraphQL & GitHub API"]
+        C1[("🗄️ PostgreSQL Database (Supabase Port 6543)")]
+        C2["📱 Telegram Bot API"]
+        C3["☁️ LeetCode GraphQL & GitHub REST API"]
         C4["🖼️ Cloudinary CDN"]
-        C5["✉️ Cloud Email Dispatcher (HTTPS REST)"]
+        C5["✉️ Cloud Email Dispatcher (HTTPS REST + SMTP)"]
+        C6["🔔 Web Push Service (FCM / Mozilla / Apple)"]
     end
 
     UI --> API
@@ -100,14 +108,15 @@ flowchart LR
 ## 🌟 Feature Modules
 
 ### Module 1: Academic Task Governance & Teams
-- **Granular Scoping**: Assign tasks to individuals, class sections (e.g. IT-A, IT-B), academic years, or the entire department.
+- **Granular Scoping**: Assign tasks to individuals, class sections (e.g. IT-A, IT-B, IT-C), academic years, or the entire department.
 - **Team-Based Submissions**: Configurable group sizes (2–5 members), interactive invitation banners, leader/member role badges, and single consolidated proof submission.
 - **Review & Resubmission**: Instant rejection alert banners with detailed staff feedback and 1-click proof re-upload.
+- **Discussion Threads**: Dedicated task-level discussion forum with `@mentions` and peer collaborative learning.
 
 ### Module 2: Coding Competency Tracking
 - **LeetCode Engine**: Live tracking of total solved problems, daily solve velocity, Easy/Medium/Hard breakdown, and daily/weekly target completion status.
 - **GitHub Engine**: Real-time synchronization of daily total commit counts per student with weekly aggregate metrics.
-- **Combined Dashboard**: Side-by-side progress monitor displaying student LeetCode statistics and daily total GitHub commits with filtering.
+- **Combined Dashboard**: Side-by-side progress monitor displaying student LeetCode statistics and daily total GitHub commits with filtering and instant Excel export.
 
 ### Module 3: Automated Telegram Bot & Analysis Engine
 - **Bot Username**: `@IT_TaskManager_Alerts_bot`
@@ -128,7 +137,7 @@ flowchart LR
 ### Module 5: Automated Cloud Sync & Database Snapshots
 - **11:55 PM IST Daily LeetCode CSV Auto-Push**: Generates datewise master and section-wise CSV reports (`leetcode/LeetCode_Daily_Report_YYYY-MM-DD.csv`, `leetcode/YYYY-MM-DD/Section_*.csv`) and automatically commits and pushes them to GitHub.
 - **Automated Database Snapshots**: Every 24 hours, captures all 31 PostgreSQL tables in `backups/db_backup_*.json` and pushes snapshots to GitHub with a 7-day rolling retention policy.
-- **RAM Directory Auto-Sync**: In-memory student cache (< 0.01ms lookups) with auto-push to GitHub on profile updates.
+- **RAM Directory Auto-Sync**: In-memory student cache (< 0.01ms lookups) with auto-push to GitHub on profile updates via Contents REST API or Git CLI.
 
 ### Module 6: Enterprise Automated Email System & Security OTP Engine
 - **Self-Service 6-Digit Email OTP Password Reset**: Automated verification pipeline with 10-minute expiry window, 3-attempt brute-force protection, and 1-tap/1-click instant copy container.
@@ -139,6 +148,11 @@ flowchart LR
   - *Submission Rejection*: Real-time correction notice with reviewer remarks and direct resubmission portal link.
   - *Incomplete Task 2-Hour Deadline Alert*: Automated background scanner triggering final-call urgency emails for incomplete students.
 - **Institutional Academic Letterhead**: Formal government & college letterhead embedding the official institutional emblem (`logo.png`), NAAC 'A' Grade accreditation banner, and reference tracking.
+
+### Module 7: Web Push Notifications & PWA Architecture
+- **Browser Web Push Engine**: Native VAPID Web Push notification engine ([`pushNotificationService.ts`](./pushNotificationService.ts)) delivering instant task deadline alerts and submission notices even when browser tabs are closed.
+- **Progressive Web App (PWA)**: Standalone mobile/desktop installation support, offline asset caching, smooth splash loader, and responsive touch controls.
+- **Observability & Error Diagnostics**: Integrated Sentry error capture ([`sentryService.ts`](./sentryService.ts)) and Google AI structured SEO metadata.
 
 ---
 
@@ -155,6 +169,7 @@ flowchart LR
 | **Manage Coding Target Thresholds** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Trigger Telegram Broadcasts** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Export Official Excel Reports** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Web Push Notification Subscriptions** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Submit Task Proofs & Link Bot** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | **Create & Manage Project Teams** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 
