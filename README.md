@@ -34,7 +34,7 @@
 2. **Live Coding Analytics (LeetCode & GitHub)**: Real-time synchronization of LeetCode problem velocity, student daily total GitHub commit counts, 4-level target inheritance hierarchy, and automated defaulter tracking.
 3. **Automated Telegram Bot Engine (`@IT_TaskManager_Alerts_bot`)**: Instant student scorecard lookup by Register Number, section-wise class/year shortcuts (`/3ita`, `/2it`, `/year3`), private deadline alerts, and daily department briefs with persistent deduplication locks.
 4. **Institutional Reporting Suite**: Pure OpenXML `.xlsx` generation using **ExcelJS** across 9 specialized formats with dynamic boundary trimming, official letterhead styling, and auto-fitted columns.
-5. **Automated Cloud Sync & Snapshots**: 11:55 PM IST daily LeetCode CSV auto-export pushed to GitHub, alongside daily 31-table JSON snapshot backups with 7-day rolling retention.
+5. **Automated Cloud Sync & Snapshots**: 11:55 PM IST daily LeetCode CSV auto-export pushed to GitHub, alongside daily 31-table JSON snapshot backups with 30-day rolling retention.
 6. **Multi-Node Email & Security OTP Engine**: High-availability load-balanced email delivery with instant failover, 4 institutional notification streams, and self-service 1-click copy OTP password reset.
 7. **Web Push & PWA Experience**: Native VAPID Web Push notifications, offline-ready service worker, installable PWA experience, smooth splash loader, and Google AI structured SEO metadata.
 8. **High-Resilience Database Architecture**: Supabase connection routing to Transaction Mode (Port 6543) eliminating connection saturation, coupled with sub-millisecond in-memory RAM caching.
@@ -136,7 +136,7 @@ flowchart LR
 
 ### Module 5: Automated Cloud Sync & Database Snapshots
 - **11:55 PM IST Daily LeetCode CSV Auto-Push**: Generates datewise master and section-wise CSV reports (`leetcode/LeetCode_Daily_Report_YYYY-MM-DD.csv`, `leetcode/YYYY-MM-DD/Section_*.csv`) and automatically commits and pushes them to GitHub.
-- **Automated Database Snapshots**: Every 24 hours, captures all 31 PostgreSQL tables in `backups/db_backup_*.json` and pushes snapshots to GitHub with a 7-day rolling retention policy.
+- **Automated Database Snapshots**: Every 24 hours, captures all 31 PostgreSQL tables in `backups/db_backup_*.json` and pushes snapshots to GitHub with a 30-day rolling retention policy.
 - **RAM Directory Auto-Sync**: In-memory student cache (< 0.01ms lookups) with auto-push to GitHub on profile updates via Contents REST API or Git CLI.
 
 ### Module 6: Enterprise Automated Email System & Security OTP Engine

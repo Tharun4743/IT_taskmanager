@@ -409,7 +409,7 @@ async function startServer() {
   // Initialize Web Push VAPID Notification Service
   await initPushNotifications().catch(err => console.error('[WebPush] Startup init warning:', err));
 
-  // Trigger initial 7-day screenshot cleanup and schedule daily background execution (every 24 hours)
+  // Trigger initial 30-day screenshot cleanup and schedule daily background execution (every 24 hours)
   cleanupOnlyTaskScreenshots().catch(err => console.error('[ImageCleanup] Startup cleanup warning:', err));
   setInterval(() => {
     cleanupOnlyTaskScreenshots().catch(err => console.error('[ImageCleanup] Scheduled cleanup warning:', err));
@@ -721,10 +721,10 @@ async function startServer() {
     next();
   };
 
-  // Admin endpoint: Trigger manual purge of proof screenshots older than 7 days
+  // Admin endpoint: Trigger manual purge of proof screenshots older than 30 days
   app.post('/api/admin/purge-old-screenshots', authenticate, authorize(['SUPREME_ADMIN', 'HOD']), asyncHandler(async (req: Request, res: Response) => {
     const purgedCount = await cleanupOnlyTaskScreenshots();
-    res.json({ message: `Successfully purged ${purgedCount} task proof screenshots older than 7 days.`, purgedCount });
+    res.json({ message: `Successfully purged ${purgedCount} task proof screenshots older than 30 days.`, purgedCount });
   }));
 
   // Admin endpoint: Export complete database JSON snapshot

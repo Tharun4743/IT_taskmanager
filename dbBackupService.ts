@@ -103,14 +103,14 @@ export async function generateDatabaseSnapshot(force = false) {
     fs.writeFileSync(filePath, JSON.stringify(backupPayload, null, 2), 'utf-8');
     console.log(`[DB Backup] Database snapshot created successfully at ${filePath}`);
 
-    // Cleanup old backups keeping only the most recent backup file
+    // Cleanup old backups keeping up to 30 days of backup files (rolling 30-day retention)
     const existingBackups = fs.readdirSync(backupDir)
       .filter(f => f.startsWith('db_backup_') && f.endsWith('.json'))
       .sort();
 
     const deletedFiles: string[] = [];
-    if (existingBackups.length > 1) {
-      const toDelete = existingBackups.slice(0, existingBackups.length - 1);
+    if (existingBackups.length > 30) {
+      const toDelete = existingBackups.slice(0, existingBackups.length - 30);
       for (const oldFile of toDelete) {
         fs.unlinkSync(path.join(backupDir, oldFile));
         deletedFiles.push(`backups/${oldFile}`);

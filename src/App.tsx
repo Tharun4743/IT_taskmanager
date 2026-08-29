@@ -12156,14 +12156,20 @@ export default function App() {
                                             </p>
                                           </div>
                                         </div>
-                                        <a
-                                          href={submission.screenshot_url}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="text-xs font-medium text-blue-600 hover:underline flex items-center gap-1"
-                                        >
-                                          <ImageIcon size={14} /> View Screenshot
-                                        </a>
+                                        {submission.screenshot_url && !submission.screenshot_url.startsWith('PURGED') ? (
+                                          <a
+                                            href={submission.screenshot_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs font-medium text-blue-600 hover:underline flex items-center gap-1"
+                                          >
+                                            <ImageIcon size={14} /> View Screenshot
+                                          </a>
+                                        ) : submission.screenshot_url?.startsWith('PURGED') ? (
+                                          <span className="text-xs text-zinc-400 font-medium italic flex items-center gap-1">
+                                            <ImageIcon size={14} /> Purged (30d+)
+                                          </span>
+                                        ) : null}
                                       </div>
                                     );
                                   })()
@@ -12669,7 +12675,7 @@ export default function App() {
                                         </p>
                                       </TD>
                                       <TD>
-                                        {s.screenshot_url ? (
+                                        {s.screenshot_url && !s.screenshot_url.startsWith('PURGED') ? (
                                           <div className="relative group/img">
                                             <img
                                               src={getCloudinaryThumbnail(s.screenshot_url, 150)}
@@ -12679,6 +12685,8 @@ export default function App() {
                                             />
                                             <div className="absolute top-0 left-0 w-full h-full bg-black/5 rounded-lg pointer-events-none group-hover/img:bg-transparent transition-colors" />
                                           </div>
+                                        ) : s.screenshot_url && s.screenshot_url.startsWith('PURGED') ? (
+                                          <span className="text-xs text-zinc-400 font-mono italic">Purged (30d+)</span>
                                         ) : (
                                           <span className="text-xs text-zinc-400 font-mono italic">No File</span>
                                         )}
@@ -12833,7 +12841,7 @@ export default function App() {
                                   </div>
                                 ) : (
                                   <div className="w-full md:w-48 h-48 bg-zinc-100 rounded-xl overflow-hidden border border-zinc-200 shrink-0">
-                                    {sub.screenshot_url ? (
+                                    {sub.screenshot_url && !sub.screenshot_url.startsWith('PURGED') ? (
                                       <img
                                         src={getCloudinaryThumbnail(sub.screenshot_url, 400)}
                                         alt="Submission"
@@ -12841,6 +12849,12 @@ export default function App() {
                                         onClick={() => window.open(sub.screenshot_url, '_blank')}
                                         referrerPolicy="no-referrer"
                                       />
+                                    ) : sub.screenshot_url && sub.screenshot_url.startsWith('PURGED') ? (
+                                      <div className="w-full h-full flex flex-col items-center justify-center text-zinc-400 text-xs gap-1.5 p-3 text-center">
+                                        <ImageIcon size={26} className="text-zinc-300" />
+                                        <span className="font-semibold text-zinc-600">Purged after 30 days</span>
+                                        <span className="text-[10px] text-zinc-400">Submission verified & preserved</span>
+                                      </div>
                                     ) : (
                                       <div className="w-full h-full flex items-center justify-center text-zinc-400 text-xs">No image uploaded</div>
                                     )}
@@ -12888,7 +12902,7 @@ export default function App() {
                                     </div>
                                   )}
 
-                                  {sub.screenshot_url && (
+                                  {sub.screenshot_url && !sub.screenshot_url.startsWith('PURGED') && (
                                     <Button
                                       variant="ghost"
                                       className="mt-4 text-xs flex items-center gap-2 w-fit"

@@ -65,7 +65,7 @@ This document provides a comprehensive technical overview highlighting the initi
 
 ### 5. Automated GitHub Nightly Sync & 31-Table Snapshot Archival
 * **11:55 PM IST Daily LeetCode CSV Auto-Push**: Automatically builds datewise master and section-wise CSV reports (`leetcode/LeetCode_Daily_Report_YYYY-MM-DD.csv`, `leetcode/YYYY-MM-DD/Section_*.csv`) and pushes them to GitHub via GitHub Contents REST API & Git CLI.
-* **31-Table JSON Snapshot Archival**: Every 24 hours, `generateDatabaseSnapshot()` captures all PostgreSQL tables in `backups/db_backup_*.json` and pushes the snapshot to GitHub with 7-day rolling retention and automatic cloud pruning.
+* **31-Table JSON Snapshot Archival**: Every 24 hours, `generateDatabaseSnapshot()` captures all PostgreSQL tables in `backups/db_backup_*.json` and pushes the snapshot to GitHub with 30-day rolling retention and automatic cloud pruning.
 
 ### 6. Automated Multi-Node Email Dispatch & Security OTP Engine
 * **Self-Service 6-Digit Email OTP Password Reset**: Automated identity verification with 10-minute expiry window, rate-limiting, and 1-tap/1-click instant copy container.
