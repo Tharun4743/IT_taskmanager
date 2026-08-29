@@ -4139,7 +4139,7 @@ export default function App() {
   const initialNotifsLoadedRef = useRef<boolean>(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [reportFilters, setReportFilters] = useState<{ classIds: string[]; taskId: string; status: string }>({ classIds: [], taskId: '', status: 'ALL' });
+  const [reportFilters, setReportFilters] = useState<{ classIds: string[]; taskId: string; status: string; year?: string }>({ classIds: [], taskId: '', status: 'ALL', year: '' });
   const [screenshotDownloadProgress, setScreenshotDownloadProgress] = useState<{
     current: number;
     total: number;
@@ -6266,7 +6266,7 @@ export default function App() {
     }
   };
 
-  const exportToExcel = async (filters?: { classIds?: string[]; taskId?: string; status?: string; }) => {
+  const exportToExcel = async (filters?: { classIds?: string[]; taskId?: string; status?: string; year?: string }) => {
     const isAdminRole = user?.role === 'SUPREME_ADMIN';
     const isHODRole = user?.role === 'HOD';
     const isYearCoordRole = user?.is_year_coordinator;
@@ -6530,6 +6530,12 @@ export default function App() {
       }
 
       if (!inScope) return false;
+
+      if (filters?.year) {
+        const sc = classes.find(c => c.id.toString() === u.class_id?.toString());
+        const sYear = sc?.year || (u as any)?.year;
+        if (String(sYear) !== String(filters.year)) return false;
+      }
 
       if (selectedClassIds.length > 0) {
         return selectedClassIds.includes(u.class_id?.toString() || '');
@@ -6979,6 +6985,11 @@ export default function App() {
       if (user?.role === 'CLASS_ADVISOR' || (user?.role === 'STUDENT' && user?.is_coordinator)) {
         return u.class_id?.toString() === userClassId;
       }
+      if (reportFilters.year) {
+        const uClass = classes.find(c => c.id?.toString() === u.class_id?.toString());
+        const sYear = uClass?.year || (u as any)?.year;
+        if (String(sYear) !== String(reportFilters.year)) return false;
+      }
       if (selectedClassIds.length > 0) return selectedClassIds.includes(u.class_id?.toString() || '');
       return true;
     });
@@ -7000,7 +7011,7 @@ export default function App() {
 
   // ── Download Screenshots as ZIP ─────────────────────────────────────────────
   const downloadScreenshotsZip = async (
-    filters?: { classIds?: string[]; taskId?: string; status?: string; },
+    filters?: { classIds?: string[]; taskId?: string; status?: string; year?: string; },
     explicitSubmissions?: any[]
   ) => {
     const isAdminRole = user?.role === 'SUPREME_ADMIN';
@@ -7020,14 +7031,18 @@ export default function App() {
     if (explicitSubmissions && explicitSubmissions.length > 0) {
       explicitSubmissions.forEach(s => {
         if (!s.screenshot_url || s.screenshot_url.startsWith('PURGED')) return;
-        const safeRegNo = (s.register_number || 'UNKNOWN').replace(/[/\\?%*:|"<>]/g, '_');
-        const safeName = (s.student_name || 'STUDENT').replace(/[/\\?%*:|"<>]/g, '_');
-        const safeTask = (s.task_title || tasks.find(t => t.id === s.task_id)?.title || 'TASK').replace(/[/\\?%*:|"<>]/g, '_');
-        const safeClass = (s.class_name || classes.find(c => c.id === s.class_id)?.name || 'CLASS').replace(/[/\\?%*:|"<>]/g, '_');
+        const std = users.find(u => u.id === s.user_id);
+        const subClass = classes.find(c => c.id?.toString() === (s.class_id?.toString() || std?.class_id?.toString()));
+        const yearNum = subClass?.year || std?.year;
+        const safeYear = yearNum ? `Year ${yearNum}` : 'Year General';
+        const safeRegNo = (s.register_number || 'UNKNOWN').replace(/[/\\?%*:|"<>]/g, '_').trim();
+        const safeName = (s.student_name || 'STUDENT').replace(/[/\\?%*:|"<>]/g, '_').trim();
+        const safeTask = (s.task_title || tasks.find(t => t.id === s.task_id)?.title || 'TASK').replace(/[/\\?%*:|"<>]/g, '_').trim();
+        const safeClass = (s.class_name || subClass?.name || 'CLASS').replace(/[/\\?%*:|"<>]/g, '_').trim();
 
         itemsToDownload.push({
           url: s.screenshot_url,
-          filename: `${safeTask}/${safeClass}_${safeRegNo}_${safeName}`,
+          filename: `${safeTask}/${safeYear}/${safeClass}/${safeRegNo}_${safeName}`,
           displayName: `${safeRegNo} - ${safeName}`
         });
       });
@@ -7056,6 +7071,11 @@ export default function App() {
         if (isClsRole) {
           const userClassId = (user?.class_id || myClass?.id)?.toString();
           return u.class_id?.toString() === userClassId;
+        }
+        if (filters?.year) {
+          const uClass = classes.find(c => c.id?.toString() === u.class_id?.toString());
+          const sYear = uClass?.year || (u as any)?.year;
+          if (String(sYear) !== String(filters.year)) return false;
         }
         if (selectedClassIds.length > 0) {
           return selectedClassIds.includes(u.class_id?.toString() || '');
@@ -7101,14 +7121,19 @@ export default function App() {
           else if (selectedStatus === 'REJECTED') include = sub.status === 'REJECTED';
 
           if (include) {
-            const safeRegNo = (student.register_number || 'UNKNOWN').replace(/[/\\?%*:|"<>]/g, '_');
-            const safeName = (student.full_name || 'STUDENT').replace(/[/\\?%*:|"<>]/g, '_');
-            const safeTask = (task.title || 'TASK').replace(/[/\\?%*:|"<>]/g, '_');
-            const safeClass = (student.class_name || classes.find(c => c.id === student.class_id)?.name || 'CLASS').replace(/[/\\?%*:|"<>]/g, '_');
+            const safeRegNo = (student.register_number || 'UNKNOWN').replace(/[/\\?%*:|"<>]/g, '_').trim();
+            const safeName = (student.full_name || 'STUDENT').replace(/[/\\?%*:|"<>]/g, '_').trim();
+            const safeTask = (task.title || 'TASK').replace(/[/\\?%*:|"<>]/g, '_').trim();
+            const studentClass = classes.find(c => c.id?.toString() === student.class_id?.toString());
+            const safeClass = (student.class_name || studentClass?.name || 'CLASS').replace(/[/\\?%*:|"<>]/g, '_').trim();
+            const yearNum = studentClass?.year || (student as any)?.year;
+            const safeYear = yearNum ? `Year ${yearNum}` : 'Year General';
 
             itemsToDownload.push({
               url: sub.screenshot_url,
-              filename: filters?.taskId ? `${safeClass}/${safeRegNo}_${safeName}` : `${safeTask}/${safeClass}/${safeRegNo}_${safeName}`,
+              filename: filters?.taskId
+                ? `${safeYear}/${safeClass}/${safeRegNo}_${safeName}`
+                : `${safeTask}/${safeYear}/${safeClass}/${safeRegNo}_${safeName}`,
               displayName: `${safeRegNo} - ${safeName} (${safeTask})`
             });
           }
@@ -7141,14 +7166,27 @@ export default function App() {
             else if (selectedStatus === 'SUBMITTED') includeTeam = mappedStatus === 'SUBMITTED';
             else if (selectedStatus === 'REJECTED') includeTeam = mappedStatus === 'REJECTED';
 
+            if (filters?.year) {
+              const leaderUser = users.find(u => u.register_number === t.leader_regno || u.id === t.leader_id);
+              const teamClass = classes.find(c => c.id?.toString() === (t.class_id?.toString() || leaderUser?.class_id?.toString()));
+              const teamYear = teamClass?.year || leaderUser?.year;
+              if (String(teamYear) !== String(filters.year)) return false;
+            }
+
             if (includeTeam) {
-              const safeTeam = (t.team_name || 'TEAM').replace(/[/\\?%*:|"<>]/g, '_');
-              const safeTask = (t.task_title || 'TASK').replace(/[/\\?%*:|"<>]/g, '_');
-              const safeLeader = (t.leader_regno || 'LEADER').replace(/[/\\?%*:|"<>]/g, '_');
+              const safeTeam = (t.team_name || 'TEAM').replace(/[/\\?%*:|"<>]/g, '_').trim();
+              const safeTask = (t.task_title || 'TASK').replace(/[/\\?%*:|"<>]/g, '_').trim();
+              const safeLeader = (t.leader_regno || 'LEADER').replace(/[/\\?%*:|"<>]/g, '_').trim();
+              const leaderUser = users.find(u => u.register_number === t.leader_regno || u.id === t.leader_id);
+              const teamClass = classes.find(c => c.id?.toString() === (t.class_id?.toString() || leaderUser?.class_id?.toString()));
+              const teamYearNum = teamClass?.year || leaderUser?.year;
+              const safeTeamYear = teamYearNum ? `Year ${teamYearNum}` : 'Year General';
 
               itemsToDownload.push({
                 url: t.proof_url,
-                filename: `Teams/${safeTask}/${safeTeam}_Leader_${safeLeader}`,
+                filename: filters?.taskId
+                  ? `Teams/${safeTeamYear}/${safeTeam}_Leader_${safeLeader}`
+                  : `Teams/${safeTask}/${safeTeamYear}/${safeTeam}_Leader_${safeLeader}`,
                 displayName: `Team ${safeTeam} (${safeTask})`
               });
             }
@@ -7256,7 +7294,9 @@ export default function App() {
       const dateTag = new Date().toISOString().split('T')[0];
       const roleTag = isAdminRole ? 'SuperAdmin' : isHODRole ? 'HOD' : isYearCoordRole ? `Year${user?.year_scope}_Coord` : 'Class';
       const statusTag = selectedStatus === 'ALL' ? 'All' : selectedStatus.charAt(0) + selectedStatus.slice(1).toLowerCase();
-      const zipFileName = `${roleTag}_Screenshots_${statusTag}_${dateTag}.zip`;
+      const taskTag = filters?.taskId ? `_${(tasks.find(t => t.id?.toString() === filters.taskId)?.title || 'Task').replace(/[/\\?%*:|"<>]/g, '_').slice(0, 20)}` : '';
+      const yearTag = filters?.year ? `_Year${filters.year}` : '';
+      const zipFileName = `${roleTag}${taskTag}${yearTag}_Screenshots_${statusTag}_${dateTag}.zip`;
 
       const downloadUrl = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
@@ -13613,50 +13653,76 @@ export default function App() {
 
                   <div className="space-y-4">
 
-                    {/* HOD / Admin: multi-class checkbox picker */}
-                    {(isAdmin || isHOD) && (() => {
-                      const availableClasses = isAdmin
-                        ? classes
-                        : (hodStats?.classStats || classes.filter(c => c.department_id?.toString() === user?.department_id?.toString()));
-                      return (
+                    {/* HOD / Admin: Class Year selector & multi-class checkbox picker */}
+                    {(isAdmin || isHOD) && (
+                      <div className="space-y-3">
                         <div>
                           <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5">
-                            <Users size={11} />
-                            Select Classes <span className="normal-case text-zinc-300 font-medium">(pick multiple)</span>
+                            <Building2 size={11} /> Class Year
                           </label>
-                          <div className="max-h-40 overflow-y-auto border border-zinc-100 rounded-2xl bg-zinc-50 p-3 flex flex-col gap-2">
-                            {(availableClasses as any[]).slice().sort((a: any, b: any) => (a.year || 0) - (b.year || 0) || (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' })).map((c: any) => {
-                              const cid = c.id.toString();
-                              const checked = reportFilters.classIds.includes(cid);
-                              return (
-                                <label key={cid} className="flex items-center gap-3 cursor-pointer group">
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => setReportFilters(prev => ({
-                                      ...prev,
-                                      classIds: checked
-                                        ? prev.classIds.filter(id => id !== cid)
-                                        : [...prev.classIds, cid]
-                                    }))}
-                                    className="w-4 h-4 rounded accent-blue-600 cursor-pointer"
-                                  />
-                                  <span className={`text-sm font-bold transition-colors ${checked ? 'text-blue-700' : 'text-zinc-700 group-hover:text-zinc-900'}`}>{c.name}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                          {reportFilters.classIds.length > 0 && (
-                            <p className="text-[10px] font-bold text-blue-600 mt-1.5">
-                              {reportFilters.classIds.length} class{reportFilters.classIds.length > 1 ? 'es' : ''} selected — report will combine all selected classes
-                            </p>
-                          )}
-                          {reportFilters.classIds.length === 0 && (
-                            <p className="text-[10px] font-medium text-zinc-400 mt-1.5">No class selected — will include all classes</p>
-                          )}
+                          <select
+                            className="w-full p-3 bg-zinc-50 border border-zinc-100 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                            value={reportFilters.year || ''}
+                            onChange={(e) => setReportFilters(prev => ({ ...prev, year: e.target.value, classIds: [] }))}
+                          >
+                            <option value="">All Years</option>
+                            <option value="1">1st Year</option>
+                            <option value="2">2nd Year</option>
+                            <option value="3">3rd Year</option>
+                            <option value="4">4th Year</option>
+                          </select>
                         </div>
-                      );
-                    })()}
+
+                        {(() => {
+                          const baseClasses = isAdmin
+                            ? classes
+                            : (hodStats?.classStats || classes.filter(c => c.department_id?.toString() === user?.department_id?.toString()));
+                          const availableClasses = reportFilters.year
+                            ? (baseClasses as any[]).filter(c => String(c.year) === String(reportFilters.year))
+                            : baseClasses;
+                          return (
+                            <div>
+                              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5">
+                                <Users size={11} />
+                                Select Classes <span className="normal-case text-zinc-300 font-medium">(pick multiple)</span>
+                              </label>
+                              <div className="max-h-40 overflow-y-auto border border-zinc-100 rounded-2xl bg-zinc-50 p-3 flex flex-col gap-2">
+                                {(availableClasses as any[]).slice().sort((a: any, b: any) => (a.year || 0) - (b.year || 0) || (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' })).map((c: any) => {
+                                  const cid = c.id.toString();
+                                  const checked = reportFilters.classIds.includes(cid);
+                                  return (
+                                    <label key={cid} className="flex items-center gap-3 cursor-pointer group">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => setReportFilters(prev => ({
+                                          ...prev,
+                                          classIds: checked
+                                            ? prev.classIds.filter(id => id !== cid)
+                                            : [...prev.classIds, cid]
+                                        }))}
+                                        className="w-4 h-4 rounded accent-blue-600 cursor-pointer"
+                                      />
+                                      <span className={`text-sm font-bold transition-colors ${checked ? 'text-blue-700' : 'text-zinc-700 group-hover:text-zinc-900'}`}>{c.name}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              {reportFilters.classIds.length > 0 && (
+                                <p className="text-[10px] font-bold text-blue-600 mt-1.5">
+                                  {reportFilters.classIds.length} class{reportFilters.classIds.length > 1 ? 'es' : ''} selected — report will combine all selected classes
+                                </p>
+                              )}
+                              {reportFilters.classIds.length === 0 && (
+                                <p className="text-[10px] font-medium text-zinc-400 mt-1.5">
+                                  {reportFilters.year ? `No specific class selected — will include all Year ${reportFilters.year} classes` : 'No class selected — will include all classes'}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
 
                     {/* Year Coordinator: multi-class checkbox picker */}
                     {user?.is_year_coordinator && !isAdmin && !isHOD && (() => {
@@ -13809,7 +13875,7 @@ export default function App() {
                         <div className="flex gap-2.5">
                           <Button
                             variant="ghost"
-                            onClick={() => { setShowExportModal(false); setReportFilters({ classIds: [], taskId: '', status: 'ALL' }); }}
+                            onClick={() => { setShowExportModal(false); setReportFilters({ classIds: [], taskId: '', status: 'ALL', year: '' }); }}
                             className="rounded-2xl text-zinc-500 hover:text-zinc-800 px-4"
                           >
                             Cancel
