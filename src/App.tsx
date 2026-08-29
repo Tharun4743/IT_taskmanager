@@ -6610,7 +6610,7 @@ export default function App() {
 
     // ── PRE-FETCH TEAM REPORT DATA ──────────────────────────────────────────────
     const teamRows: any[] = [];
-    const teamStudentMap = new Map<string, { status: string; teamName: string; remarks?: string }>();
+    const teamStudentMap = new Map<string, { status: string; teamName: string; remarks?: string; proofUrl?: string | null }>();
 
     try {
       const classQuery = selectedClassIds.length > 0 ? `?class_ids=${encodeURIComponent(selectedClassIds.join(','))}` : '';
@@ -6642,7 +6642,8 @@ export default function App() {
           const info = {
             status: mappedStatus,
             teamName: t.team_name || 'Team',
-            remarks: t.remarks || ''
+            remarks: t.remarks || '',
+            proofUrl: t.proof_url || null
           };
 
           if (t.leader_id && t.task_id) {
@@ -6721,8 +6722,14 @@ export default function App() {
                 rawStatus === 'REJECTED' ? 'Rejected' :
                   rawStatus === 'NOT_PARTICIPATING' ? 'Not Interested' : 'Not Submitted';
 
-          const cellVal = (sub?.screenshot_url && !sub.screenshot_url.startsWith('PURGED'))
-            ? { text: statusLabel, hyperlink: sub.screenshot_url }
+          const proofUrl = (sub?.screenshot_url && !sub.screenshot_url.startsWith('PURGED'))
+            ? sub.screenshot_url
+            : (teamInfo?.proofUrl && !teamInfo.proofUrl.startsWith('PURGED'))
+              ? teamInfo.proofUrl
+              : null;
+
+          const cellVal = proofUrl
+            ? { text: statusLabel, hyperlink: proofUrl }
             : statusLabel;
 
           studentRow[`Task ${idx + 1}: ${task.title}`] = cellVal;
@@ -6772,8 +6779,14 @@ export default function App() {
           else if (selectedStatus === 'NOT_SUBMITTED') include = rawStatus === 'NOT_SUBMITTED';
           else if (selectedStatus === 'NOT_PARTICIPATING') include = rawStatus === 'NOT_PARTICIPATING';
 
-          const screenshotVal = (sub?.screenshot_url && !sub.screenshot_url.startsWith('PURGED'))
-            ? { text: 'View Proof', hyperlink: sub.screenshot_url }
+          const effectiveProofUrl = (sub?.screenshot_url && !sub.screenshot_url.startsWith('PURGED'))
+            ? sub.screenshot_url
+            : (teamInfo?.proofUrl && !teamInfo.proofUrl.startsWith('PURGED'))
+              ? teamInfo.proofUrl
+              : null;
+
+          const screenshotVal = effectiveProofUrl
+            ? { text: 'View Proof', hyperlink: effectiveProofUrl }
             : (sub?.screenshot_url?.startsWith('PURGED') ? 'Purged (30d+)' : (isParticipating ? 'No File' : '—'));
 
           if (include) {
@@ -7169,6 +7182,7 @@ export default function App() {
 
     const zip = new JSZip();
     let completed = 0;
+    let savedCount = 0;
 
     const fetchImageBlob = async (url: string): Promise<Blob | null> => {
       try {
@@ -7203,6 +7217,7 @@ export default function App() {
           else if (item.url.includes('.jpeg') || blob.type === 'image/jpeg') ext = 'jpg';
 
           zip.file(`${item.filename}.${ext}`, blob);
+          savedCount++;
         }
         completed++;
         setScreenshotDownloadProgress({
@@ -7217,6 +7232,12 @@ export default function App() {
     if (abortScreenshotDownloadRef.current) {
       setScreenshotDownloadProgress(null);
       addToast('Screenshot download cancelled.', 'info');
+      return;
+    }
+
+    if (savedCount === 0) {
+      setScreenshotDownloadProgress(null);
+      addToast('Could not retrieve any proof images (remote files may be unreachable).', 'error');
       return;
     }
 
@@ -7246,7 +7267,7 @@ export default function App() {
       a.remove();
       URL.revokeObjectURL(downloadUrl);
 
-      addToast(`Downloaded ${uniqueItems.length} screenshots into ${zipFileName}!`, 'success');
+      addToast(`Downloaded ${savedCount} proof screenshot${savedCount > 1 ? 's' : ''} into ${zipFileName}!`, 'success');
     } catch (zipErr) {
       console.error('Error generating zip:', zipErr);
       addToast('Failed to create screenshots ZIP archive', 'error');
@@ -12628,6 +12649,15 @@ export default function App() {
                                   if (c && String(c.year) !== verificationYearFilter) return false;
                                 }
                                 return true;
+                              })
+                              .filter(s => {
+                                if (!submissionSearchTerm) return true;
+                                const query = submissionSearchTerm.toLowerCase();
+                                return (
+                                  s.student_name?.toLowerCase().includes(query) ||
+                                  s.register_number?.toLowerCase().includes(query) ||
+                                  s.task_title?.toLowerCase().includes(query)
+                                );
                               });
 
                             downloadScreenshotsZip(undefined, filteredForZip);

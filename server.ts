@@ -3962,6 +3962,9 @@ async function startServer() {
 
     try {
       const parsed = new URL(rawUrl);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return res.status(400).json({ error: 'Invalid URL protocol' });
+      }
       const allowedHosts = ['res.cloudinary.com', 'cloudinary.com'];
       if (!allowedHosts.some(host => parsed.hostname === host || parsed.hostname.endsWith(`.${host}`))) {
         return res.status(403).json({ error: 'Host not allowed for proxying' });
