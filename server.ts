@@ -3955,6 +3955,35 @@ async function startServer() {
     }
   });
 
+  // ── Screenshot Proxy (for reliable cross-origin zip downloads) ────────────
+  app.get('/api/submissions/screenshot-proxy', authenticate, async (req: any, res) => {
+    const rawUrl = req.query.url as string;
+    if (!rawUrl) return res.status(400).json({ error: 'URL is required' });
+
+    try {
+      const parsed = new URL(rawUrl);
+      const allowedHosts = ['res.cloudinary.com', 'cloudinary.com'];
+      if (!allowedHosts.some(host => parsed.hostname === host || parsed.hostname.endsWith(`.${host}`))) {
+        return res.status(403).json({ error: 'Host not allowed for proxying' });
+      }
+
+      const imgRes = await fetch(rawUrl);
+      if (!imgRes.ok) {
+        return res.status(imgRes.status).json({ error: 'Failed to fetch image from remote host' });
+      }
+
+      const contentType = imgRes.headers.get('content-type') || 'application/octet-stream';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+
+      const arrayBuffer = await imgRes.arrayBuffer();
+      return res.send(Buffer.from(arrayBuffer));
+    } catch (err: any) {
+      console.error('Screenshot proxy error:', err);
+      return res.status(500).json({ error: 'Failed to proxy screenshot image' });
+    }
+  });
+
   app.post('/api/submissions', authenticate, authorize(['STUDENT']), upload.single('screenshot'), async (req: any, res) => {
     try {
       submissionSchemaValidator.parse(req.body);

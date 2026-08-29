@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ExcelJS from 'exceljs';
+import JSZip from 'jszip';
 import { API_URL } from './config';
 import {
   isPushSupported,
@@ -4139,6 +4140,13 @@ export default function App() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [reportFilters, setReportFilters] = useState<{ classIds: string[]; taskId: string; status: string }>({ classIds: [], taskId: '', status: 'ALL' });
+  const [screenshotDownloadProgress, setScreenshotDownloadProgress] = useState<{
+    current: number;
+    total: number;
+    percent: number;
+    statusText: string;
+  } | null>(null);
+  const abortScreenshotDownloadRef = useRef<boolean>(false);
 
   // LeetCode Target Tracking State
   const [myLeetcodeProgress, setMyLeetcodeProgress] = useState<any>(null);
@@ -6402,8 +6410,19 @@ export default function App() {
               right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
             };
 
-            // Status color highlight
-            if (typeof val === 'string') {
+            // Status color highlight & Hyperlink styling
+            if (val && typeof val === 'object' && val.hyperlink) {
+              const textVal = String(val.text || '').toLowerCase();
+              if (textVal === 'verified' || textVal === 'yes') {
+                cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF16A34A' }, underline: true };
+              } else if (textVal === 'rejected' || textVal === 'no') {
+                cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFDC2626' }, underline: true };
+              } else if (textVal === 'submitted') {
+                cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFD97706' }, underline: true };
+              } else {
+                cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF2563EB' }, underline: true };
+              }
+            } else if (typeof val === 'string') {
               const lower = val.toLowerCase();
               if (lower === 'verified' || lower === 'yes') {
                 cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF16A34A' } };
@@ -6426,7 +6445,7 @@ export default function App() {
           dataRows.forEach((rowObj) => {
             const val = rowObj[colName];
             if (val !== undefined && val !== null) {
-              const s = String(val);
+              const s = typeof val === 'object' && val.text ? String(val.text) : String(val);
               if (s.length > maxLen) maxLen = s.length;
             }
           });
@@ -6657,6 +6676,7 @@ export default function App() {
             'Hackathon / Task Name': t.task_title || '—',
             'Category': t.task_category || 'Competition',
             'Team Status': statusStr,
+            'Proof Screenshot': t.proof_url && !t.proof_url.startsWith('PURGED') ? { text: 'View Proof', hyperlink: t.proof_url } : 'No File'
           });
           teamSno++;
         });
@@ -6701,7 +6721,11 @@ export default function App() {
                 rawStatus === 'REJECTED' ? 'Rejected' :
                   rawStatus === 'NOT_PARTICIPATING' ? 'Not Interested' : 'Not Submitted';
 
-          studentRow[`Task ${idx + 1}: ${task.title}`] = statusLabel;
+          const cellVal = (sub?.screenshot_url && !sub.screenshot_url.startsWith('PURGED'))
+            ? { text: statusLabel, hyperlink: sub.screenshot_url }
+            : statusLabel;
+
+          studentRow[`Task ${idx + 1}: ${task.title}`] = cellVal;
 
           if (selectedStatus !== 'ALL' && rawStatus === selectedStatus) {
             hasMatchingStatus = true;
@@ -6748,6 +6772,10 @@ export default function App() {
           else if (selectedStatus === 'NOT_SUBMITTED') include = rawStatus === 'NOT_SUBMITTED';
           else if (selectedStatus === 'NOT_PARTICIPATING') include = rawStatus === 'NOT_PARTICIPATING';
 
+          const screenshotVal = (sub?.screenshot_url && !sub.screenshot_url.startsWith('PURGED'))
+            ? { text: 'View Proof', hyperlink: sub.screenshot_url }
+            : (sub?.screenshot_url?.startsWith('PURGED') ? 'Purged (30d+)' : (isParticipating ? 'No File' : '—'));
+
           if (include) {
             detailedRows.push({
               'S.No': sno++,
@@ -6758,6 +6786,7 @@ export default function App() {
               'Participating / Interested': isParticipating ? 'Yes' : isNotParticipating ? 'No' : '—',
               'Task Status': statusLabel,
               'Custom Field': customFieldValue,
+              'Proof Screenshot': screenshotVal,
               'Reason (If Not Participating)': isNotParticipating ? (sub?.not_participating_reason || '—') : '—',
             });
           }
@@ -6848,6 +6877,7 @@ export default function App() {
         'Participating / Interested',
         'Task Status',
         'Custom Field',
+        'Proof Screenshot',
         'Reason (If Not Participating)'
       ];
     }
@@ -6859,7 +6889,8 @@ export default function App() {
       'Team Participants',
       'Hackathon / Task Name',
       'Category',
-      'Team Status'
+      'Team Status',
+      'Proof Screenshot'
     ];
 
     const sheet3Line5 = `TEAM WISE TASK REPORT - ${classInfoStr}`;
@@ -6905,6 +6936,323 @@ export default function App() {
       addToast('Failed to generate Excel report', 'error');
     }
     setShowExportModal(false);
+  };
+
+  // ── Real-time count of available screenshots matching modal filters ─────────
+  const availableScreenshotCount = useMemo(() => {
+    if (!showExportModal) return 0;
+    const selectedClassIds = reportFilters.classIds || [];
+    const selectedStatus = reportFilters.status || 'ALL';
+
+    const targetStudents = users.filter(u => {
+      if (u.role !== 'STUDENT') return false;
+      if (user?.role === 'SUPREME_ADMIN') {
+        if (selectedClassIds.length > 0) return selectedClassIds.includes(u.class_id?.toString() || '');
+        return true;
+      }
+      if (user?.role === 'HOD') {
+        if (u.department_id?.toString() !== user?.department_id?.toString()) return false;
+        if (selectedClassIds.length > 0) return selectedClassIds.includes(u.class_id?.toString() || '');
+        return true;
+      }
+      if (user?.is_year_coordinator) {
+        const uClass = classes.find(c => c.id?.toString() === u.class_id?.toString());
+        const inYear = uClass && Number(uClass.year) === Number((user as any)?.year_scope || user?.year) && u.department_id?.toString() === user?.department_id?.toString();
+        if (!inYear) return false;
+        if (selectedClassIds.length > 0) return selectedClassIds.includes(u.class_id?.toString() || '');
+        return true;
+      }
+      const userClassId = (user?.class_id || myClass?.id)?.toString();
+      if (user?.role === 'CLASS_ADVISOR' || (user?.role === 'STUDENT' && user?.is_coordinator)) {
+        return u.class_id?.toString() === userClassId;
+      }
+      if (selectedClassIds.length > 0) return selectedClassIds.includes(u.class_id?.toString() || '');
+      return true;
+    });
+
+    const targetStudentIds = new Set(targetStudents.map(s => s.id));
+    const targetRegNos = new Set(targetStudents.map(s => s.register_number).filter(Boolean));
+
+    let count = 0;
+    submissions.forEach(sub => {
+      if (!sub.screenshot_url || sub.screenshot_url.startsWith('PURGED')) return;
+      if (reportFilters.taskId && sub.task_id?.toString() !== reportFilters.taskId) return;
+      if (!targetStudentIds.has(sub.user_id) && (!sub.register_number || !targetRegNos.has(sub.register_number))) return;
+      if (selectedStatus !== 'ALL' && sub.status !== selectedStatus) return;
+      count++;
+    });
+
+    return count;
+  }, [showExportModal, reportFilters, users, submissions, classes, user, myClass]);
+
+  // ── Download Screenshots as ZIP ─────────────────────────────────────────────
+  const downloadScreenshotsZip = async (
+    filters?: { classIds?: string[]; taskId?: string; status?: string; },
+    explicitSubmissions?: any[]
+  ) => {
+    const isAdminRole = user?.role === 'SUPREME_ADMIN';
+    const isHODRole = user?.role === 'HOD';
+    const isYearCoordRole = user?.is_year_coordinator;
+    const isClsRole = user?.role === 'CLASS_ADVISOR' || (user?.role === 'STUDENT' && user?.is_coordinator);
+    const selectedClassIds = filters?.classIds || [];
+    const selectedStatus = filters?.status || 'ALL';
+
+    const itemsToDownload: {
+      url: string;
+      filename: string;
+      displayName: string;
+    }[] = [];
+
+    // Mode 1: Explicit submissions (e.g. from Verification Table)
+    if (explicitSubmissions && explicitSubmissions.length > 0) {
+      explicitSubmissions.forEach(s => {
+        if (!s.screenshot_url || s.screenshot_url.startsWith('PURGED')) return;
+        const safeRegNo = (s.register_number || 'UNKNOWN').replace(/[/\\?%*:|"<>]/g, '_');
+        const safeName = (s.student_name || 'STUDENT').replace(/[/\\?%*:|"<>]/g, '_');
+        const safeTask = (s.task_title || tasks.find(t => t.id === s.task_id)?.title || 'TASK').replace(/[/\\?%*:|"<>]/g, '_');
+        const safeClass = (s.class_name || classes.find(c => c.id === s.class_id)?.name || 'CLASS').replace(/[/\\?%*:|"<>]/g, '_');
+
+        itemsToDownload.push({
+          url: s.screenshot_url,
+          filename: `${safeTask}/${safeClass}_${safeRegNo}_${safeName}`,
+          displayName: `${safeRegNo} - ${safeName}`
+        });
+      });
+    } else {
+      // Mode 2: Report Studio filters
+      const targetStudents = users.filter(u => {
+        if (u.role !== 'STUDENT') return false;
+        if (isAdminRole) {
+          if (selectedClassIds.length > 0) return selectedClassIds.includes(u.class_id?.toString() || '');
+          return true;
+        }
+        if (isHODRole) {
+          const inDept = u.department_id?.toString() === user?.department_id?.toString();
+          if (!inDept) return false;
+          if (selectedClassIds.length > 0) return selectedClassIds.includes(u.class_id?.toString() || '');
+          return true;
+        }
+        if (isYearCoordRole) {
+          const userYear = (user as any)?.year_scope || user?.year;
+          const uClass = classes.find(c => c.id?.toString() === u.class_id?.toString());
+          const inYear = uClass && Number(uClass.year) === Number(userYear) && u.department_id?.toString() === user?.department_id?.toString();
+          if (!inYear) return false;
+          if (selectedClassIds.length > 0) return selectedClassIds.includes(u.class_id?.toString() || '');
+          return true;
+        }
+        if (isClsRole) {
+          const userClassId = (user?.class_id || myClass?.id)?.toString();
+          return u.class_id?.toString() === userClassId;
+        }
+        if (selectedClassIds.length > 0) {
+          return selectedClassIds.includes(u.class_id?.toString() || '');
+        }
+        return true;
+      });
+
+      let targetTasks = tasks;
+      if (filters?.taskId) {
+        targetTasks = tasks.filter(t => t.id?.toString() === filters.taskId);
+      } else {
+        targetTasks = tasks.filter(t => {
+          if (isAdminRole) return true;
+          if (isHODRole || isYearCoordRole) {
+            return t.department_id?.toString() === user?.department_id?.toString() || (!t.department_id && (!t.class_ids || !t.class_ids.length));
+          }
+          const userClassId = (user?.class_id || myClass?.id)?.toString();
+          if (Array.isArray(t.class_ids) && t.class_ids.length > 0) {
+            return t.class_ids.some((cid: any) => cid.toString() === userClassId);
+          }
+          return t.department_id?.toString() === user?.department_id?.toString() || (!t.department_id);
+        });
+      }
+
+      const getSub = (studentId: number, regNo: string | undefined, taskId: number) =>
+        submissions.find(s =>
+          (s.user_id?.toString() === studentId.toString() || (regNo && s.register_number === regNo)) &&
+          s.task_id?.toString() === taskId.toString()
+        );
+
+      targetStudents.forEach(student => {
+        targetTasks.forEach(task => {
+          if (Array.isArray(task.class_ids) && task.class_ids.length > 0 && !task.class_ids.some((cid: any) => cid.toString() === student.class_id?.toString())) {
+            return;
+          }
+          const sub = getSub(student.id, student.register_number, task.id);
+          if (!sub || !sub.screenshot_url || sub.screenshot_url.startsWith('PURGED')) return;
+
+          let include = false;
+          if (selectedStatus === 'ALL') include = true;
+          else if (selectedStatus === 'VERIFIED') include = sub.status === 'VERIFIED';
+          else if (selectedStatus === 'SUBMITTED') include = sub.status === 'SUBMITTED';
+          else if (selectedStatus === 'REJECTED') include = sub.status === 'REJECTED';
+
+          if (include) {
+            const safeRegNo = (student.register_number || 'UNKNOWN').replace(/[/\\?%*:|"<>]/g, '_');
+            const safeName = (student.full_name || 'STUDENT').replace(/[/\\?%*:|"<>]/g, '_');
+            const safeTask = (task.title || 'TASK').replace(/[/\\?%*:|"<>]/g, '_');
+            const safeClass = (student.class_name || classes.find(c => c.id === student.class_id)?.name || 'CLASS').replace(/[/\\?%*:|"<>]/g, '_');
+
+            itemsToDownload.push({
+              url: sub.screenshot_url,
+              filename: filters?.taskId ? `${safeClass}/${safeRegNo}_${safeName}` : `${safeTask}/${safeClass}/${safeRegNo}_${safeName}`,
+              displayName: `${safeRegNo} - ${safeName} (${safeTask})`
+            });
+          }
+        });
+      });
+
+      // Team proofs
+      try {
+        const classQuery = selectedClassIds.length > 0 ? `?class_ids=${encodeURIComponent(selectedClassIds.join(','))}` : '';
+        const taskQuery = filters?.taskId ? `${classQuery ? '&' : '?'}task_id=${encodeURIComponent(filters.taskId)}` : '';
+        const teamRes = await fetch(`${API_URL}/api/team/report${classQuery}${taskQuery}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (teamRes.ok) {
+          const teamData: any[] = await teamRes.json();
+          teamData.forEach(t => {
+            if (filters?.taskId && t.task_id?.toString() !== filters.taskId.toString()) return;
+            if (!t.proof_url || t.proof_url.startsWith('PURGED')) return;
+
+            const subStat = (t.submission_status || '').toUpperCase();
+            const teamStat = (t.team_status || '').toUpperCase();
+            let mappedStatus = 'NOT_SUBMITTED';
+            if (subStat === 'APPROVED' || subStat === 'VERIFIED' || teamStat === 'APPROVED') mappedStatus = 'VERIFIED';
+            else if (subStat === 'PENDING' || subStat === 'SUBMITTED' || teamStat === 'SUBMITTED') mappedStatus = 'SUBMITTED';
+            else if (subStat === 'REJECTED' || teamStat === 'REJECTED') mappedStatus = 'REJECTED';
+
+            let includeTeam = false;
+            if (selectedStatus === 'ALL') includeTeam = true;
+            else if (selectedStatus === 'VERIFIED') includeTeam = mappedStatus === 'VERIFIED';
+            else if (selectedStatus === 'SUBMITTED') includeTeam = mappedStatus === 'SUBMITTED';
+            else if (selectedStatus === 'REJECTED') includeTeam = mappedStatus === 'REJECTED';
+
+            if (includeTeam) {
+              const safeTeam = (t.team_name || 'TEAM').replace(/[/\\?%*:|"<>]/g, '_');
+              const safeTask = (t.task_title || 'TASK').replace(/[/\\?%*:|"<>]/g, '_');
+              const safeLeader = (t.leader_regno || 'LEADER').replace(/[/\\?%*:|"<>]/g, '_');
+
+              itemsToDownload.push({
+                url: t.proof_url,
+                filename: `Teams/${safeTask}/${safeTeam}_Leader_${safeLeader}`,
+                displayName: `Team ${safeTeam} (${safeTask})`
+              });
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('Error fetching team report for screenshots:', err);
+      }
+    }
+
+    // Deduplicate by URL
+    const seenUrls = new Set<string>();
+    const uniqueItems = itemsToDownload.filter(item => {
+      if (seenUrls.has(item.url)) return false;
+      seenUrls.add(item.url);
+      return true;
+    });
+
+    if (uniqueItems.length === 0) {
+      addToast('No proof screenshots found to download for the selected filters.', 'info');
+      return;
+    }
+
+    abortScreenshotDownloadRef.current = false;
+    setScreenshotDownloadProgress({
+      current: 0,
+      total: uniqueItems.length,
+      percent: 0,
+      statusText: `Preparing to download ${uniqueItems.length} screenshot${uniqueItems.length > 1 ? 's' : ''}...`
+    });
+
+    const zip = new JSZip();
+    let completed = 0;
+
+    const fetchImageBlob = async (url: string): Promise<Blob | null> => {
+      try {
+        const directRes = await fetch(url);
+        if (directRes.ok) return await directRes.blob();
+      } catch (e) { }
+
+      // Fallback to authenticated proxy
+      try {
+        const proxyRes = await fetch(`${API_URL}/api/submissions/screenshot-proxy?url=${encodeURIComponent(url)}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (proxyRes.ok) return await proxyRes.blob();
+      } catch (e) {
+        console.warn('[Screenshot Download] Proxy failed for:', url, e);
+      }
+      return null;
+    };
+
+    const CHUNK_SIZE = 5;
+    for (let i = 0; i < uniqueItems.length; i += CHUNK_SIZE) {
+      if (abortScreenshotDownloadRef.current) break;
+      const chunk = uniqueItems.slice(i, i + CHUNK_SIZE);
+
+      await Promise.all(chunk.map(async (item) => {
+        if (abortScreenshotDownloadRef.current) return;
+        const blob = await fetchImageBlob(item.url);
+        if (blob) {
+          let ext = 'jpg';
+          if (item.url.includes('.png') || blob.type === 'image/png') ext = 'png';
+          else if (item.url.includes('.webp') || blob.type === 'image/webp') ext = 'webp';
+          else if (item.url.includes('.jpeg') || blob.type === 'image/jpeg') ext = 'jpg';
+
+          zip.file(`${item.filename}.${ext}`, blob);
+        }
+        completed++;
+        setScreenshotDownloadProgress({
+          current: completed,
+          total: uniqueItems.length,
+          percent: Math.round((completed / uniqueItems.length) * 85),
+          statusText: `Downloading proof ${completed} of ${uniqueItems.length}...`
+        });
+      }));
+    }
+
+    if (abortScreenshotDownloadRef.current) {
+      setScreenshotDownloadProgress(null);
+      addToast('Screenshot download cancelled.', 'info');
+      return;
+    }
+
+    setScreenshotDownloadProgress(prev => prev ? { ...prev, percent: 90, statusText: 'Creating ZIP archive...' } : null);
+
+    try {
+      const zipBlob = await zip.generateAsync({ type: 'blob' }, (metadata) => {
+        setScreenshotDownloadProgress({
+          current: uniqueItems.length,
+          total: uniqueItems.length,
+          percent: Math.min(99, 90 + Math.round((metadata.percent / 100) * 10)),
+          statusText: `Compressing ZIP: ${Math.round(metadata.percent)}%`
+        });
+      });
+
+      const dateTag = new Date().toISOString().split('T')[0];
+      const roleTag = isAdminRole ? 'SuperAdmin' : isHODRole ? 'HOD' : isYearCoordRole ? `Year${user?.year_scope}_Coord` : 'Class';
+      const statusTag = selectedStatus === 'ALL' ? 'All' : selectedStatus.charAt(0) + selectedStatus.slice(1).toLowerCase();
+      const zipFileName = `${roleTag}_Screenshots_${statusTag}_${dateTag}.zip`;
+
+      const downloadUrl = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = zipFileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(downloadUrl);
+
+      addToast(`Downloaded ${uniqueItems.length} screenshots into ${zipFileName}!`, 'success');
+    } catch (zipErr) {
+      console.error('Error generating zip:', zipErr);
+      addToast('Failed to create screenshots ZIP archive', 'error');
+    } finally {
+      setScreenshotDownloadProgress(null);
+    }
   };
 
   if (!token) {
@@ -12236,7 +12584,7 @@ export default function App() {
                   className="w-full h-full flex flex-col min-h-0"
                 >
                   <PageLayout>
-                    <div className="flex justify-between items-center">
+                    <div className="flex justify-between items-center flex-wrap gap-3 mb-4">
                       <div className="flex gap-2 flex-wrap">
                         {['PENDING', 'VERIFIED', 'REJECTED', 'NOT INTERESTED', 'ALL'].map(f => (
                           <button
@@ -12251,27 +12599,76 @@ export default function App() {
                           </button>
                         ))}
                       </div>
-                      {selectedSubmissions.length > 0 && (
+                      <div className="flex items-center gap-2 flex-wrap">
                         <Button
-                          variant="success"
+                          variant="outline"
                           onClick={() => {
-                            if (confirm(`Verify ${selectedSubmissions.length} submissions?`)) {
-                              Promise.all(selectedSubmissions.map(id =>
-                                fetch(`${API_URL}/api/submissions/${id}/verify`, {
-                                  method: 'PATCH',
-                                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                                  body: JSON.stringify({ status: 'VERIFIED' })
-                                })
-                              )).then(() => {
-                                setSelectedSubmissions([]);
-                                fetchInitialData();
+                            const filteredForZip = submissions
+                              .filter(s => {
+                                if (verificationFilter === 'ALL') return true;
+                                if (verificationFilter === 'PENDING') return s.status === 'SUBMITTED';
+                                if (verificationFilter === 'NOT INTERESTED') return s.status === 'NOT_PARTICIPATING';
+                                return s.status === verificationFilter;
+                              })
+                              .filter(s => {
+                                if (verificationTaskFilter && s.task_id?.toString() !== verificationTaskFilter) return false;
+                                const std = users.find(u => u.id === s.user_id);
+                                const subClassId = s.class_id?.toString() || std?.class_id?.toString();
+                                if (!isAdmin && !isHOD && !user?.is_year_coordinator) {
+                                  const userClassId = user?.class_id?.toString();
+                                  return userClassId ? subClassId === userClassId : true;
+                                }
+                                if (verificationDeptFilter) {
+                                  const c = classes.find(cls => cls.id?.toString() === subClassId);
+                                  if (c && c.department_id?.toString() !== verificationDeptFilter) return false;
+                                }
+                                if (verificationClassFilter && subClassId !== verificationClassFilter) return false;
+                                if (verificationYearFilter) {
+                                  const c = classes.find(cls => cls.id?.toString() === subClassId);
+                                  if (c && String(c.year) !== verificationYearFilter) return false;
+                                }
+                                return true;
                               });
-                            }
+
+                            downloadScreenshotsZip(undefined, filteredForZip);
                           }}
+                          disabled={screenshotDownloadProgress !== null}
+                          className="flex items-center gap-1.5 text-xs py-2 px-3.5 rounded-full font-bold border-zinc-200 hover:border-zinc-900 transition-colors shadow-2xs"
                         >
-                          Bulk Verify ({selectedSubmissions.length})
+                          {screenshotDownloadProgress ? (
+                            <>
+                              <Loader2 size={13} className="animate-spin text-blue-600" />
+                              <span>{screenshotDownloadProgress.percent}%</span>
+                            </>
+                          ) : (
+                            <>
+                              <Camera size={14} className="text-zinc-600" />
+                              <span>Download Proofs (.ZIP)</span>
+                            </>
+                          )}
                         </Button>
-                      )}
+                        {selectedSubmissions.length > 0 && (
+                          <Button
+                            variant="success"
+                            onClick={() => {
+                              if (confirm(`Verify ${selectedSubmissions.length} submissions?`)) {
+                                Promise.all(selectedSubmissions.map(id =>
+                                  fetch(`${API_URL}/api/submissions/${id}/verify`, {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                    body: JSON.stringify({ status: 'VERIFIED' })
+                                  })
+                                )).then(() => {
+                                  setSelectedSubmissions([]);
+                                  fetchInitialData();
+                                });
+                              }
+                            }}
+                          >
+                            Bulk Verify ({selectedSubmissions.length})
+                          </Button>
+                        )}
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 items-start">
@@ -13311,15 +13708,96 @@ export default function App() {
 
 
 
-                    <div className="flex gap-4 pt-2">
-                      <Button variant="ghost" onClick={() => { setShowExportModal(false); setReportFilters({ classIds: [], taskId: '', status: 'ALL' }); }} className="flex-1 rounded-2xl">Cancel</Button>
-                      <Button
-                        onClick={() => exportToExcel(reportFilters)}
-                        className="flex-1 rounded-2xl bg-black hover:bg-zinc-800 text-white flex items-center justify-center gap-2"
-                      >
-                        <FileDown size={18} /> Download Excel
-                      </Button>
+                    {/* Screenshot count banner */}
+                    <div className="flex items-center justify-between p-3.5 rounded-2xl bg-blue-50/70 border border-blue-100">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0">
+                          <Camera size={16} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-blue-950 leading-none mb-1">Student Proof Screenshots</p>
+                          <p className="text-[11px] text-blue-700 font-medium leading-none">
+                            {availableScreenshotCount > 0
+                              ? `${availableScreenshotCount} proof screenshot${availableScreenshotCount > 1 ? 's' : ''} available for export`
+                              : 'No proof screenshots matching current filters'}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-xs font-black px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 font-mono shrink-0">
+                        {availableScreenshotCount} Files
+                      </span>
                     </div>
+
+                    {screenshotDownloadProgress ? (
+                      <div className="p-4 rounded-2xl bg-zinc-900 text-white space-y-3 shadow-lg">
+                        <div className="flex items-center justify-between text-xs font-bold">
+                          <span className="flex items-center gap-2 text-zinc-200">
+                            <Loader2 size={15} className="animate-spin text-blue-400" />
+                            {screenshotDownloadProgress.statusText}
+                          </span>
+                          <span className="font-mono text-blue-400 font-black">{screenshotDownloadProgress.percent}%</span>
+                        </div>
+                        <div className="w-full bg-zinc-800 rounded-full h-2 overflow-hidden">
+                          <div
+                            className="bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${screenshotDownloadProgress.percent}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between items-center text-[11px] text-zinc-400">
+                          <span>Progress: {screenshotDownloadProgress.current} / {screenshotDownloadProgress.total}</span>
+                          <button
+                            type="button"
+                            onClick={() => { abortScreenshotDownloadRef.current = true; }}
+                            className="font-bold text-red-400 hover:text-red-300 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5 pt-1">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <Button
+                            onClick={() => exportToExcel(reportFilters)}
+                            className="rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-white flex items-center justify-center gap-2 py-3 shadow-sm font-bold"
+                          >
+                            <FileDown size={17} /> Download Excel
+                          </Button>
+                          <Button
+                            onClick={() => downloadScreenshotsZip(reportFilters)}
+                            disabled={availableScreenshotCount === 0}
+                            className={cn(
+                              "rounded-2xl flex items-center justify-center gap-2 py-3 shadow-sm font-bold transition-all",
+                              availableScreenshotCount > 0
+                                ? "bg-blue-600 hover:bg-blue-700 text-white"
+                                : "bg-zinc-100 text-zinc-400 border border-zinc-200 cursor-not-allowed"
+                            )}
+                          >
+                            <Camera size={17} /> Download Proofs (.ZIP)
+                          </Button>
+                        </div>
+                        <div className="flex gap-2.5">
+                          <Button
+                            variant="ghost"
+                            onClick={() => { setShowExportModal(false); setReportFilters({ classIds: [], taskId: '', status: 'ALL' }); }}
+                            className="rounded-2xl text-zinc-500 hover:text-zinc-800 px-4"
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={async () => {
+                              await exportToExcel(reportFilters);
+                              if (availableScreenshotCount > 0) {
+                                await downloadScreenshotsZip(reportFilters);
+                              }
+                            }}
+                            className="flex-1 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold flex items-center justify-center gap-2 py-3 shadow-sm"
+                          >
+                            <Sparkles size={16} /> Download Both (Excel + ZIP)
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               </div>
