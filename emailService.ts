@@ -2258,3 +2258,217 @@ export async function notifyNoticeBoardAnnouncementEmail(notice: {
     return { totalTargeted: 0, totalDispatched: 0 };
   }
 }
+
+// ─── Module 8: Skill Assessment & Placement Invitation Emails ────────────────
+export async function sendAssessmentInvitationEmail(params: {
+  to: string;
+  studentName: string;
+  registerNumber: string;
+  className: string;
+  classYear: number | string;
+  trackTitle: string;
+  trackType: string;
+  cutoffPercentage: number;
+  durationMins: number;
+  questionCount: number;
+  deadline?: string;
+  customInstructions?: string;
+  senderName?: string;
+  senderRole?: string;
+}): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const {
+    to,
+    studentName,
+    registerNumber,
+    className,
+    trackTitle,
+    cutoffPercentage,
+    durationMins,
+    questionCount,
+    deadline,
+    customInstructions,
+    senderName = 'HOD / Placement Coordinator',
+    senderRole = 'Department of Information Technology'
+  } = params;
+
+  const subject = `🎯 Institutional Skill Assessment: ${trackTitle} — Official Notice`;
+  const portalLink = `${getDefaultPortalUrl()}/#skill-assessment`;
+  const formattedDeadline = deadline ? new Date(deadline).toLocaleString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  }) : 'To be completed at the earliest';
+
+  const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px;">
+  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden;">
+    <tr>
+      <td style="background: linear-gradient(135deg, #09090b 0%, #1e1b4b 100%); padding: 32px 28px; text-align: left;">
+        <span style="display: inline-block; background: rgba(255, 255, 255, 0.15); color: #ffffff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; padding: 4px 12px; border-radius: 999px; margin-bottom: 12px;">
+          Official Placement Assessment
+        </span>
+        <h1 style="color: #ffffff; font-size: 22px; font-weight: 800; margin: 0 0 6px 0;">${trackTitle}</h1>
+        <p style="color: #cbd5e1; font-size: 13px; margin: 0;">VSB Engineering College • Department of Information Technology</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 28px;">
+        <p style="font-size: 15px; color: #1e293b; margin: 0 0 16px 0;">Dear <strong>${studentName}</strong> (${registerNumber || 'Student'}),</p>
+        <p style="font-size: 13.5px; color: #475569; line-height: 1.6; margin: 0 0 20px 0;">
+          An official proctored assessment benchmark has been assigned for your cohort (<strong>${className}</strong>) by <strong>${senderName}</strong> (${senderRole}).
+        </p>
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 24px; padding: 16px;">
+          <tr>
+            <td style="padding: 6px 12px; font-size: 12.5px; color: #64748b; font-weight: 600;">Assessment Track:</td>
+            <td style="padding: 6px 12px; font-size: 13px; color: #0f172a; font-weight: 700;">${trackTitle}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 12px; font-size: 12.5px; color: #64748b; font-weight: 600;">Question Count:</td>
+            <td style="padding: 6px 12px; font-size: 13px; color: #0f172a; font-weight: 700;">${questionCount} Questions</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 12px; font-size: 12.5px; color: #64748b; font-weight: 600;">Duration Allowed:</td>
+            <td style="padding: 6px 12px; font-size: 13px; color: #0f172a; font-weight: 700;">${durationMins} Minutes</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 12px; font-size: 12.5px; color: #64748b; font-weight: 600;">Qualifying Cutoff:</td>
+            <td style="padding: 6px 12px; font-size: 13px; color: #4338ca; font-weight: 800;">${cutoffPercentage}%</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 12px; font-size: 12.5px; color: #64748b; font-weight: 600;">Submission Deadline:</td>
+            <td style="padding: 6px 12px; font-size: 13px; color: #b45309; font-weight: 700;">${formattedDeadline}</td>
+          </tr>
+        </table>
+        ${customInstructions ? `
+        <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px;">
+          <p style="margin: 0; font-size: 12.5px; color: #92400e;"><strong>Special Instructions:</strong> ${customInstructions}</p>
+        </div>` : ''}
+        <div style="text-align: center; margin: 28px 0;">
+          <a href="${portalLink}" style="background: linear-gradient(135deg, #09090b 0%, #1e1b4b 100%); color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 12px 30px; border-radius: 10px; display: inline-block;">
+            🚀 Start Proctored Assessment Now →
+          </a>
+        </div>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+
+  return await dispatchEmailThroughPool(to, studentName, subject, htmlContent, 'VSBEC Placement Cell');
+}
+
+export async function triggerAssessmentCampaignEmails(params: {
+  track_type: string;
+  track_title?: string;
+  target_year?: string;
+  target_class_id?: string;
+  custom_instructions?: string;
+  deadline?: string;
+  senderRole?: string;
+  senderName?: string;
+}): Promise<{ totalTargeted: number; totalDispatched: number; failedCount: number; errors: string[] }> {
+  try {
+    const {
+      track_type,
+      track_title: passedTitle,
+      target_year = 'ALL',
+      target_class_id = 'ALL',
+      custom_instructions,
+      deadline,
+      senderRole,
+      senderName
+    } = params;
+
+    const trackRes = await pool.query(`
+      SELECT track_type, COALESCE(MAX(track_title), 'General Aptitude Benchmark') as track_title,
+             COUNT(id)::int as question_count, COALESCE(MAX(cutoff_percentage), 60.00) as cutoff_percentage,
+             15 as duration_mins
+      FROM assessment_questions
+      WHERE is_active = true AND track_type = $1
+      GROUP BY track_type
+    `, [track_type]);
+
+    const track = trackRes.rows[0] || {
+      track_type,
+      track_title: passedTitle || 'Placement Skill Benchmark',
+      question_count: 15,
+      cutoff_percentage: 60,
+      duration_mins: 15
+    };
+
+    let query = `
+      SELECT u.id, u.full_name, u.register_number, u.email,
+             c.name as class_name, c.year as class_year
+      FROM users u
+      JOIN classes c ON c.id = u.class_id
+      WHERE u.role = 'STUDENT' AND u.email IS NOT NULL AND TRIM(u.email) != ''
+    `;
+    const values: any[] = [];
+    let idx = 1;
+
+    if (target_year && target_year !== 'ALL') {
+      query += ` AND c.year = $${idx++}`;
+      values.push(parseInt(target_year, 10));
+    }
+    if (target_class_id && target_class_id !== 'ALL') {
+      query += ` AND c.id = $${idx++}`;
+      values.push(target_class_id);
+    }
+    query += ` ORDER BY c.year ASC, c.name ASC, u.register_number ASC`;
+
+    const studentsRes = await pool.query(query, values);
+    const students = studentsRes.rows;
+
+    if (students.length === 0) return { totalTargeted: 0, totalDispatched: 0, failedCount: 0, errors: [] };
+
+    let sentCount = 0;
+    let failedCount = 0;
+    const errors: string[] = [];
+    const BATCH_SIZE = 2;
+
+    for (let i = 0; i < students.length; i += BATCH_SIZE) {
+      const chunk = students.slice(i, i + BATCH_SIZE);
+      await Promise.all(chunk.map(async (s) => {
+        try {
+          const res = await sendAssessmentInvitationEmail({
+            to: s.email,
+            studentName: s.full_name,
+            registerNumber: s.register_number,
+            className: s.class_name,
+            classYear: s.class_year,
+            trackTitle: track.track_title,
+            trackType: track.track_type,
+            cutoffPercentage: Number(track.cutoff_percentage),
+            durationMins: Number(track.duration_mins),
+            questionCount: Number(track.question_count),
+            deadline,
+            customInstructions: custom_instructions,
+            senderName,
+            senderRole
+          });
+          if (res.success) {
+            sentCount++;
+            await pool.query(`
+              INSERT INTO notifications (user_id, message, type)
+              VALUES ($1, $2, 'ASSESSMENT_INVITATION')
+            `, [s.id, `🎯 New Placement Assessment Assigned: "${track.track_title}". Cutoff: ${track.cutoff_percentage}%.`]);
+          } else {
+            failedCount++;
+            if (res.error) errors.push(`${s.email}: ${res.error}`);
+          }
+        } catch (e: any) {
+          failedCount++;
+          errors.push(`${s.email}: ${e.message}`);
+        }
+      }));
+      if (i + BATCH_SIZE < students.length) await new Promise(r => setTimeout(r, 250));
+    }
+
+    return { totalTargeted: students.length, totalDispatched: sentCount, failedCount, errors: errors.slice(0, 10) };
+  } catch (err: any) {
+    return { totalTargeted: 0, totalDispatched: 0, failedCount: 0, errors: [err.message] };
+  }
+}
+

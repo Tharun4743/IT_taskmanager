@@ -667,6 +667,316 @@ export async function initDB() {
         AND COALESCE(t1.department_id, '00000000-0000-0000-0000-000000000000'::uuid) = COALESCE(t2.department_id, '00000000-0000-0000-0000-000000000000'::uuid);
     `);
 
+    // ─── Module 7: Placement Skill Assessments & Mock Test Question Banks ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS assessment_questions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        question_text TEXT NOT NULL,
+        options JSONB NOT NULL,
+        correct_option INTEGER NOT NULL,
+        category VARCHAR(100) NOT NULL,
+        skill_tag VARCHAR(100),
+        difficulty VARCHAR(20) DEFAULT 'MEDIUM',
+        explanation TEXT,
+        track_type VARCHAR(50) DEFAULT 'GENERAL_APTITUDE',
+        track_title VARCHAR(150) DEFAULT 'General Aptitude Benchmark',
+        cutoff_percentage NUMERIC(5,2) DEFAULT 60.00,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS student_assessments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        student_name VARCHAR(255),
+        register_number VARCHAR(100),
+        total_questions INTEGER NOT NULL DEFAULT 10,
+        correct_count INTEGER NOT NULL DEFAULT 0,
+        score_percentage NUMERIC(5,2) NOT NULL DEFAULT 0.00,
+        category_breakdown JSONB,
+        answers_summary JSONB,
+        strengths JSONB,
+        gaps JSONB,
+        time_taken_seconds INTEGER DEFAULT 0,
+        proctor_photo_url VARCHAR(1000),
+        track_type VARCHAR(50) DEFAULT 'GENERAL_APTITUDE',
+        track_title VARCHAR(150) DEFAULT 'General Aptitude Benchmark',
+        cutoff_percentage NUMERIC(5,2) DEFAULT 60.00,
+        is_passed BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS assessment_assignments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        track_type VARCHAR(100) NOT NULL,
+        track_title VARCHAR(255) NOT NULL,
+        target_year VARCHAR(20) NOT NULL DEFAULT 'ALL',
+        target_class_id VARCHAR(100) NOT NULL DEFAULT 'ALL',
+        custom_instructions TEXT,
+        deadline TIMESTAMPTZ,
+        created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_assessment_q_track ON assessment_questions(track_type, is_active);
+      CREATE INDEX IF NOT EXISTS idx_student_assessments_track ON student_assessments(user_id, track_type);
+      CREATE INDEX IF NOT EXISTS idx_student_assessments_created ON student_assessments(user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_assessment_assignments_target ON assessment_assignments(target_year, target_class_id);
+    `);
+
+    // Seed default questions if table is empty
+    const qCountRes = await client.query('SELECT COUNT(*)::int as count FROM assessment_questions');
+    if (qCountRes.rows[0]?.count === 0) {
+      const defaultQuestions = [
+        // GENERAL_APTITUDE
+        {
+          q: "A can finish a work in 12 days and B can finish it in 18 days. Working together, in how many days can they complete the work?",
+          options: ["7.2 days", "8 days", "6.5 days", "9 days"],
+          ans: 0,
+          cat: "Quantitative Aptitude",
+          tag: "Time and Work",
+          diff: "MEDIUM",
+          exp: "1/A + 1/B = 1/12 + 1/18 = (3 + 2)/36 = 5/36. Total days = 36/5 = 7.2 days.",
+          track: "GENERAL_APTITUDE",
+          trackTitle: "General Aptitude Benchmark",
+          cutoff: 60
+        },
+        {
+          q: "If the ratio of the ages of two persons is 4:5 and the sum of their ages is 45, what is the age of the elder person?",
+          options: ["20", "25", "30", "35"],
+          ans: 1,
+          cat: "Quantitative Aptitude",
+          tag: "Ratios & Proportions",
+          diff: "EASY",
+          exp: "Sum of parts = 4 + 5 = 9 parts. 1 part = 45 / 9 = 5. Elder person = 5 * 5 = 25 years.",
+          track: "GENERAL_APTITUDE",
+          trackTitle: "General Aptitude Benchmark",
+          cutoff: 60
+        },
+        {
+          q: "Pointing to a photograph, a man said, 'I have no brother or sister, but that man's father is my father's son.' Whose photograph was it?",
+          options: ["His nephew's", "His son's", "His father's", "His own"],
+          ans: 1,
+          cat: "Logical Reasoning",
+          tag: "Blood Relations",
+          diff: "MEDIUM",
+          exp: "Since he has no brother or sister, 'my father's son' is himself. So, that man's father is the speaker himself, meaning it is his son's photograph.",
+          track: "GENERAL_APTITUDE",
+          trackTitle: "General Aptitude Benchmark",
+          cutoff: 60
+        },
+        {
+          q: "Find the missing number in the series: 3, 7, 15, 31, 63, ?",
+          options: ["95", "112", "127", "128"],
+          ans: 2,
+          cat: "Logical Reasoning",
+          tag: "Number Series",
+          diff: "EASY",
+          exp: "Pattern: Each number is (2 * previous) + 1. 2 * 63 + 1 = 127.",
+          track: "GENERAL_APTITUDE",
+          trackTitle: "General Aptitude Benchmark",
+          cutoff: 60
+        },
+        {
+          q: "Choose the word which is most nearly OPPOSITE in meaning to 'METICULOUS':",
+          options: ["Scrupulous", "Careless", "Thorough", "Detailed"],
+          ans: 1,
+          cat: "Verbal Ability",
+          tag: "Vocabulary & Antonyms",
+          diff: "EASY",
+          exp: "'Meticulous' means very careful and precise. Its opposite is 'Careless'.",
+          track: "GENERAL_APTITUDE",
+          trackTitle: "General Aptitude Benchmark",
+          cutoff: 60
+        },
+        {
+          q: "Select the correctly punctuated sentence:",
+          options: [
+            "Despite of the rain, the match continued.",
+            "Despite the rain, the match continued.",
+            "In spite the rain, the match continued.",
+            "Despite about the rain, the match continued."
+          ],
+          ans: 1,
+          cat: "Verbal Ability",
+          tag: "Grammar & Sentence Correction",
+          diff: "EASY",
+          exp: "'Despite' is a preposition used directly without 'of'. 'In spite of' is used with 'of'.",
+          track: "GENERAL_APTITUDE",
+          trackTitle: "General Aptitude Benchmark",
+          cutoff: 60
+        },
+        {
+          q: "What is the worst-case time complexity of searching an element in a balanced Binary Search Tree (AVL tree)?",
+          options: ["O(1)", "O(log n)", "O(n)", "O(n log n)"],
+          ans: 1,
+          cat: "Technical Core",
+          tag: "Data Structures",
+          diff: "MEDIUM",
+          exp: "An AVL tree maintains height balance where height <= 1.44 log2(n). Therefore worst case search is O(log n).",
+          track: "GENERAL_APTITUDE",
+          trackTitle: "General Aptitude Benchmark",
+          cutoff: 60
+        },
+        {
+          q: "In PostgreSQL / SQL, which clause is evaluated BEFORE the GROUP BY clause?",
+          options: ["HAVING", "WHERE", "ORDER BY", "LIMIT"],
+          ans: 1,
+          cat: "Technical Core",
+          tag: "Database & SQL",
+          diff: "MEDIUM",
+          exp: "SQL execution order: FROM -> WHERE -> GROUP BY -> HAVING -> SELECT -> ORDER BY -> LIMIT.",
+          track: "GENERAL_APTITUDE",
+          trackTitle: "General Aptitude Benchmark",
+          cutoff: 60
+        },
+        {
+          q: "A train running at 72 km/h crosses a 200m long platform in 22 seconds. What is the length of the train?",
+          options: ["200m", "240m", "220m", "250m"],
+          ans: 1,
+          cat: "Quantitative Aptitude",
+          tag: "Speed, Distance & Time",
+          diff: "HARD",
+          exp: "Speed = 72 * 5/18 = 20 m/s. Total distance = 20 * 22 = 440m. Train length = 440 - 200 = 240m.",
+          track: "GENERAL_APTITUDE",
+          trackTitle: "General Aptitude Benchmark",
+          cutoff: 60
+        },
+        {
+          q: "Which HTTP status code signifies that the client must authenticate itself to get the requested response?",
+          options: ["400 Bad Request", "401 Unauthorized", "403 Forbidden", "404 Not Found"],
+          ans: 1,
+          cat: "Technical Core",
+          tag: "Web Architecture",
+          diff: "EASY",
+          exp: "401 indicates lack of valid authentication credentials, whereas 403 indicates authentication is recognized but access is forbidden.",
+          track: "GENERAL_APTITUDE",
+          trackTitle: "General Aptitude Benchmark",
+          cutoff: 60
+        },
+        // ZOHO_MOCK
+        {
+          q: "What is the output of the following Java expression? System.out.println(10 + 20 + \"Hello\" + 10 + 20);",
+          options: ["30Hello30", "30Hello1020", "1020Hello1020", "Compilation Error"],
+          ans: 1,
+          cat: "Technical Core",
+          tag: "Core Java",
+          diff: "MEDIUM",
+          exp: "Evaluation proceeds left to right. 10 + 20 = 30 (integer addition). 30 + 'Hello' = '30Hello' (concatenation). Then '30Hello' + 10 = '30Hello10', and + 20 = '30Hello1020'.",
+          track: "ZOHO_MOCK",
+          trackTitle: "Zoho Corporation Technical Mock",
+          cutoff: 75
+        },
+        {
+          q: "Given an array of integers, which algorithm finds the maximum subarray sum in O(n) time?",
+          options: ["Dijkstra's Algorithm", "Kadane's Algorithm", "Floyd-Warshall", "Binary Search"],
+          ans: 1,
+          cat: "Technical Core",
+          tag: "Algorithms",
+          diff: "MEDIUM",
+          exp: "Kadane's algorithm maintains maximum sum ending at current index and global maximum in linear O(n) time.",
+          track: "ZOHO_MOCK",
+          trackTitle: "Zoho Corporation Technical Mock",
+          cutoff: 75
+        },
+        {
+          q: "In C/C++, what is the size of an empty struct in bytes according to ANSI standard?",
+          options: ["0 bytes in C and 0 in C++", "0 bytes in C and 1 byte in C++", "1 byte in C and 0 in C++", "4 bytes in both"],
+          ans: 1,
+          cat: "Technical Core",
+          tag: "C/C++ Internals",
+          diff: "HARD",
+          exp: "In C standard, empty struct has undefined/zero size (GNU C allows 0 bytes). In C++, empty struct has size at least 1 byte to ensure distinct object addresses.",
+          track: "ZOHO_MOCK",
+          trackTitle: "Zoho Corporation Technical Mock",
+          cutoff: 75
+        },
+        // TCS_NQT
+        {
+          q: "In a class of 60 students, 40% are girls. How many boys must join the class so that 75% of the class becomes boys?",
+          options: ["24", "36", "60", "48"],
+          ans: 1,
+          cat: "Quantitative Aptitude",
+          tag: "Percentages & Mixtures",
+          diff: "MEDIUM",
+          exp: "Girls = 40% of 60 = 24. Boys = 36. If boys become 75%, girls become 25%. 25% = 24 -> Total students = 96. Total boys needed = 72. Additional boys = 72 - 36 = 36.",
+          track: "TCS_NQT",
+          trackTitle: "TCS NQT Foundation Mock",
+          cutoff: 65
+        },
+        {
+          q: "What is the output of the pseudocode: Set Integer x = 5, y = 10; x = x ^ y; y = x ^ y; x = x ^ y; Print x, y",
+          options: ["5, 10", "10, 5", "15, 5", "0, 15"],
+          ans: 1,
+          cat: "Logical Reasoning",
+          tag: "Pseudocode & Bitwise",
+          diff: "EASY",
+          exp: "Three XOR operations between x and y swaps their values without a temporary variable. So x becomes 10 and y becomes 5.",
+          track: "TCS_NQT",
+          trackTitle: "TCS NQT Foundation Mock",
+          cutoff: 65
+        },
+        // TECHNICAL_CORE
+        {
+          q: "Which normal form deals with removing multi-valued dependencies in relational databases?",
+          options: ["2NF", "3NF", "BCNF", "4NF"],
+          ans: 3,
+          cat: "Technical Core",
+          tag: "Database & SQL",
+          diff: "HARD",
+          exp: "Fourth Normal Form (4NF) ensures that a table does not contain two or more independent multi-valued dependencies.",
+          track: "TECHNICAL_CORE",
+          trackTitle: "Technical Core Engineering Benchmark",
+          cutoff: 70
+        },
+        {
+          q: "In JavaScript, what does `typeof null` return?",
+          options: ["'null'", "'undefined'", "'object'", "'boolean'"],
+          ans: 2,
+          cat: "Technical Core",
+          tag: "JavaScript",
+          diff: "EASY",
+          exp: "In JavaScript, typeof null returns 'object'. This is a well-known legacy bug from the first implementation of JavaScript.",
+          track: "TECHNICAL_CORE",
+          trackTitle: "Technical Core Engineering Benchmark",
+          cutoff: 70
+        },
+        // INFOSYS_MOCK
+        {
+          q: "Five friends A, B, C, D, and E are sitting in a row facing North. C is sitting next to A and E. B is to the immediate right of E. D is to the left of A. Who is in the middle?",
+          options: ["A", "B", "C", "D"],
+          ans: 2,
+          cat: "Logical Reasoning",
+          tag: "Seating Arrangement",
+          diff: "MEDIUM",
+          exp: "Arrangement: D - A - C - E - B. C is sitting in the exact middle position.",
+          track: "INFOSYS_MOCK",
+          trackTitle: "Infosys Analytical Reasoning Mock",
+          cutoff: 65
+        }
+      ];
+
+      for (const q of defaultQuestions) {
+        await client.query(`
+          INSERT INTO assessment_questions 
+            (question_text, options, correct_option, category, skill_tag, difficulty, explanation, track_type, track_title, cutoff_percentage)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `, [
+          q.q,
+          JSON.stringify(q.options),
+          q.ans,
+          q.cat,
+          q.tag,
+          q.diff,
+          q.exp,
+          q.track,
+          q.trackTitle,
+          q.cutoff
+        ]);
+      }
+      console.log(`[Assessment] Seeded ${defaultQuestions.length} default placement questions across tracks.`);
+    }
+
     // Seed Supreme Admin if not exists
     const adminRes = await client.query(`SELECT * FROM users WHERE role = 'SUPREME_ADMIN' LIMIT 1;`);
     if (adminRes.rowCount === 0) {

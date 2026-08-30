@@ -38,7 +38,8 @@ import {
   triggerDeadlineUrgentEmailReminders,
   notifyNoticeBoardAnnouncementEmail,
   getLiveEmailNodesStatus,
-  isEmailServiceEnabled
+  isEmailServiceEnabled,
+  triggerAssessmentCampaignEmails
 } from './emailService.js';
 
 export {
@@ -52,7 +53,8 @@ export {
   notifyTaskReopenedEmail,
   notifyNoticeBoardAnnouncementEmail,
   triggerDeadlineUrgentEmailReminders,
-  isEmailServiceEnabled
+  isEmailServiceEnabled,
+  triggerAssessmentCampaignEmails
 };
 import {
   startTelegramPoller,
@@ -61,7 +63,9 @@ import {
   triggerPendingTaskReminders,
   getTelegramStats,
   setGroupChatId,
+  getGroupChatId,
   sendTelegramMessage,
+  getWatermarkHtml,
   notifyNewTaskCreated,
   notifyTaskReopened,
   notifyTaskSubmissionReceived,
@@ -7907,6 +7911,1152 @@ async function startServer() {
       timestamp: new Date().toISOString(),
       leetcode: leetcodeRes,
       github: githubRes
+    });
+  }));
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // ─── Placement Skill Assessment & Readiness Rating Endpoints ───────────────
+  // ════════════════════════════════════════════════════════════════════════════
+
+  const safeJsonParse = (val: any, fallback: any = {}) => {
+    if (val === null || val === undefined) return fallback;
+    if (typeof val === 'object') return val;
+    try {
+      return JSON.parse(val);
+    } catch (_) {
+      return fallback;
+    }
+  };
+
+  // 1. Student Assessment History & KPI Metrics
+  app.get('/api/assessment/my-results', asyncHandler(async (req: any, res: any) => {
+    let targetUserId = req.query.user_id;
+
+    if (!targetUserId) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const decoded: any = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET || 'secret');
+          targetUserId = decoded.id;
+        } catch (_) {}
+      }
+    }
+
+    // Fallback for Tharunkumar K if testing unauthenticated
+    if (!targetUserId) {
+      const tharun = await pool.query("SELECT id FROM users WHERE register_number = '922524205171' LIMIT 1");
+      if (tharun.rows.length > 0) targetUserId = tharun.rows[0].id;
+    }
+
+    if (!targetUserId) {
+      return res.json({ success: true, assessments: [], metrics: null });
+    }
+
+    const result = await pool.query(`
+      SELECT 
+        id, track_type, track_title, total_questions, correct_count,
+        score_percentage, is_passed, cutoff_percentage, time_taken_seconds,
+        proctor_photo_url, category_breakdown, strengths, gaps, answers_summary,
+        created_at
+      FROM student_assessments
+      WHERE user_id = $1
+      ORDER BY created_at DESC;
+    `, [targetUserId]);
+
+    const totalAttempts = result.rows.length;
+    let avgScore = 0;
+    let passedCount = 0;
+    let highestScore = 0;
+
+    if (totalAttempts > 0) {
+      const sum = result.rows.reduce((acc, r) => acc + Number(r.score_percentage || 0), 0);
+      avgScore = Math.round(sum / totalAttempts);
+      passedCount = result.rows.filter(r => r.is_passed === true || Number(r.score_percentage || 0) >= Number(r.cutoff_percentage || 60)).length;
+      highestScore = Math.round(Math.max(...result.rows.map(r => Number(r.score_percentage || 0))) * 100) / 100;
+    }
+
+    const formattedAssessments = result.rows.map(r => ({
+      ...r,
+      category_breakdown: safeJsonParse(r.category_breakdown, {}),
+      answers_summary: safeJsonParse(r.answers_summary, []),
+      strengths: safeJsonParse(r.strengths, []),
+      gaps: safeJsonParse(r.gaps, [])
+    }));
+
+    res.json({
+      success: true,
+      metrics: {
+        total_attempts: totalAttempts,
+        average_score: avgScore,
+        highest_score: highestScore,
+        passed_count: passedCount,
+        pass_rate: totalAttempts > 0 ? Math.round((passedCount / totalAttempts) * 100) : 0
+      },
+      assessments: formattedAssessments
+    });
+  }));
+
+  // 2. Placement Readiness Dashboard (HOD / Advisor Overview)
+  app.get('/api/placement/readiness-dashboard', asyncHandler(async (req: any, res: any) => {
+    const { class_id, tier, search } = req.query;
+
+    const [
+      studentsRes,
+      assessmentRes,
+      leetcodeRes,
+      projectRes,
+      githubRes,
+      taskSubRes,
+      taskClassRes,
+      classesRes
+    ] = await Promise.all([
+      pool.query(`
+        SELECT u.id, u.full_name, u.register_number, u.email, u.phone, u.class_id,
+               c.name as class_name, c.year as class_year, c.batch
+        FROM users u
+        LEFT JOIN classes c ON c.id = u.class_id
+        WHERE u.role = 'STUDENT'
+        ORDER BY u.register_number ASC
+      `),
+      pool.query(`
+        SELECT DISTINCT ON (user_id) 
+          user_id, score_percentage, correct_count, total_questions, proctor_photo_url, track_type, track_title
+        FROM student_assessments
+        ORDER BY user_id, score_percentage DESC, created_at DESC
+      `),
+      pool.query(`
+        SELECT 
+          user_id,
+          COUNT(CASE WHEN date >= CURRENT_DATE - INTERVAL '7 days' AND (solved_today > 0 OR status = 'COMPLETED') THEN 1 END) as active_days_7d,
+          COUNT(CASE WHEN date >= CURRENT_DATE - INTERVAL '30 days' AND (solved_today > 0 OR status = 'COMPLETED') THEN 1 END) as active_days_30d,
+          MAX(total_solved) as total_solved
+        FROM leetcode_daily_progress
+        GROUP BY user_id
+      `),
+      pool.query(`
+        SELECT user_id, COUNT(*) as project_count
+        FROM student_projects
+        GROUP BY user_id
+      `),
+      pool.query(`
+        SELECT student_id, SUM(daily_commit_count) as commits_30d
+        FROM github_daily_commits
+        WHERE date >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY student_id
+      `),
+      pool.query(`
+        SELECT user_id, COUNT(DISTINCT task_id) as submitted_tasks
+        FROM task_submissions
+        WHERE status IN ('VERIFIED', 'SUBMITTED')
+        GROUP BY user_id
+      `),
+      pool.query(`
+        SELECT tc.class_id, COUNT(DISTINCT tc.task_id) as total_tasks
+        FROM task_classes tc
+        GROUP BY tc.class_id
+      `),
+      pool.query(`SELECT id, name, year, batch FROM classes ORDER BY year ASC, name ASC`)
+    ]);
+
+    const assessmentMap = new Map();
+    for (const row of assessmentRes.rows) assessmentMap.set(row.user_id, row);
+
+    const leetcodeMap = new Map();
+    for (const row of leetcodeRes.rows) {
+      leetcodeMap.set(row.user_id, {
+        active_days_7d: Math.min(7, Number(row.active_days_7d) || 0),
+        active_days_30d: Number(row.active_days_30d) || 0,
+        total_solved: Number(row.total_solved) || 0
+      });
+    }
+
+    const projectMap = new Map();
+    for (const row of projectRes.rows) projectMap.set(row.user_id, Number(row.project_count) || 0);
+
+    const githubMap = new Map();
+    for (const row of githubRes.rows) githubMap.set(row.student_id, Number(row.commits_30d) || 0);
+
+    const taskSubMap = new Map();
+    for (const row of taskSubRes.rows) taskSubMap.set(row.user_id, Number(row.submitted_tasks) || 0);
+
+    const taskClassMap = new Map();
+    for (const row of taskClassRes.rows) taskClassMap.set(row.class_id, Number(row.total_tasks) || 0);
+
+    const allStudents = studentsRes.rows.map(u => {
+      const assessment = assessmentMap.get(u.id);
+      const aptitudeScore = assessment ? Number(assessment.score_percentage) : 0;
+      const aptitudePhoto = assessment ? assessment.proctor_photo_url : null;
+      const aptitudeCompleted = Boolean(assessment);
+
+      // Pillar 2: LeetCode Weekly Streak & Consistency
+      const lcData = leetcodeMap.get(u.id) || { active_days_7d: 0, active_days_30d: 0, total_solved: 0 };
+      const leetcodeWeeklyStreak = lcData.active_days_7d;
+      const leetcodeConsistency = Math.min(100, Math.round((leetcodeWeeklyStreak / 7) * 100));
+      const leetcodeNorm = leetcodeConsistency;
+
+      // Pillar 3: Technical Project Portfolio (3+ projects benchmark)
+      const projectCount = projectMap.get(u.id) || 0;
+      const projectNorm = Math.min(100, Math.round((projectCount / 3) * 100));
+
+      const githubCommits = githubMap.get(u.id) || 0;
+
+      const classTotalTasks = Number(taskClassMap.get(u.class_id)) || 0;
+      const userSubmittedTasks = taskSubMap.get(u.id) || 0;
+      const taskRate = classTotalTasks > 0 ? Math.min(100, Math.round((userSubmittedTasks / classTotalTasks) * 100)) : 100;
+
+      // 4 Pillars Contribution
+      const aptitudeContrib = Math.round(aptitudeScore * 0.35);
+      const leetcodeContrib = Math.round(leetcodeNorm * 0.25);
+      const projectContrib = Math.round(projectNorm * 0.20);
+      const taskContrib = Math.round(taskRate * 0.20);
+
+      const readinessScore = Math.min(100, aptitudeContrib + leetcodeContrib + projectContrib + taskContrib);
+
+      let studentTier = 'NEEDS_ATTENTION';
+      let tierLabel = 'Critical Action Required';
+      let companies: string[] = [];
+
+      if (readinessScore >= 80) {
+        studentTier = 'TIER_1';
+        tierLabel = 'Tier 1: Product / Dream Ready';
+        companies = ['Zoho', 'Kaar Technologies', 'Freshworks', 'Thoughtworks', 'TCS Prime'];
+      } else if (readinessScore >= 65) {
+        studentTier = 'TIER_2';
+        tierLabel = 'Tier 2: IT Services Ready';
+        companies = ['TCS Ninja', 'Infosys', 'Cognizant', 'Wipro', 'Accenture', 'HCL'];
+      } else if (readinessScore >= 50) {
+        studentTier = 'TIER_3';
+        tierLabel = 'Tier 3: Developing Baseline';
+        companies = ['Regional Tech', 'Technical Apprenticeships', 'Startups'];
+      }
+
+      return {
+        id: u.id,
+        full_name: u.full_name,
+        register_number: u.register_number,
+        email: u.email,
+        phone: u.phone,
+        class_id: u.class_id,
+        class_name: u.class_name || 'N/A',
+        class_year: u.class_year,
+        batch: u.batch,
+        aptitude_score: aptitudeScore,
+        aptitude_completed: aptitudeCompleted,
+        proctor_photo_url: aptitudePhoto,
+        leetcode_weekly_streak: leetcodeWeeklyStreak,
+        leetcode_consistency: leetcodeConsistency,
+        leetcode_norm: leetcodeNorm,
+        project_count: projectCount,
+        project_norm: projectNorm,
+        github_commits_30d: githubCommits,
+        task_completion_rate: taskRate,
+        readiness_score: readinessScore,
+        pillars: {
+          aptitude: { score: aptitudeScore, contribution: aptitudeContrib, weight: 35 },
+          leetcode: {
+            weekly_streak: leetcodeWeeklyStreak,
+            consistency: leetcodeConsistency,
+            score: leetcodeNorm,
+            contribution: leetcodeContrib,
+            weight: 25
+          },
+          projects: {
+            count: projectCount,
+            score: projectNorm,
+            contribution: projectContrib,
+            weight: 20
+          },
+          tasks: { rate: taskRate, contribution: taskContrib, weight: 20 }
+        },
+        tier: studentTier,
+        tier_label: tierLabel,
+        eligible_companies: companies
+      };
+    });
+
+    const totalCount = allStudents.length;
+    const eligibleCount = allStudents.filter(s => s.readiness_score >= 75).length;
+    const tier1Count = allStudents.filter(s => s.tier === 'TIER_1').length;
+    const tier2Count = allStudents.filter(s => s.tier === 'TIER_2').length;
+    const tier3Count = allStudents.filter(s => s.tier === 'TIER_3').length;
+    const actionCount = allStudents.filter(s => s.tier === 'NEEDS_ATTENTION').length;
+
+    const avgReadiness = totalCount > 0
+      ? Math.round(allStudents.reduce((acc, s) => acc + s.readiness_score, 0) / totalCount)
+      : 0;
+
+    let filtered = allStudents;
+    if (class_id && class_id !== 'ALL') {
+      filtered = filtered.filter(s => s.class_id === class_id);
+    }
+    if (tier && tier !== 'ALL') {
+      if (tier === 'ZOHO') filtered = filtered.filter(s => s.readiness_score >= 80);
+      else if (tier === 'TCS') filtered = filtered.filter(s => s.readiness_score >= 65);
+      else if (tier === 'ELIGIBLE') filtered = filtered.filter(s => s.readiness_score >= 75);
+      else filtered = filtered.filter(s => s.tier === tier);
+    }
+    if (search) {
+      const q = String(search).toLowerCase();
+      filtered = filtered.filter(s => 
+        s.full_name?.toLowerCase().includes(q) || 
+        s.register_number?.toLowerCase().includes(q) ||
+        s.class_name?.toLowerCase().includes(q)
+      );
+    }
+
+    res.json({
+      success: true,
+      metrics: {
+        total_students: totalCount,
+        eligible_count: eligibleCount,
+        average_readiness: avgReadiness,
+        tier1_count: tier1Count,
+        tier2_count: tier2Count,
+        tier3_count: tier3Count,
+        needs_attention_count: actionCount,
+        pass_rate: totalCount > 0 ? Math.round((eligibleCount / totalCount) * 100) : 0,
+        tier_distribution: {
+          tier_1: tier1Count,
+          tier_2: tier2Count,
+          tier_3: tier3Count,
+          needs_attention: actionCount
+        }
+      },
+      students: filtered,
+      classes: classesRes.rows
+    });
+  }));
+
+  // 3. Individual Student Readiness Profile
+  app.get('/api/placement/my-readiness', asyncHandler(async (req: any, res: any) => {
+    let targetUserId = req.query.user_id;
+
+    if (!targetUserId) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const decoded: any = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET || 'secret');
+          targetUserId = decoded.id;
+        } catch (_) {}
+      }
+    }
+
+    if (!targetUserId) {
+      const tharun = await pool.query("SELECT id FROM users WHERE register_number = '922524205171' LIMIT 1");
+      if (tharun.rows.length > 0) targetUserId = tharun.rows[0].id;
+    }
+
+    if (!targetUserId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    const [userRes, assessmentRes, leetcodeRes, projectsRes, githubRes, taskSubRes, taskClassRes] = await Promise.all([
+      pool.query(`
+        SELECT u.id, u.full_name, u.register_number, u.email, u.phone, u.class_id, u.leetcode_url, u.github_url,
+               c.name as class_name, c.year as class_year, c.batch
+        FROM users u
+        LEFT JOIN classes c ON c.id = u.class_id
+        WHERE u.id = $1
+      `, [targetUserId]),
+      pool.query(`
+        SELECT score_percentage, correct_count, total_questions, proctor_photo_url, track_type, track_title, created_at
+        FROM student_assessments
+        WHERE user_id = $1
+        ORDER BY score_percentage DESC, created_at DESC
+        LIMIT 1
+      `, [targetUserId]),
+      pool.query(`
+        SELECT 
+          COUNT(CASE WHEN date >= CURRENT_DATE - INTERVAL '7 days' AND (solved_today > 0 OR status = 'COMPLETED') THEN 1 END) as active_days_7d,
+          COUNT(CASE WHEN date >= CURRENT_DATE - INTERVAL '30 days' AND (solved_today > 0 OR status = 'COMPLETED') THEN 1 END) as active_days_30d,
+          MAX(total_solved) as max_solved,
+          SUM(solved_today) as solved_recent
+        FROM leetcode_daily_progress
+        WHERE user_id = $1
+      `, [targetUserId]),
+      pool.query(`
+        SELECT id, project_name, description, tech_stack, github_url, live_demo_url, created_at
+        FROM student_projects
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+      `, [targetUserId]),
+      pool.query(`
+        SELECT SUM(daily_commit_count) as total_commits
+        FROM github_daily_commits
+        WHERE student_id = $1 AND date >= CURRENT_DATE - INTERVAL '30 days'
+      `, [targetUserId]),
+      pool.query(`
+        SELECT COUNT(DISTINCT task_id) as submitted_tasks
+        FROM task_submissions
+        WHERE user_id = $1 AND status IN ('VERIFIED', 'SUBMITTED')
+      `, [targetUserId]),
+      pool.query(`
+        SELECT COUNT(DISTINCT tc.task_id) as total_tasks
+        FROM task_classes tc
+        JOIN users u ON u.class_id = tc.class_id
+        WHERE u.id = $1
+      `, [targetUserId])
+    ]);
+
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Student profile not found' });
+    }
+
+    const u = userRes.rows[0];
+    const assessment = assessmentRes.rows[0];
+    const aptitudeScore = assessment ? Number(assessment.score_percentage) : 0;
+    const aptitudeCompleted = Boolean(assessment);
+    const proctorPhoto = assessment ? assessment.proctor_photo_url : null;
+
+    // Pillar 2: LeetCode Weekly Streak & Consistency
+    const lcRow = leetcodeRes.rows[0];
+    const leetcodeWeeklyStreak = Math.min(7, Number(lcRow?.active_days_7d) || 0);
+    const leetcodeConsistency = Math.min(100, Math.round((leetcodeWeeklyStreak / 7) * 100));
+    const leetcodeNorm = leetcodeConsistency;
+
+    // Pillar 3: Technical Project Portfolio
+    const studentProjects = projectsRes.rows || [];
+    const projectCount = studentProjects.length;
+    const projectNorm = Math.min(100, Math.round((projectCount / 3) * 100));
+
+    const githubCommits = Number(githubRes.rows[0]?.total_commits) || 0;
+
+    const totalAssignedTasks = Number(taskClassRes.rows[0]?.total_tasks) || 0;
+    const userSubmittedTasks = Number(taskSubRes.rows[0]?.submitted_tasks) || 0;
+    const taskRate = totalAssignedTasks > 0 ? Math.min(100, Math.round((userSubmittedTasks / totalAssignedTasks) * 100)) : 100;
+
+    const aptitudeContrib = Math.round(aptitudeScore * 0.35);
+    const leetcodeContrib = Math.round(leetcodeNorm * 0.25);
+    const projectContrib = Math.round(projectNorm * 0.20);
+    const taskContrib = Math.round(taskRate * 0.20);
+
+    const readinessScore = Math.min(100, aptitudeContrib + leetcodeContrib + projectContrib + taskContrib);
+
+    let studentTier = 'NEEDS_ATTENTION';
+    let tierLabel = 'Critical Action Required';
+    let eligibleCompanies: string[] = [];
+
+    if (readinessScore >= 80) {
+      studentTier = 'TIER_1';
+      tierLabel = 'Tier 1: Product / Dream Ready';
+      eligibleCompanies = ['Zoho', 'Kaar Technologies', 'Freshworks', 'Thoughtworks', 'TCS Prime'];
+    } else if (readinessScore >= 65) {
+      studentTier = 'TIER_2';
+      tierLabel = 'Tier 2: IT Services Ready';
+      eligibleCompanies = ['TCS Ninja', 'Infosys', 'Cognizant', 'Wipro', 'Accenture', 'HCL'];
+    } else if (readinessScore >= 50) {
+      studentTier = 'TIER_3';
+      tierLabel = 'Tier 3: Developing Baseline';
+      eligibleCompanies = ['Regional Tech', 'Technical Apprenticeships', 'Startups'];
+    }
+
+    const recommendations: string[] = [];
+    if (!aptitudeCompleted) {
+      recommendations.push('Complete the proctored 15-Question Skill Assessment Benchmark to earn up to +35 placement points.');
+    } else if (aptitudeScore < 70) {
+      recommendations.push(`Your assessment mark is ${aptitudeScore}%. Retake the mock assessment or review AI remedial cheat sheets to aim for 80%+.`);
+    }
+
+    if (leetcodeWeeklyStreak < 5) {
+      recommendations.push(`Your current weekly LeetCode streak is ${leetcodeWeeklyStreak} days (${leetcodeConsistency}% consistency). Maintain a 5+ day streak each week to maximize your problem-solving rating.`);
+    }
+
+    if (projectCount < 3) {
+      recommendations.push(`You currently have ${projectCount} project(s) documented. Build and showcase at least ${3 - projectCount} more project(s) to reach the 3-project benchmark for full placement marks.`);
+    }
+
+    if (taskRate < 90) {
+      recommendations.push(`Your academic task submission rate is ${taskRate}%. Submit missing department tasks to maintain institutional clearance.`);
+    }
+
+    res.json({
+      success: true,
+      profile: {
+        id: u.id,
+        full_name: u.full_name,
+        register_number: u.register_number,
+        email: u.email,
+        phone: u.phone,
+        class_name: u.class_name,
+        class_year: u.class_year,
+        batch: u.batch,
+        leetcode_url: u.leetcode_url,
+        github_url: u.github_url,
+        readiness_score: readinessScore,
+        tier: studentTier,
+        tier_label: tierLabel,
+        eligible_companies: eligibleCompanies,
+        proctor_photo_url: proctorPhoto,
+        pillars: {
+          aptitude: {
+            score: aptitudeScore,
+            completed: aptitudeCompleted,
+            contribution: aptitudeContrib,
+            weight: 35,
+            title: 'Aptitude & Skill Assessment'
+          },
+          leetcode: {
+            weekly_streak: leetcodeWeeklyStreak,
+            consistency: leetcodeConsistency,
+            score: leetcodeNorm,
+            contribution: leetcodeContrib,
+            weight: 25,
+            benchmark: 7,
+            title: 'LeetCode Weekly Streak & Consistency'
+          },
+          projects: {
+            count: projectCount,
+            score: projectNorm,
+            contribution: projectContrib,
+            weight: 20,
+            benchmark: 3,
+            title: 'Technical Project Portfolio',
+            projects_list: studentProjects
+          },
+          tasks: {
+            submitted: userSubmittedTasks,
+            total_assigned: totalAssignedTasks,
+            rate: taskRate,
+            contribution: taskContrib,
+            weight: 20,
+            title: 'Academic Task Discipline'
+          }
+        },
+        recommendations
+      }
+    });
+  }));
+
+  // 4. Trigger Assessment Announcement & Balancer Emails
+  app.post('/api/assessment/trigger-announcement', asyncHandler(async (req: any, res: any) => {
+    const { track_type, target_year, target_class_id, custom_instructions, deadline } = req.body;
+
+    let senderName = 'HOD / Placement Coordinator';
+    let senderRole = 'Department of Information Technology';
+    let createdBy = null;
+
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const decoded: any = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET || 'secret');
+        createdBy = decoded.id;
+        const uRes = await pool.query('SELECT full_name, role FROM users WHERE id = $1', [decoded.id]);
+        if (uRes.rows.length > 0) {
+          senderName = uRes.rows[0].full_name;
+          senderRole = uRes.rows[0].role;
+        }
+      } catch (_) {}
+    }
+
+    const trackRes = await pool.query(`
+      SELECT track_type, COALESCE(MAX(track_title), 'General Aptitude Benchmark') as track_title,
+             COALESCE(MAX(cutoff_percentage), 60.00) as cutoff_percentage
+      FROM assessment_questions
+      WHERE is_active = true AND track_type = $1
+      GROUP BY track_type
+    `, [track_type]);
+
+    const trackTitle = trackRes.rows[0]?.track_title || 'General Aptitude Benchmark';
+    const cutoff = Number(trackRes.rows[0]?.cutoff_percentage) || 60;
+
+    const validDeadline = (deadline && !isNaN(new Date(deadline).getTime())) ? new Date(deadline).toISOString() : null;
+
+    await pool.query(`
+      INSERT INTO assessment_assignments (track_type, track_title, target_year, target_class_id, custom_instructions, deadline, created_by)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `, [track_type, trackTitle, target_year || 'ALL', target_class_id || 'ALL', custom_instructions || null, validDeadline, createdBy]);
+
+    const delivery = await triggerAssessmentCampaignEmails({
+      track_type,
+      track_title: trackTitle,
+      target_year: target_year || 'ALL',
+      target_class_id: target_class_id || 'ALL',
+      custom_instructions,
+      deadline: validDeadline || undefined,
+      senderName,
+      senderRole
+    });
+
+    const groupText = `🎯 <b>Official Placement Assessment Announced</b>\n\n` +
+      `📌 <b>Track:</b> ${trackTitle}\n` +
+      `🎯 <b>Cutoff:</b> ${cutoff}%\n` +
+      `👥 <b>Target:</b> ${target_year === 'ALL' ? 'All Batches' : `Year ${target_year}`}${target_class_id !== 'ALL' ? ' (Selected Section)' : ''}\n` +
+      (validDeadline ? `⏰ <b>Deadline:</b> ${new Date(validDeadline).toLocaleString()}\n` : '') +
+      (custom_instructions ? `📝 <b>Instructions:</b> ${custom_instructions}\n` : '') +
+      `\n🚀 Please log in to the student portal and complete the proctored assessment under <b>Skill Assessment</b>!\n${getWatermarkHtml()}`;
+
+    const targetChatId = (await getGroupChatId()) || process.env.TELEGRAM_ADMIN_CHAT_ID;
+    if (targetChatId) {
+      sendTelegramMessage(targetChatId, groupText).catch(() => {});
+    }
+
+    res.json({
+      success: true,
+      track_title: trackTitle,
+      delivery
+    });
+  }));
+
+  // 5. Target Cohort Preview for Assessment Dispatch
+  app.get('/api/assessment/target-preview', asyncHandler(async (req: any, res: any) => {
+    const { target_year, target_class_id } = req.query;
+
+    let query = `
+      SELECT COUNT(u.id)::int as total_count, ARRAY_AGG(DISTINCT c.name) as classes_summary
+      FROM users u
+      JOIN classes c ON c.id = u.class_id
+      WHERE u.role = 'STUDENT'
+    `;
+    const values: any[] = [];
+    let idx = 1;
+
+    if (target_year && target_year !== 'ALL') {
+      query += ` AND c.year = $${idx++}`;
+      values.push(parseInt(String(target_year), 10));
+    }
+    if (target_class_id && target_class_id !== 'ALL') {
+      query += ` AND c.id = $${idx++}`;
+      values.push(target_class_id);
+    }
+
+    const result = await pool.query(query, values);
+    res.json({
+      success: true,
+      total_count: result.rows[0]?.total_count || 0,
+      classes_summary: result.rows[0]?.classes_summary || []
+    });
+  }));
+
+  // 6. Active Assessment Assignments History
+  app.get('/api/assessment/assignments', asyncHandler(async (req: any, res: any) => {
+    const result = await pool.query(`
+      SELECT a.*, u.full_name as creator_name, c.name as class_name
+      FROM assessment_assignments a
+      LEFT JOIN users u ON u.id = a.created_by
+      LEFT JOIN classes c ON c.id::text = a.target_class_id
+      ORDER BY a.created_at DESC
+      LIMIT 20;
+    `);
+    res.json({ success: true, assignments: result.rows });
+  }));
+
+  // 7. Assessment Tracks List & Scoped Assignments
+  app.get('/api/assessment/tracks', asyncHandler(async (req: any, res: any) => {
+    const { class_id, year } = req.query;
+
+    const result = await pool.query(`
+      SELECT 
+        track_type,
+        COALESCE(MAX(track_title), track_type) as track_title,
+        COUNT(id)::int as question_count,
+        COALESCE(MAX(cutoff_percentage), 60.00) as cutoff_percentage,
+        15 as duration_mins
+      FROM assessment_questions
+      WHERE is_active = true
+      GROUP BY track_type
+      ORDER BY track_type ASC;
+    `);
+
+    let assignedTrackTypes = new Set<string>();
+    let assignmentDetailsMap = new Map<string, any>();
+    const assignRes = await pool.query(`
+      SELECT track_type, deadline, custom_instructions, created_at
+      FROM assessment_assignments
+      WHERE (target_year = 'ALL' OR target_year = $1)
+        AND (target_class_id = 'ALL' OR target_class_id = $2)
+      ORDER BY created_at DESC;
+    `, [String(year || ''), String(class_id || '')]);
+
+    for (const r of assignRes.rows) {
+      if (!assignedTrackTypes.has(r.track_type)) {
+        assignedTrackTypes.add(r.track_type);
+        assignmentDetailsMap.set(r.track_type, r);
+      }
+    }
+
+    const trackMeta: Record<string, { badge: string; icon: string; description: string }> = {
+      GENERAL_APTITUDE: {
+        badge: 'Benchmark',
+        icon: 'Target',
+        description: 'Comprehensive aptitude evaluation covering quantitative problem solving, logical reasoning, and core technical acumen.'
+      },
+      TECHNICAL_CORE: {
+        badge: 'Core Engineering',
+        icon: 'Code',
+        description: 'Rigorous engineering benchmark focusing on Data Structures, OOP, SQL database principles, and algorithmic complexity.'
+      },
+      ZOHO_MOCK: {
+        badge: 'Product Company',
+        icon: 'Building2',
+        description: 'Patterned after Zoho Corporation technical round: advanced code tracing, pointer arithmetic, and logic puzzles.'
+      },
+      TCS_NQT: {
+        badge: 'TCS Prime / Ninja',
+        icon: 'Award',
+        description: 'TCS National Qualifier Test foundation: advanced numerical ability, reasoning logic, and algorithmic pseudocode.'
+      },
+      INFOSYS_MOCK: {
+        badge: 'Infosys Analytical',
+        icon: 'Briefcase',
+        description: 'Structured after Infosys recruitment test: analytical reasoning, data sufficiency, and critical thinking.'
+      }
+    };
+
+    const tracks = result.rows.map(r => ({
+      track_type: r.track_type,
+      track_title: r.track_title,
+      question_count: Number(r.question_count),
+      cutoff_percentage: Number(r.cutoff_percentage),
+      duration_mins: Number(r.duration_mins),
+      badge: trackMeta[r.track_type]?.badge || 'Placement Track',
+      icon: trackMeta[r.track_type]?.icon || 'Target',
+      description: trackMeta[r.track_type]?.description || 'Institutional placement benchmark track.',
+      is_assigned: assignedTrackTypes.has(r.track_type),
+      assignment_details: assignmentDetailsMap.get(r.track_type) || null
+    }));
+
+    res.json({ success: true, tracks });
+  }));
+
+  // 8. Questions Fetching (Filtered by Track or Micro-quiz Skill Tag)
+  app.get('/api/assessment/questions', asyncHandler(async (req: any, res: any) => {
+    const { track, skill_tag } = req.query;
+
+    let query = `
+      SELECT id, question_text, options, category, skill_tag, difficulty, explanation, cutoff_percentage, track_type, track_title
+      FROM assessment_questions
+      WHERE is_active = true
+    `;
+    const values: any[] = [];
+    let idx = 1;
+
+    if (skill_tag) {
+      query += ` AND skill_tag = $${idx++}`;
+      values.push(skill_tag);
+    } else if (track && track !== 'ALL') {
+      query += ` AND track_type = $${idx++}`;
+      values.push(track);
+    }
+
+    query += ` ORDER BY RANDOM() LIMIT 15;`;
+
+    const result = await pool.query(query, values);
+    const formattedQuestions = result.rows.map(q => ({
+      ...q,
+      options: typeof q.options === 'string' ? safeJsonParse(q.options, []) : (Array.isArray(q.options) ? q.options : [])
+    }));
+    res.json({ success: true, questions: formattedQuestions });
+  }));
+
+  // 9. HOD Bulk Questions Upload
+  app.post('/api/assessment/questions/bulk', asyncHandler(async (req: any, res: any) => {
+    const { questions, track_type = 'GENERAL_APTITUDE', track_title, cutoff_percentage = 60 } = req.body;
+
+    if (!Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({ error: 'No questions provided' });
+    }
+
+    let inserted = 0;
+    for (const q of questions) {
+      if (!q.question_text || !q.options) continue;
+      await pool.query(`
+        INSERT INTO assessment_questions (
+          question_text, options, correct_option, category, skill_tag, difficulty, explanation, track_type, track_title, cutoff_percentage
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `, [
+        q.question_text,
+        JSON.stringify(q.options),
+        q.correct_option ?? 0,
+        q.category || 'General Aptitude',
+        q.skill_tag || 'Aptitude',
+        q.difficulty || 'MEDIUM',
+        q.explanation || 'Standard principles apply.',
+        track_type,
+        track_title || track_type,
+        cutoff_percentage
+      ]);
+      inserted++;
+    }
+
+    res.json({ success: true, count: inserted });
+  }));
+
+  // 10. Proctor Face Identity Photo Upload (Cloudinary)
+  app.post('/api/assessment/capture-photo', asyncHandler(async (req: any, res: any) => {
+    const { imageBase64 } = req.body;
+    if (!imageBase64) {
+      return res.status(400).json({ error: 'No image data provided' });
+    }
+
+    try {
+      const cloudRes = await cloudinary.uploader.upload(imageBase64, {
+        folder: 'proctoring_verifications',
+        transformation: [{ width: 480, height: 480, crop: 'fill', gravity: 'face' }]
+      });
+      res.json({ success: true, photo_url: cloudRes.secure_url });
+    } catch (err: any) {
+      console.warn('[Cloudinary Photo Upload Fallback]:', err.message);
+      res.json({ success: true, photo_url: imageBase64 });
+    }
+  }));
+
+  // 11. Assessment Submission & Automatic Grading
+  app.post('/api/assessment/submit', asyncHandler(async (req: any, res: any) => {
+    const {
+      answers,
+      question_ids,
+      time_taken_seconds,
+      user_id: passedUserId,
+      student_name,
+      register_number,
+      proctor_photo_url,
+      track_type = 'GENERAL_APTITUDE',
+      track_title = 'General Aptitude Benchmark',
+      cutoff_percentage = 60
+    } = req.body;
+
+    let targetUserId = passedUserId;
+    if (!targetUserId) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const decoded: any = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET || 'secret');
+          targetUserId = decoded.id;
+        } catch (_) {}
+      }
+    }
+
+    if (!targetUserId) {
+      const tharun = await pool.query("SELECT id FROM users WHERE register_number = '922524205171' LIMIT 1");
+      if (tharun.rows.length > 0) targetUserId = tharun.rows[0].id;
+    }
+
+    if (!Array.isArray(question_ids) || question_ids.length === 0) {
+      return res.status(400).json({ error: 'No question IDs provided' });
+    }
+
+    const qRes = await pool.query(`
+      SELECT id, question_text, options, correct_option, category, skill_tag, explanation
+      FROM assessment_questions
+      WHERE id = ANY($1::uuid[])
+    `, [question_ids]);
+
+    const questionsMap = new Map();
+    for (const row of qRes.rows) questionsMap.set(row.id, row);
+
+    let correctCount = 0;
+    const answersSummary: any[] = [];
+    const categoryStats: Record<string, { total: number; correct: number }> = {};
+    const strengths: string[] = [];
+    const gaps: string[] = [];
+
+    for (const qId of question_ids) {
+      const q = questionsMap.get(qId);
+      if (!q) continue;
+
+      const selectedOpt = answers?.[qId] !== undefined ? Number(answers[qId]) : -1;
+      const isCorrect = selectedOpt === Number(q.correct_option);
+
+      if (isCorrect) correctCount++;
+
+      const cat = q.category || 'General';
+      if (!categoryStats[cat]) categoryStats[cat] = { total: 0, correct: 0 };
+      categoryStats[cat].total++;
+      if (isCorrect) categoryStats[cat].correct++;
+
+      let opts: any[] = [];
+      if (Array.isArray(q.options)) {
+        opts = q.options;
+      } else if (typeof q.options === 'string') {
+        try { opts = JSON.parse(q.options); } catch (_) { opts = []; }
+      }
+      answersSummary.push({
+        question_id: q.id,
+        question_text: q.question_text,
+        options: opts,
+        selected_option: selectedOpt,
+        correct_option: q.correct_option,
+        is_correct: isCorrect,
+        explanation: q.explanation || 'Standard principles apply.'
+      });
+    }
+
+    const totalQuestions = question_ids.length;
+    const scorePercentage = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+    const isPassed = scorePercentage >= Number(cutoff_percentage);
+
+    const categoryBreakdown: Record<string, number> = {};
+    for (const [cat, stats] of Object.entries(categoryStats)) {
+      const pct = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
+      categoryBreakdown[cat] = pct;
+      if (pct >= 70) strengths.push(cat);
+      else gaps.push(cat);
+    }
+
+    const insertRes = await pool.query(`
+      INSERT INTO student_assessments (
+        user_id, student_name, register_number, total_questions, correct_count,
+        score_percentage, category_breakdown, answers_summary, strengths, gaps,
+        time_taken_seconds, proctor_photo_url, track_type, track_title, cutoff_percentage, is_passed
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      RETURNING *;
+    `, [
+      targetUserId,
+      student_name || 'Student',
+      register_number || 'N/A',
+      totalQuestions,
+      correctCount,
+      scorePercentage,
+      JSON.stringify(categoryBreakdown),
+      JSON.stringify(answersSummary),
+      JSON.stringify(strengths),
+      JSON.stringify(gaps),
+      time_taken_seconds || 0,
+      proctor_photo_url || null,
+      track_type,
+      track_title,
+      cutoff_percentage,
+      isPassed
+    ]);
+
+    const attempt = insertRes.rows[0];
+
+    // Send Telegram scorecard alert
+    if (targetUserId) {
+      pool.query('SELECT telegram_chat_id FROM users WHERE id = $1', [targetUserId])
+        .then(async (uRes) => {
+          const chatId = uRes.rows[0]?.telegram_chat_id;
+          if (chatId) {
+            const scorecardMsg = `🎯 <b>Official Assessment Scorecard</b>\n\n` +
+              `👤 <b>Candidate:</b> ${student_name || 'Student'} (${register_number || ''})\n` +
+              `📝 <b>Track:</b> ${track_title}\n` +
+              `📊 <b>Score:</b> ${scorePercentage}% (${correctCount}/${totalQuestions} Correct)\n` +
+              `🚦 <b>Status:</b> ${isPassed ? 'PASSED ✅' : 'REMEDIAL REQUIRED ⚠️'} (Cutoff: ${cutoff_percentage}%)\n` +
+              `⏱ <b>Time Taken:</b> ${Math.floor((time_taken_seconds || 0) / 60)}m ${(time_taken_seconds || 0) % 60}s\n` +
+              `\nDetailed solutions and AI remedial modules are ready in your portal!\n${getWatermarkHtml()}`;
+            sendTelegramMessage(chatId, scorecardMsg).catch(() => {});
+          }
+        }).catch(() => {});
+    }
+
+    res.json({
+      success: true,
+      result: {
+        id: attempt.id,
+        score_percentage: scorePercentage,
+        correct_count: correctCount,
+        total_questions: totalQuestions,
+        is_passed: isPassed,
+        cutoff_percentage: cutoff_percentage,
+        category_breakdown: categoryBreakdown,
+        strengths,
+        gaps,
+        answers_summary: answersSummary,
+        proctor_photo_url: proctor_photo_url,
+        track_title: track_title
+      }
+    });
+  }));
+
+  // 12. Student Latest Assessment
+  app.get('/api/assessment/my-latest', asyncHandler(async (req: any, res: any) => {
+    let targetUserId = req.query.user_id;
+
+    if (!targetUserId) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const decoded: any = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET || 'secret');
+          targetUserId = decoded.id;
+        } catch (_) {}
+      }
+    }
+
+    if (!targetUserId) {
+      const tharun = await pool.query("SELECT id FROM users WHERE register_number = '922524205171' LIMIT 1");
+      if (tharun.rows.length > 0) targetUserId = tharun.rows[0].id;
+    }
+
+    if (!targetUserId) {
+      return res.json({ success: true, assessment: null });
+    }
+
+    let query = `SELECT * FROM student_assessments WHERE user_id = $1`;
+    const values: any[] = [targetUserId];
+
+    if (req.query.track && req.query.track !== 'ALL') {
+      query += ` AND track_type = $2`;
+      values.push(req.query.track);
+    }
+
+    query += ` ORDER BY created_at DESC LIMIT 1;`;
+
+    const result = await pool.query(query, values);
+    const row = result.rows[0];
+    const formatted = row ? {
+      ...row,
+      category_breakdown: safeJsonParse(row.category_breakdown, {}),
+      answers_summary: safeJsonParse(row.answers_summary, []),
+      strengths: safeJsonParse(row.strengths, []),
+      gaps: safeJsonParse(row.gaps, [])
+    } : null;
+    res.json({ success: true, assessment: formatted });
+  }));
+
+  // 13. AI Remedial Learning Plan & Formula Cheat Sheets
+  app.get('/api/assessment/remedial-plan', asyncHandler(async (req: any, res: any) => {
+    const catalog = [
+      {
+        skill_tag: "Time and Work",
+        title: "Time & Work Efficiency Mechanics",
+        category: "Quantitative Aptitude",
+        video_title: "Time and Work - Shortcuts & Tricks for Campus Placements",
+        video_url: "https://www.youtube.com/results?search_query=time+and+work+placement+tricks",
+        duration: "14 mins",
+        cheat_sheet_rules: [
+          "If A does work in x days, 1 day work = 1/x.",
+          "Combined 1 day work of A and B = (1/x) + (1/y) = (x + y)/(xy).",
+          "Total days taken together = xy / (x + y).",
+          "Efficiency is inversely proportional to time taken (Efficiency = Work / Time)."
+        ],
+        sample_question: "A can do a piece of work in 10 days and B in 15 days. Working together, how many days will they take?",
+        solution_steps: [
+          "1 day work of A = 1/10",
+          "1 day work of B = 1/15",
+          "Combined 1 day work = (1/10) + (1/15) = (3 + 2)/30 = 5/30 = 1/6",
+          "Total days needed = 6 days."
+        ]
+      },
+      {
+        skill_tag: "Speed, Distance & Time",
+        title: "Relative Speed & Train Kinematics",
+        category: "Quantitative Aptitude",
+        video_title: "Problems on Trains & Relative Speed Masterclass",
+        video_url: "https://www.youtube.com/results?search_query=problems+on+trains+speed+distance+placement",
+        duration: "18 mins",
+        cheat_sheet_rules: [
+          "km/h to m/s conversion: multiply by 5/18.",
+          "m/s to km/h conversion: multiply by 18/5.",
+          "Crossing a stationary pole or person: Distance = Length of Train.",
+          "Crossing a platform or bridge: Distance = Length of Train + Length of Platform.",
+          "Relative speed in same direction: (S1 - S2); opposite direction: (S1 + S2)."
+        ],
+        sample_question: "A train 180m long travelling at 54 km/h crosses a platform in 20 seconds. Find the platform length.",
+        solution_steps: [
+          "Speed in m/s = 54 * (5/18) = 15 m/s",
+          "Total distance travelled in 20s = 15 * 20 = 300m",
+          "Platform length = 300m - 180m = 120m."
+        ]
+      },
+      {
+        skill_tag: "Blood Relations",
+        title: "Family Tree Decoding & Decryption",
+        category: "Logical Reasoning",
+        video_title: "Blood Relations Short Tricks & Family Trees",
+        video_url: "https://www.youtube.com/results?search_query=blood+relations+reasoning+tricks",
+        duration: "12 mins",
+        cheat_sheet_rules: [
+          "Always sketch gender markers: (+) for male, (-) for female.",
+          "Double horizontal line (=) for married couples.",
+          "Single horizontal line (-) for siblings.",
+          "Vertical line (|) for parent-child generational hierarchy.",
+          "Solve from right to left in coded or pointing statements."
+        ],
+        sample_question: "A is B's brother. C is B's mother. D is C's father. How is A related to D?",
+        solution_steps: [
+          "A and B are siblings. C is their mother.",
+          "D is their mother's father (maternal grandfather).",
+          "Therefore, A is D's grandson."
+        ]
+      },
+      {
+        skill_tag: "Core Java",
+        title: "Java Type Promotion & Precedence Rules",
+        category: "Technical Core",
+        video_title: "Java Operator Precedence & Evaluation Rules",
+        video_url: "https://www.youtube.com/results?search_query=java+operator+precedence+and+type+promotion",
+        duration: "15 mins",
+        cheat_sheet_rules: [
+          "Java evaluates binary operators left-to-right unless parentheses alter precedence.",
+          "In string concatenation, once an operand is a String, remaining operands are converted to strings.",
+          "Integer addition happens before hitting string literal: 10 + 20 + 'A' results in '30A'.",
+          "Primitive narrowing requires explicit casting, but widening is automatic."
+        ],
+        sample_question: "What is output of System.out.println(5 + 5 + \"=Sum=\" + 5 + 5)?",
+        solution_steps: [
+          "Leftmost 5 + 5 evaluates as arithmetic addition -> 10",
+          "10 + '=Sum=' results in string '10=Sum='",
+          "'10=Sum=' + 5 evaluates as concatenation -> '10=Sum=5'",
+          "'10=Sum=5' + 5 evaluates as concatenation -> '10=Sum=55'."
+        ]
+      },
+      {
+        skill_tag: "Database & SQL",
+        title: "SQL Execution Hierarchy & Normalization",
+        category: "Technical Core",
+        video_title: "SQL Query Execution Order & Normal Forms (1NF to BCNF)",
+        video_url: "https://www.youtube.com/results?search_query=sql+query+execution+order+interview",
+        duration: "16 mins",
+        cheat_sheet_rules: [
+          "Query execution order: FROM -> WHERE -> GROUP BY -> HAVING -> SELECT -> ORDER BY -> LIMIT.",
+          "WHERE filters rows before grouping; HAVING filters groups after grouping.",
+          "1NF: Atomic values; 2NF: No partial dependency on composite PK.",
+          "3NF: No transitive dependency; BCNF: Every determinant is a candidate key."
+        ],
+        sample_question: "Why cannot aggregate functions like COUNT() be used directly in a WHERE clause?",
+        solution_steps: [
+          "WHERE is executed before row grouping occurs in the relational query plan.",
+          "Aggregates require grouped sets which only exist after GROUP BY.",
+          "Use HAVING to filter aggregated group metrics."
+        ]
+      }
+    ];
+
+    res.json({ success: true, remedial_modules: catalog });
+  }));
+
+  // 14. HOD Cohort Results & Submissions List
+  app.get('/api/assessment/hod-results', asyncHandler(async (req: any, res: any) => {
+    const result = await pool.query(`
+      SELECT 
+        sa.*,
+        c.name as class_name,
+        c.year as class_year
+      FROM student_assessments sa
+      LEFT JOIN users u ON u.id = sa.user_id
+      LEFT JOIN classes c ON c.id = u.class_id
+      ORDER BY sa.created_at DESC
+      LIMIT 250;
+    `);
+
+    const rows = result.rows;
+    const totalSubmissions = rows.length;
+    let avgScore = 0;
+    let passCount = 0;
+
+    if (totalSubmissions > 0) {
+      const total = rows.reduce((acc, r) => acc + Number(r.score_percentage || 0), 0);
+      avgScore = Math.round(total / totalSubmissions);
+      passCount = rows.filter(r => r.is_passed === true || Number(r.score_percentage || 0) >= Number(r.cutoff_percentage || 60)).length;
+    }
+
+    const formattedRows = rows.map(r => ({
+      ...r,
+      category_breakdown: safeJsonParse(r.category_breakdown, {}),
+      answers_summary: safeJsonParse(r.answers_summary, []),
+      strengths: safeJsonParse(r.strengths, []),
+      gaps: safeJsonParse(r.gaps, [])
+    }));
+
+    res.json({
+      success: true,
+      metrics: {
+        total_submissions: totalSubmissions,
+        average_score: avgScore,
+        passed_count: passCount,
+        pass_rate: totalSubmissions > 0 ? Math.round((passCount / totalSubmissions) * 100) : 0
+      },
+      results: formattedRows
     });
   }));
 

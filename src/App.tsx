@@ -91,6 +91,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
+import SkillAssessmentView from './SkillAssessmentView';
+import PlacementReadinessView from './PlacementReadinessView';
 
 // Helper to render Lucide vector icons for task categories
 const renderCategoryIcon = (category: string, size = 14) => {
@@ -9879,6 +9881,20 @@ export default function App() {
           />
 
           <SidebarItem
+            icon={<Sparkles size={20} />}
+            label="Skill Assessment"
+            active={view === 'skill-assessment'}
+            onClick={() => { setView('skill-assessment'); setIsMobileSidebarOpen(false); }}
+          />
+
+          <SidebarItem
+            icon={<Target size={20} />}
+            label="Placement Rating"
+            active={view === 'placement-readiness'}
+            onClick={() => { setView('placement-readiness'); setIsMobileSidebarOpen(false); }}
+          />
+
+          <SidebarItem
             icon={<Megaphone size={20} />}
             label="Notice Board"
             active={view === 'notice-board'}
@@ -10599,6 +10615,8 @@ export default function App() {
                     if (view === 'departments') return 'Departments';
                     if (view === 'my-class') return 'My Class';
                     if (view === 'notice-board') return 'Notice Board';
+                    if (view === 'skill-assessment') return 'Placement Skill Assessment';
+                    if (view === 'placement-readiness') return 'Placement Readiness Rating';
                     if (view === 'analyzer') return 'Student Progress Analyzer';
                     if (view === 'verification') return 'Task Verification';
                     if (view === 'users') return 'User Management';
@@ -13623,6 +13641,41 @@ export default function App() {
                       user={user}
                       token={token}
                       addToast={addToast}
+                    />
+                  </motion.div>
+                )
+              }
+
+              {
+                view === 'skill-assessment' && (
+                  <motion.div
+                    key="skill-assessment"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="w-full h-full flex flex-col min-h-0 relative"
+                  >
+                    <SkillAssessmentView
+                      user={user}
+                      token={token}
+                      addToast={addToast}
+                    />
+                  </motion.div>
+                )
+              }
+
+              {
+                view === 'placement-readiness' && (
+                  <motion.div
+                    key="placement-readiness"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="w-full h-full flex flex-col min-h-0 relative"
+                  >
+                    <PlacementReadinessView
+                      user={user}
+                      token={token}
+                      addToast={addToast}
+                      onNavigateToAssessment={() => setView('skill-assessment')}
                     />
                   </motion.div>
                 )
