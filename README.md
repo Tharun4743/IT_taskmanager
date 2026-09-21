@@ -42,7 +42,7 @@ Higher education departments managing hundreds of academic tasks require decoupl
 ---
 
 ## 3. 💡 Proposed Solution & Architectural Innovation
-**IT Task Manager** is the foundational backend microservice engine powering institutional governance and assessment tracking for **VSBEC IT Vault**. Recognized as an **SIH 2026 Internal Hackathon Top 50 Finalist** (official central SIH portal nominee) and powering **365+ active students across 6 departmental sections**:
+**IT Task Manager** is the foundational backend microservice engine powering institutional governance and assessment tracking for **VSBEC IT Vault**. Recognized as an **SIH 2026 Internal Hackathon Top 50 Finalist** (official central SIH portal nominee) and powering **365+ active students in the Department of Information Technology**:
 
 * 🏛️ **Layered Service-Repository Pattern:** Clean separation of concerns isolating HTTP controllers, business rule validation services, and database persistence layers.
 * 🔄 **Deterministic State Machine:** Formally enforces the departmental 3-tier submission progression, ensuring no task moves to Faculty sign-off without Coordinator verification.
